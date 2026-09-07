@@ -14,8 +14,13 @@ Die reguläre Instanz auf `9222` gehört möglicherweise einer anderen Session. 
 nicht angefasst — kein Attach, kein Quit, kein Fenster nach vorn. Der richtige Ort für
 diesen Lauf ist eine Zweitinstanz: die Sperre hängt am **Profil**, nicht am Rechner.
 
+Der Treiber misst im **eigenen Staging-Vault** (`$STAGING_VAULTS_DIR/lingotuner`), nie im
+Arbeits-Vault. Wo dieses Verzeichnis liegt, sagt die Umgebung (`~/.zshenv`) und
+`obsidian-plugins/AGENTS.md` § Staging-Vaults — **hier steht nur die Variable, nie ihr Wert**
+(CORE-META-14; ein Beispielwert in der Doku ist ein zweiter Ort und gabelt die Konvention).
+
 ```bash
-export STAGING_VAULTS_DIR=/Users/Shared/60_StagingVaults     # steht in ~/.zshenv
+echo "$STAGING_VAULTS_DIR"                                   # muss gesetzt sein (~/.zshenv)
 npm run build && npm run smoke:gui -- --setup                # Vault aus fixtures/vault/
 
 UD=/tmp/obs-test-lingotuner; mkdir -p "$UD"

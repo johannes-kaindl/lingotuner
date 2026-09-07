@@ -7,7 +7,7 @@
  *
  * ## Zweitinstanz (der richtige Ort fuer diesen Lauf — eigenes Profil, eigener Port)
  *
- *   export STAGING_VAULTS_DIR=/Users/Shared/60_StagingVaults        # steht in ~/.zshenv
+ *   echo "$STAGING_VAULTS_DIR"                                         # muss gesetzt sein (~/.zshenv)
  *   npm run build && npm run smoke:gui -- --setup                      # Vault aus fixtures/vault/
  *   UD=/tmp/obs-test-lingotuner; mkdir -p "$UD"
  *   lsof -nP -iTCP:9341 -sTCP:LISTEN && echo "Port belegt — anderen nehmen"
@@ -27,6 +27,12 @@
  * Der Lock ist die Eintrittskarte des Guards (auch fuer die Zweitinstanz); `release` gehoert
  * direkt hinter den Lauf. Die regulaere Instanz auf 9222 wird nicht angefasst — beendet wird
  * die Zweitinstanz ueber ihre PID, nie ueber `pkill`/`killall`/`quit app`.
+ *
+ * Gemessen wird im eigenen Staging-Vault (`$STAGING_VAULTS_DIR/lingotuner`, aufgeloest ueber
+ * `stagingVaultDir()`), nie im Arbeits-Vault. Wo dieses Verzeichnis liegt, sagt die Umgebung —
+ * hier steht nur die Variable, nie ihr Wert (CORE-META-14; ein Beispielwert in der Doku ist ein
+ * zweiter Ort und gabelt die Konvention). Der Ort selbst: obsidian-plugins/AGENTS.md
+ * § Staging-Vaults.
  *
  * Typen: `tsconfig.scripts.json` (im `gate` ueber `npm run typecheck:scripts`).
  */
