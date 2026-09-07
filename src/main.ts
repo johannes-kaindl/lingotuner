@@ -41,17 +41,23 @@ export default class LingoTunerPlugin extends Plugin {
   private tracker!: SelectionTracker;
   private selectionDebounce: number | null = null;
   private activeEndpoint: EndpointConfig | null = null;
+  /** Zuletzt gemeldete Override-Probleme, als ein Schluessel. Ohne das meldet JEDER Lauf
+   *  dieselbe kaputte Datei erneut — bei zehn Laeufen zehn Notices fuer denselben Befund. */
+  private lastOverrideProblems = "";
 
   async onload(): Promise<void> {
     setLang(pickLang(safeGetLanguage()));
     this.settings = loadSettings(await this.loadData());
     this.resolver = new EndpointResolver(() => this.settings.endpoints, (ep) => probeEndpoint(ep, PROBE_TIMEOUT_MS).then((s) => s.reachable));
     this.tracker = new SelectionTracker(this.app.workspace);
+    // Nicht awaiten: onload darf nicht auf einer Netz-Probe haengen. Setzt activeEndpoint,
+    // damit die Endpunkt-Liste in den Einstellungen die aktive Zeile schon VOR dem ersten Lauf kennt.
+    void this.resolveEndpoint();
 
     // Sofort setzen: sobald das Plugin-Objekt in app.plugins.plugins auftaucht, soll `api` da sein.
     this.api = createLingoTunerApi({
       presets: () => allPresets(this.settings),
-      run: (text, dials, note, signal) => this.tune({ text, dials, note, signal }),
+      run: (text, dials, note, signal) => this.tune({ text, dials, note, signal, quiet: true }),
     });
 
     this.registerView(VIEW_TYPE_LINGOTUNER, (leaf: WorkspaceLeaf) => new LingoTunerView(leaf, {
@@ -63,7 +69,7 @@ export default class LingoTunerPlugin extends Plugin {
       presets: () => allPresets(this.settings),
       getDials: () => this.settings.lastDials,
       setDials: (d) => { this.settings.lastDials = { ...d }; void this.saveSettings(); },
-      listModels: async () => { const ep = (await this.resolver.resolve()) ?? this.settings.endpoints[0]; return ep ? listModels(ep, PROBE_TIMEOUT_MS) : []; },
+      listModels: async () => { const ep = (await this.resolveEndpoint()) ?? this.settings.endpoints[0]; return ep ? listModels(ep, PROBE_TIMEOUT_MS) : []; },
       getModel: () => this.settings.model,
       setModel: (m) => { this.settings.model = m; void this.saveSettings(); },
       getSuppress: () => this.settings.suppressThinking,
@@ -110,6 +116,15 @@ export default class LingoTunerPlugin extends Plugin {
 
   activeEndpointUrl(): string | null { return this.activeEndpoint?.url ?? null; }
 
+  /** EINZIGER Weg zum Endpunkt: aufloesen UND merken. `resolve()` direkt zu rufen liess
+   *  activeEndpoint stehen, wo es stand — die Einstellungen zeigten dann bis zum ersten Lauf
+   *  keine aktive Zeile. Die Resolver-Klasse bleibt unangetastet (byte-gleich zu koda-agent). */
+  async resolveEndpoint(): Promise<EndpointConfig | null> {
+    const ep = await this.resolver.resolve();
+    this.activeEndpoint = ep;
+    return ep;
+  }
+
   private panel(): LingoTunerView | null {
     const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_LINGOTUNER)[0];
     return leaf?.view instanceof LingoTunerView ? leaf.view : null;
@@ -135,13 +150,21 @@ export default class LingoTunerPlugin extends Plugin {
   }
 
   /** EIN Ausfuehrungspfad fuer Panel und API: Endpunkt aufloesen → Overrides → Prompt → Stream → Lab → Logbuch. */
-  private async tune(p: { text: string; dials: Dials; note: string; signal?: AbortSignal; onToken?: (t: string) => void; onReasoning?: (t: string) => void }): Promise<TuneResult> {
-    const ep = await this.resolver.resolve();
+  private async tune(p: { text: string; dials: Dials; note: string; signal?: AbortSignal; quiet?: boolean; onToken?: (t: string) => void; onReasoning?: (t: string) => void }): Promise<TuneResult> {
+    const ep = await this.resolveEndpoint();
     if (ep === null) { new Notice(t("run.noEndpoint")); return { ok: false, error: { kind: "network" }, partial: "" }; }
-    this.activeEndpoint = ep;
 
     const { overrides, problems } = await loadOverrides(vaultOverrideReader(this.app), this.settings.overrideFolder);
-    for (const f of problems) new Notice(t("error.overrideFile", f));
+    // Nur melden, wenn sich die Problemmenge geaendert hat — und ueber die API (quiet) gar nicht
+    // per Notice: ein Fremdaufruf soll dem Nutzer keine Meldung ins Fenster schieben.
+    const key = problems.join("\n");
+    if (key !== this.lastOverrideProblems) {
+      for (const f of problems) {
+        if (p.quiet === true) console.warn(`LingoTuner: ${t("error.overrideFile", f)}`);
+        else new Notice(t("error.overrideFile", f));
+      }
+    }
+    this.lastOverrideProblems = key;
     const opts = { note: p.note, lang: getLang(), overrides };
     const messages = buildMessages(p.text, p.dials, opts);
     const model = ep.model && ep.model !== "" ? ep.model : this.settings.model;
@@ -151,15 +174,22 @@ export default class LingoTunerPlugin extends Plugin {
     const ctrl = new AbortController();
     if (p.signal) {
       if (p.signal.aborted) ctrl.abort();
-      else p.signal.addEventListener("abort", () => { ctrl.abort(); });
+      else p.signal.addEventListener("abort", () => { ctrl.abort(); }, { once: true });
     }
     let timedOut = false;
     const timer = window.setTimeout(() => { timedOut = true; ctrl.abort(); }, this.settings.timeoutSec * 1000);
+    // „Erstes Token, egal welcher Art": ein Reasoning-Modell schickt Minuten lang nur Gedanken,
+    // bevor der erste Inhalts-Token kommt. Loeschte nur onToken den Timer, riss das Zeitlimit
+    // einen sichtbar arbeitenden Lauf ab.
     const onToken = (tk: string): void => {
       if (first === undefined) { first = Date.now(); window.clearTimeout(timer); }
       p.onToken?.(tk);
     };
-    let result = await streamTune(xhrTransport, { messages, endpoint: ep, model, suppressThinking: this.settings.suppressThinking, signal: ctrl.signal, onToken, onReasoning: p.onReasoning });
+    const onReasoning = (tk: string): void => {
+      if (first === undefined) { first = Date.now(); window.clearTimeout(timer); }
+      p.onReasoning?.(tk);
+    };
+    let result = await streamTune(xhrTransport, { messages, endpoint: ep, model, suppressThinking: this.settings.suppressThinking, signal: ctrl.signal, onToken, onReasoning });
     window.clearTimeout(timer);
 
     if (!result.ok && result.error.kind === "aborted" && timedOut) {

@@ -121,7 +121,7 @@ export class LingoTunerSettingTab extends PluginSettingTab {
       clientFor: (cfg) => clientFor(cfg, PROBE_TIMEOUT_MS),
       globalModel: () => this.plugin.settings.model,
       save: () => this.plugin.saveSettings(),
-      reconnect: async () => { this.plugin.resolver.invalidate(); await this.plugin.resolver.resolve(); },
+      reconnect: async () => { this.plugin.resolver.invalidate(); await this.plugin.resolveEndpoint(); },
       rerender: () => { this.refreshUi(); },
       presets: ENDPOINT_PRESETS,
     });
