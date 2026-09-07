@@ -94,18 +94,24 @@ Stand des letzten Laufs: **2026-09-07, 23:5x CEST**, Obsidian **1.14.0**, Zweiti
 | B8 | Textfeld-Quelle zeigt Textarea | Quelle „Textfeld" rendert `.lt-freetext` | grün | 2026-09-07 |
 | B9 | Lesemodus blockiert die Quelle | Notiz auf `mode: preview` → `.lt-source-line.is-blocked` | grün | 2026-09-07 |
 | B10 | Tippen ins Textfeld behält den Fokus | `execCommand("insertText")` in `.lt-freetext`; nach 500 ms trägt die Textarea `abc` UND ist noch `document.activeElement` | grün | 2026-09-07 |
-| C1 | Stream liefert Ergebnis | `.lt-status.is-ok` und nichtleere `.lt-preview` nach einem echten Lauf | grün (169 Zeichen) | 2026-09-07 |
+| C1 | Stream liefert Ergebnis | `.lt-status.is-ok` und nichtleere `.lt-preview` nach einem echten Lauf | grün (2578 Zeichen) | 2026-09-07 |
 | C2 | Kopieren freigegeben | `.lt-out-copy` nicht mehr disabled, sobald ein Ergebnis steht | grün | 2026-09-07 |
 | C3 | Notiz ersetzen schreibt Body | Datei ändert sich, `---\ntype: draft\n---` steht weiter oben — Frontmatter überlebt | grün | 2026-09-07 |
 | C4 | Neue Notiz entsteht | eine Datei mit `(tuned)`/`(getunt)` im Namen taucht auf | grün (`Mail-Entwurf (getunt).md`) | 2026-09-07 |
 | C5 | `is-checking` animiert | `getComputedStyle(".lt-status-icon svg").animationName === "lt-spin"` **während** des Streams | grün | 2026-09-07 |
 | C6 | Logbuch anlegen und anhängen | nach zwei Läufen: `LingoTuner/LingoTuner YYYY-MM.md` mit `type: lingotuner-log` und zwei `## `-Einträgen | grün (2 Einträge) | 2026-09-07 |
 | C7 | Ersetzen-Ziel sperrt bei geänderter Quelle | Editor-Inhalt ändern → `.lt-out-replace-note` disabled (Guard „Quelle geändert") | grün | 2026-09-07 |
-| C8 | Gedanken-Block während des Streams | eigener, absichtlich abgebrochener Lauf mit eingeschaltetem Denken: `.lt-reasoning` steht im DOM, **während** `.lt-status` auf `is-checking` steht | grün (10 Zeichen) | 2026-09-07 |
+| C8 | Gedanken-Block während des Streams | eigener, absichtlich abgebrochener Lauf mit eingeschaltetem Denken: `.lt-reasoning` steht im DOM, **während** `.lt-status` auf `is-checking` steht | grün (9 Zeichen) | 2026-09-07 |
+| C9 | kein Bedienelement wird verdeckt | Ausgabebereich künstlich gefüllt, dann je `.lt-run`/`.lt-refine`/`.lt-reset`/`.lt-out`: trifft `elementFromPoint` auf die Knopfmitte noch den Knopf? | grün (7 von 7, 8210 px in 208 px) | 2026-09-07 |
 
-**Bilanz des letzten Laufs: 21 grün · 0 rot · 1 übersprungen.**
+**Bilanz des letzten Laufs: 22 grün · 0 rot · 1 übersprungen.**
 
-### B10 und C8 — die zwei Punkte aus den UI-Fehlern vom 2026-09-07
+### B10, C8 und C9 — die Punkte aus den UI-Fehlern vom 2026-09-07
+
+**B10** und **C9** sind die zwei Pflicht-Prüfpunkte aus dem Skill `gui-smoke-setup` § 3a
+(„jede View mit Ausgabebereich"). Anlassfall dieser Regel war genau dieses Plugin; LingoTuner
+ist ihr erster Konsument, deshalb steht hier die Standardform und keine dritte Variante.
+**C8** kommt aus Fehler 3 und ist repo-eigen.
 
 Beide decken einen gemeldeten Fehler ab, der vorher durch kein Netz fiel — und beide messen
 eine **Naht**, keine Datenstruktur; im Unit-Test wäre keiner von beiden entscheidbar.
@@ -113,10 +119,26 @@ eine **Naht**, keine Datenstruktur; im Unit-Test wäre keiner von beiden entsche
 **B10** misst Fehler 1 („Textfeld lässt sich nicht beschreiben"). Ursache war ein Voll-Draw
 des Panels auf `selectionchange`: jede Cursorbewegung IN der Textarea feuert dieses Ereignis,
 `main.ts` gab es an `panel.refresh()` weiter, und `renderPanel` baute das Feld unter dem
-Cursor neu. Gemessen wird der Endzustand, nicht der Weg: nach `execCommand("insertText")`
-und 500 ms trägt die Textarea `abc` **und** ist noch `document.activeElement`. Vor dem Fix
-war das Zeichen da und der Fokus weg — ein einzelner der beiden Werte hätte den Fehler
-also verfehlt.
+Cursor neu. **Mutation und Wartephase sind getrennt** (`tippeInsTextfeld` / `messeFokus`):
+im selben `evaluate` gemessen läge die Messung vor dem Redraw, denn der Debounce in
+`main.ts` ist 150 ms. Die Mutation feuert den Auslöser selbst
+(`document.dispatchEvent(new Event("selectionchange"))`).
+
+⚠️ **Gepollt wird auf den NEGATIVEN Zustand, und das ist kein Stilfrage.** Ein `pollUntil`
+auf „Fokus liegt im Feld" kehrt beim **ersten** Versuch zurück — also vor dem Debounce —
+und wäre deshalb auch gegen die kaputte Fassung grün: dort fällt der Fokus erst nach
+~150 ms weg. Gemessen wird deshalb ein **Fenster** von 1200 ms, in dem der Fokus nicht
+wegfallen darf; erst danach der Endstand (`value === "abc"`). Beide Hälften zusammen: vor
+dem Fix war das Zeichen da und der Fokus weg, ein einzelner der beiden Werte hätte den
+Fehler verfehlt.
+
+**C9** misst die zweite Hälfte von Fehler 2 — nicht „läuft Text über die Leiste", sondern
+**„ist der Knopf noch klickbar"**. Geometrie taugt dafür nicht: ein Kind eines Containers mit
+`overflow: auto` behält seine Box unterhalb der Kante und wird dort trotzdem abgeschnitten.
+An genau dieser Stelle gemessen: die Boxen meldeten 2554 px Überstand, gemalt war nichts
+davon. Der Punkt füllt den Ausgabebereich vorher künstlich auf und meldet die Vorbedingung
+(`8210 px in 208 px`) im Detailtext mit — ohne Überlauf könnte er nicht rot werden
+(CORE-TEST-01).
 
 **C8** misst Fehler 3 („Denken wird nicht gestreamt"). Der Punkt fährt einen **eigenen,
 absichtlich abgebrochenen** Lauf mit eingeschaltetem Denken. Der erste Entwurf hat die
@@ -221,6 +243,39 @@ Die `view.ts`-Hälfte ist damit **nicht** durch den Smoke belegt, sondern durch
 nicht anfasst: `active-leaf-change`, den gegriffenen Regler und die spät eintreffende
 Modell-Liste.
 
+**Nachgezogen auf die Skill-Form, Gegenprobe wiederholt.** Nachdem B10 auf die Form aus
+`gui-smoke-setup` § 3a umgestellt war (Mutation/Wartephase getrennt, Auslöser selbst
+gefeuert, Fenster-Poll), wurde derselbe Bruch erneut gefahren: **21 grün · 1 rot**, rot war
+wieder **nur B10** — `value="abc", Fokus fiel auf "mod-macos is-frameless …"`. Die neue Form
+misst also dasselbe wie die alte. Das war nicht selbstverständlich: mit einem `pollUntil` auf
+die positive Bedingung wäre sie an dieser Stelle grün geblieben (siehe oben).
+
+### Gegenprobe für C9 (2026-09-07, abends)
+
+**Der stärkste Beleg ist ungeplant entstanden: C9 war beim ersten Lauf rot, und zwar zu
+Recht.** Der Fix für Fehler 2 hatte die Ausführen-Zeile in den rollenden Bedienblock gelegt;
+sobald ein Ergebnis stand, war sie herausgerollt, und ein Klick auf die Mitte von
+„Nachschärfen" traf `view-content lt-panel`, einer auf „Zurücksetzen" ein `<p>` der Vorschau.
+Die Knöpfe waren da und nicht erreichbar — genau die Fehlerart, für die der Punkt gedacht ist.
+Behoben, indem `.lt-run-row` aus `.lt-controls` heraus in den festen Teil des Panels wanderte.
+Danach grün. Beide Richtungen also an einem **echten** Defekt belegt, nicht an einem gestellten.
+
+⚠️ **Die im Skill vorgeschlagene künstliche Gegenprobe funktioniert hier NICHT** — gemessen,
+nicht vermutet. `.lt-preview` per `style.height = "3000px"` zu überhöhen ließ die tatsächliche
+Höhe bei **90 px**: das Element ist `flex: 1 1 0`, und in einer Flex-Spalte gewinnt die
+Flex-Basis gegen `height`. C9 blieb grün — was sich liest wie „der Punkt misst nichts",
+tatsächlich aber heißt „die Gegenprobe hat nichts verändert". Wirksam ist erst:
+
+```js
+p.style.flex = "0 0 3000px"; p.style.overflow = "visible";
+```
+
+Damit stieg die Höhe auf 3000 px und C9 meldete **4 verdeckte Bedienelemente**
+(`lt-out-replace-selection`, `lt-out-replace-note`, `lt-out-copy`, `lt-out-new-note`).
+Danach `style.removeProperty(...)`, Höhe wieder 90 px. **Wer eine Gegenprobe fährt, prüft
+zuerst, ob sie den Zustand überhaupt hergestellt hat** — sonst misst man die Gegenprobe
+statt den Prüfpunkt.
+
 ## Läufe vom 2026-09-07 (Protokoll)
 
 | # | Zeit | Stand | Ergebnis | Anmerkung |
@@ -237,7 +292,11 @@ Modell-Liste.
 | 10 | 23:48 | C8 als eigener, abgebrochener Lauf | **21 grün · 0 rot · 1 übersprungen** | erster vollständiger Lauf mit den Fixes |
 | 11 | 23:52 | **`refresh()` + Gedanken-Block gebrochen** | 20 grün · 1 rot (C8) · 1 übersprungen | Gegenprobe A — B10 blieb grün (siehe oben) |
 | 12 | 23:57 | **beide Hälften von Fix 1 gebrochen** | 20 grün · 1 rot (B10) · 1 übersprungen | Gegenprobe B |
-| 13 | 00:0x | Repo-Stand zurück | **21 grün · 0 rot · 1 übersprungen** | maßgeblicher Lauf |
+| 13 | 00:0x | Repo-Stand zurück | 21 grün · 0 rot · 1 übersprungen | vor der Angleichung an `gui-smoke-setup` § 3a |
+| 14 | 00:0x | B10 in Skill-Form, C9 neu | 21 grün · **1 rot (C9)** · 1 übersprungen | C9 fand einen echten Defekt: die Ausführen-Zeile war aus dem rollenden Block herausgerollt |
+| 15 | 00:1x | `.lt-run-row` in den festen Teil | 22 grün · 0 rot · 1 übersprungen | C9 grün |
+| 16 | 00:1x | **beide Hälften von Fix 1 gebrochen** | 21 grün · 1 rot (B10) · 1 übersprungen | Gegenprobe für die neue B10-Form |
+| 17 | 00:2x | Repo-Stand, Vorschau-Boden statt Deckel | **22 grün · 0 rot · 1 übersprungen** | maßgeblicher Lauf |
 
 ### Was Lauf 1 gelehrt hat
 

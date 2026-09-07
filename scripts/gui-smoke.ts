@@ -193,6 +193,50 @@ async function pruefeGrundlage(cdp: Cdp, vaultName: string): Promise<void> {
   record("A3 Panel oeffnet", panel !== null, panel !== null ? "Leaf mit .lt-panel" : `kein .lt-panel; Leaves: ${(await cdp.evaluate<{ n: number }>(`return { n: app.workspace.getLeavesOfType(${q(VIEW_TYPE)}).length };`)).n}`);
 }
 
+/** B10, Schritt 1: die MUTATION. Fokus setzen, tippen, den Ausloeser feuern — mehr nicht.
+ *  Getrennt von der Messung, weil im selben `evaluate` vor dem Redraw gemessen wuerde
+ *  (Debounce 150 ms in `main.ts`). Form aus dem Skill `gui-smoke-setup` § 3a (a). */
+async function tippeInsTextfeld(cdp: Cdp): Promise<void> {
+  await cdp.evaluate(`
+    const el = document.querySelector(".lt-freetext");
+    if (!el) return { ok: false };
+    el.value = "";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.focus();
+    el.setSelectionRange(0, 0);
+    document.execCommand("insertText", false, "abc");
+    // Der Ausloeser aus dem Anlassfall — im Wirt feuert ihn jede Cursorbewegung selbst.
+    document.dispatchEvent(new Event("selectionchange"));
+    return { ok: true };
+  `);
+}
+
+/** B10, Schritt 2: die WARTEPHASE auf der Node-Seite.
+ *
+ *  ⚠️ Gepollt wird auf den NEGATIVEN Zustand, nicht auf den positiven — und das ist der
+ *  Unterschied zwischen einem Pruefpunkt und einer Behauptung. Ein `pollUntil` auf
+ *  „Fokus liegt im Feld" kehrt beim ERSTEN Versuch zurueck, also vor dem Debounce; es
+ *  waere auch gegen die kaputte Fassung gruen, weil der Fokus dort erst nach ~150 ms
+ *  wegfaellt. Gemessen wird deshalb ein FENSTER: faellt der Fokus in 1200 ms nicht weg,
+ *  hat er den Anstrich ueberlebt. `null` = ueberlebt. */
+async function messeFokus(cdp: Cdp): Promise<[boolean, string]> {
+  const verloren = await pollUntil<{ aktiv: string }>(cdp, `
+    const a = document.activeElement;
+    if (a && a.matches(".lt-freetext")) return null;
+    return { aktiv: a ? (a.className || a.tagName) : "(null)" };
+  `, 1200, 100);
+  const stand = await cdp.evaluate<{ wert: string; aktiv: string }>(`
+    const el = document.querySelector(".lt-freetext");
+    const a = document.activeElement;
+    return { wert: el ? el.value : "(keine Textarea)", aktiv: a ? (a.className || a.tagName) : "(null)" };
+  `);
+  const gehalten = verloren === null && stand.aktiv.split(" ").includes("lt-freetext");
+  const detail = gehalten
+    ? `value=${JSON.stringify(stand.wert)}, Fokus blieb 1200 ms in .lt-freetext`
+    : `value=${JSON.stringify(stand.wert)}, Fokus fiel auf ${JSON.stringify((verloren?.aktiv ?? stand.aktiv).slice(0, 60))}`;
+  return [gehalten && stand.wert === "abc", detail];
+}
+
 async function pruefePanel(cdp: Cdp): Promise<void> {
   console.log("\nB · Panel ohne Modell");
   record("B1 drei Quellen-Chips", (await count(cdp, ".lt-source-chip")) === 3, `${await count(cdp, ".lt-source-chip")} Chips`);
@@ -222,27 +266,15 @@ async function pruefePanel(cdp: Cdp): Promise<void> {
   const ta = await pollUntil<{ ok: boolean }>(cdp, `return document.querySelector(".lt-freetext") ? { ok: true } : null;`, 3000, 200);
   record("B8 Textfeld-Quelle zeigt Textarea", ta !== null, `${ta !== null ? ".lt-freetext da" : "fehlt"}${klick8}`);
 
-  // B10 — der gemeldete Fehler 1: jede Cursorbewegung in der Textarea feuert
-  // `selectionchange`; zeichnete das Panel darauf voll neu, war das Feld unbeschreibbar.
-  // Gemessen wird beides zusammen: das Zeichen kam an UND der Fokus steht noch im Feld.
+  // B10 — Pflicht-Punkt (a) aus dem Skill `gui-smoke-setup` § 3a, Anlassfall war genau
+  // dieses Plugin: ein `selectionchange`-Handler loeste ein Voll-Neuzeichnen aus, die
+  // Textarea wurde als DOM-Knoten ersetzt, der Fokus fiel auf `<body>` — der Nutzer verlor
+  // bei jedem Tastendruck den Cursor.
   if (ta === null) {
     skipped("B10 Tippen ins Textfeld behaelt den Fokus", "ohne .lt-freetext (B8 rot) ist der Punkt gegenstandslos");
   } else {
-    const tipp = await cdp.evaluate<{ wert: string; aktiv: string }>(`
-      const ta = document.querySelector(".lt-freetext");
-      ta.value = "";
-      ta.dispatchEvent(new Event("input", { bubbles: true }));
-      await new Promise((r) => setTimeout(r, 600));
-      const feld = document.querySelector(".lt-freetext");
-      feld.focus();
-      feld.setSelectionRange(0, 0);
-      document.execCommand("insertText", false, "abc");
-      await new Promise((r) => setTimeout(r, 500));
-      const cur = document.querySelector(".lt-freetext");
-      return { wert: cur ? cur.value : "(keine Textarea)", aktiv: document.activeElement ? document.activeElement.className : "(null)" };
-    `);
-    const hatFokus = tipp.aktiv.split(" ").includes("lt-freetext");
-    record("B10 Tippen ins Textfeld behaelt den Fokus", hatFokus && tipp.wert === "abc", `value=${JSON.stringify(tipp.wert)}, activeElement=${hatFokus ? ".lt-freetext" : JSON.stringify(tipp.aktiv.slice(0, 60))}`);
+    await tippeInsTextfeld(cdp);
+    record("B10 Tippen ins Textfeld behaelt den Fokus", ...(await messeFokus(cdp)));
     await cdp.evaluate(`
       const ta = document.querySelector(".lt-freetext");
       if (ta) { ta.value = ""; ta.dispatchEvent(new Event("input", { bubbles: true })); ta.blur(); }
@@ -313,9 +345,67 @@ async function pruefeGedanken(cdp: Cdp): Promise<void> {
 const C_AUSGAENGE = [
   "C2 Kopieren freigegeben", "C3 Notiz ersetzen schreibt Body", "C4 Neue Notiz entsteht",
   "C6 Logbuch anlegen und anhaengen", "C7 Ersetzen-Ziel sperrt bei geaenderter Quelle",
-  "C8 Gedanken-Block waehrend des Streams",
+  "C8 Gedanken-Block waehrend des Streams", "C9 kein Bedienelement wird verdeckt",
 ];
 const C_NAMEN = ["C5 is-checking animiert", "C1 Stream liefert Ergebnis", ...C_AUSGAENGE];
+
+/** C9 — Pflicht-Punkt (b) aus dem Skill `gui-smoke-setup` § 3a: waechst der Ausgabebereich
+ *  ueber die Aktionsleiste, sind die Knoepfe da, aber nicht mehr erreichbar.
+ *
+ *  Gemessen wird der EFFEKT, nicht die Ursache: trifft ein Klick auf die Mitte des Knopfes
+ *  noch den Knopf? Geometrie taugt dafuer nicht — ein Kind eines Containers mit
+ *  `overflow: auto` behaelt seine Box unterhalb der Kante und wird dort trotzdem
+ *  abgeschnitten. Gemessen 2026-09-07 an genau dieser Stelle: die Boxen meldeten 2357 px
+ *  Ueberstand, gemalt wurde nichts davon.
+ *
+ *  ⚠️ Der Punkt ist wertlos, solange der Ausgabebereich nicht UEBERLAEUFT (CORE-TEST-01).
+ *  Das Ergebnis eines Smoke-Laufs ist dafuer zu kurz — deshalb wird der Bereich vorher
+ *  aufgefuellt und die Vorbedingung im Detailtext mitgemeldet, damit sichtbar bleibt, ob
+ *  der Punkt ueberhaupt haette rot werden koennen.
+ *
+ *  ⚠️ Zwei Fallen im Renderer-Ausdruck, beide hier hineingelaufen: `cdp.evaluate` schickt
+ *  ihn als STRING, und er steht im Treiber in einem Template-Literal. Ein echtes Newline
+ *  darin (etwa aus einem `join`) bricht drueben das String-Literal auf, ein Backtick im
+ *  KOMMENTAR beendet das Template-Literal schon hier. Das erste kostet den ganzen Lauf
+ *  („ABBRUCH: Renderer: Uncaught", alles danach ungemessen), das zweite faellt wenigstens
+ *  im Typecheck auf. Deshalb: Zeilen als eigene Elemente, keine Backticks in Kommentaren
+ *  innerhalb eines Renderer-Ausdrucks. */
+async function pruefeUeberdeckung(cdp: Cdp): Promise<void> {
+  const vor = await cdp.evaluate<{ scrollH: number; clientH: number }>(`
+    const p = document.querySelector(".lt-preview");
+    const body = document.querySelector(".lt-preview-body");
+    if (!p || !body) return { scrollH: 0, clientH: 0 };
+    // Je Zeile ein eigenes div, nicht ein Textblock mit Zeilenumbruechen: siehe den
+    // Kommentar am Kopf dieser Funktion.
+    const f = body.createDiv({ cls: "lt-smoke-fueller" });
+    for (let i = 0; i < 150; i += 1) f.createDiv({ text: "Fuellzeile " + i + " fuer die Ueberdeckungsprobe." });
+    return { scrollH: p.scrollHeight, clientH: p.clientHeight };
+  `);
+  if (vor.scrollH <= vor.clientH + 8) {
+    skipped("C9 kein Bedienelement wird verdeckt", `Vorbedingung fehlt: der Ausgabebereich laeuft nicht ueber (scrollHeight ${vor.scrollH} <= clientHeight ${vor.clientH}) — der Punkt koennte nicht rot werden`);
+  } else {
+    const r = await cdp.evaluate<{ geprueft: number; schlecht: Array<{ cls: string; deckt: string }> }>(`
+      const schlecht = [];
+      let geprueft = 0;
+      for (const b of document.querySelectorAll(".lt-run, .lt-refine, .lt-reset, .lt-out")) {
+        const box = b.getBoundingClientRect();
+        if (box.width === 0 || box.height === 0) continue;
+        geprueft += 1;
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        if (!(b === hit || b.contains(hit))) schlecht.push({ cls: b.className, deckt: hit ? String(hit.className || hit.tagName) : "(nichts)" });
+      }
+      return { geprueft, schlecht };
+    `);
+    const detail = r.schlecht.length === 0
+      ? `${r.geprueft} Bedienelemente treffen sich selbst (Ausgabebereich ${vor.scrollH} px in ${vor.clientH} px)`
+      : r.schlecht.map((x) => `${x.cls} verdeckt von ${x.deckt}`).join(" · ");
+    record("C9 kein Bedienelement wird verdeckt", r.schlecht.length === 0 && r.geprueft > 0, detail);
+  }
+  await cdp.evaluate(`
+    for (const f of document.querySelectorAll(".lt-smoke-fueller")) f.remove();
+    return { ok: true };
+  `);
+}
 
 async function pruefeLauf(cdp: Cdp): Promise<void> {
   console.log("\nC · Lauf mit Modell");
@@ -385,6 +475,10 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
       return;
     }
     record("C2 Kopieren freigegeben", (await disabled(cdp, ".lt-out-copy")) === false, `disabled=${await disabled(cdp, ".lt-out-copy")}`);
+
+    // C9 hier, nicht spaeter: ein Ergebnis steht, die Ausgangsknoepfe sind frei, und C3/C4
+    // veraendern danach Quelle und aktiven Tab.
+    await pruefeUeberdeckung(cdp);
 
     // --- C7 VOR C3/C4: beide veraendern die Quelle bzw. wechseln den aktiven Tab ---
     const vorGuard = await disabled(cdp, ".lt-out-replace-note");
