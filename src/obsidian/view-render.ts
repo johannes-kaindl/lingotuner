@@ -360,7 +360,11 @@ export function renderPanel(root: El, m: PanelModel, h: PanelHandlers): PanelPar
   presetRow(controls, m, h, busy);
   dialRows(controls, m, h);
   noteRow(controls, m, h);
-  runRow(controls, m, h);
+  // Die Ausfuehren-Zeile steht BEWUSST ausserhalb des rollenden Blocks: sie traegt die
+  // Hauptaktion. Lag sie darin, war sie nach dem ersten Ergebnis aus dem Sichtfeld gerollt —
+  // Nachschaerfen und Zuruecksetzen waren da, aber an ihrer Stelle traf ein Klick das Panel
+  // statt des Knopfes. Gefunden hat das C9 im GUI-Smoke, nicht das Auge.
+  runRow(root, m, h);
   const status = statusRow(root);
   const previewEl = root.createDiv({ cls: "lt-preview" });
   // Gedanken zuerst, Antwort darunter — dieselbe Reihenfolge wie im Stream (koda-agent).

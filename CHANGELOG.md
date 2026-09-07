@@ -10,6 +10,7 @@ All notable changes to this project are documented here. The format follows
 
 - The text field can be typed into again: a caret move inside the panel no longer redraws it, so the field under the cursor survives (it was rebuilt on every `selectionchange`, which took the focus away immediately).
 - Long output stays inside its own scrolling preview box instead of running on top of the four output buttons; the action bar now sits below it and keeps its place.
+- The run row (tune, refine, reset, model) stays put instead of scrolling out of reach once a result fills the panel.
 - Model reasoning is streamed into an open block as it arrives, above the answer, instead of appearing only once the run has finished.
 - A "Reset" button clears session, preview, reasoning, note and text field and cancels a running stream; it appears as soon as there is something to reset.
 - The run timeout is now cleared by the first token of any kind, so a reasoning model that thinks for a while before answering is no longer cut off.

@@ -87,12 +87,17 @@
    einer halben Zeile eingedampft, in dem der eigene Text unlesbar war. Zu wenig Platz gehoert
    in den Rollbalken des Blocks, nicht in die Hoehe der Felder. */
 .lt-controls > * { flex: 0 0 auto; }
-/* Solange kein Ergebnis da ist, gehoert der Platz den Bedienelementen. Sobald eines entsteht
-   (auch waehrend des Streams), teilt sich das Panel: die Vorschau bekommt gut die Haelfte,
-   die Bedienelemente rollen dann in sich. Ohne diesen Deckel blieb die Vorschau bei 88 px —
-   drei Zeilen fuer ein 2800-Zeichen-Ergebnis. */
-.lt-panel[data-output="1"] .lt-controls { max-height: 55%; }
-.lt-status, .lt-warning, .lt-history, .lt-outputs { flex: 0 0 auto; }
+/* Solange kein Ergebnis da ist, gehoert der Platz den Bedienelementen (Vorschau auf ihrem
+   Minimum). Sobald eines entsteht — auch waehrend des Streams —, bekommt die Vorschau einen
+   hoeheren Boden, und die Bedienelemente rollen in sich, falls der Rest nicht reicht.
+   Ohne diese Regel blieb die Vorschau bei 88 px stehen: drei Zeilen fuer ein
+   2800-Zeichen-Ergebnis.
+   Ein Boden statt eines Deckels auf `.lt-controls`: ein Prozent-Deckel zwang die
+   Bedienelemente auch dann in den Rollbalken, wenn reichlich Platz da war, und musste bei
+   jeder Aenderung an der Zeilenzahl der Ausfuehren-Zeile neu geraten werden. Der Boden
+   braucht keine Kenntnis davon, was ueber der Vorschau steht. */
+.lt-panel[data-output="1"] .lt-preview { min-height: 14em; }
+.lt-run-row, .lt-status, .lt-warning, .lt-history, .lt-outputs { flex: 0 0 auto; }
 .lt-label { color: var(--text-muted); font-size: var(--font-ui-small); }
 
 /* Quellen- und Preset-Chips: Zustand ueber Form (gefuellter Hintergrund) + aria-pressed, nicht nur Farbe. */
