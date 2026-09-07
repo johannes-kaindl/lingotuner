@@ -1,5 +1,5 @@
 import { Component, ItemView, MarkdownRenderer, Modal, Setting, type App, type WorkspaceLeaf } from "obsidian";
-import { isNoop, presetFor, type Dials, type Dimension, type Level, type Preset } from "../core/dials";
+import { DIMENSIONS, isNoop, levelKey, presetFor, type Dials, type Dimension, type Level, type Preset } from "../core/dials";
 import { EMPTY_SESSION, activeRound, addRound, selectRound, type Session } from "../core/session";
 import { type Readiness, type SourceKind } from "../core/source";
 import { splitStable } from "../core/stream-blocks";
@@ -82,6 +82,7 @@ export class LingoTunerView extends ItemView {
 
   onClose(): Promise<void> {
     this.controller?.abort();
+    this.controller = null;
     this.contentEl.empty();
     return Promise.resolve();
   }
@@ -126,13 +127,18 @@ export class LingoTunerView extends ItemView {
       onSelectRound: (i) => {
         this.session = selectRound(this.session, i);
         const r = activeRound(this.session);
-        if (r) { this.preview = r.output; this.truncated = r.truncated; this.phase = r.aborted ? "aborted" : "done"; }
+        if (r) {
+          this.preview = r.output;
+          this.truncated = r.truncated;
+          this.phase = r.aborted ? "aborted" : "done";
+          this.statusText = t(r.aborted ? "status.aborted" : "status.done");
+        }
         this.draw();
       },
       onModel: (m) => { this.deps.setModel(m); this.draw(); },
       onRefreshModels: () => { void this.deps.listModels().then((m) => { this.models = m; this.draw(); }); },
       onToggleThinking: () => { this.deps.setSuppress(!this.deps.getSuppress()); this.draw(); },
-      onToggleReasoning: () => { this.reasoningOpen = !this.reasoningOpen; },
+      onToggleReasoning: (open) => { this.reasoningOpen = open; },
       onReplaceSelection: () => { void this.deps.output("replace-selection", this.preview); },
       onReplaceNote: () => { void this.deps.output("replace-note", this.preview); },
       onCopy: () => { void this.deps.output("copy", this.preview); },
@@ -150,19 +156,27 @@ export class LingoTunerView extends ItemView {
   }
 
   /** Teil-Draw fuer Tipp-Ereignisse: nur Stufennamen, Preset-Markierung und Knopf-Zustand.
-   *  Einfachste korrekte Form in 0.1: Voll-Draw NUR, wenn sich der Knopf-Zustand aendert. */
+   *  Einfachste korrekte Form in 0.1: Voll-Draw NUR, wenn sich der Knopf-Zustand aendert.
+   *  Waehrend eines laufenden Streams NIE Voll-Draw — das raesse die Vorschau ab (Fix 1b). */
   private drawSoft(): void {
     const m = this.model();
+    const updateLevels = (): void => {
+      this.contentEl.querySelectorAll<HTMLElement>(".lt-dial").forEach((row, i) => {
+        const dim = DIMENSIONS[i];
+        row.querySelector(".lt-dial-level")?.setText(t(levelKey(dim, m.dials[dim])));
+      });
+    };
+    if (m.phase === "streaming" || m.phase === "probing") { updateLevels(); return; }
+    const noop = isNoop(m.dials, m.note);
     const run = this.contentEl.querySelector<HTMLButtonElement>(".lt-run");
-    const shouldDisable = m.readiness.kind !== "ready" || isNoop(m.dials, m.note);
-    const presetEl = this.contentEl.querySelector(".lt-preset-custom");
-    const presetChanged = (m.presetId === null) !== (presetEl !== null);
-    if (run !== null && run.disabled !== shouldDisable) { this.draw(); return; }
+    const refine = this.contentEl.querySelector<HTMLButtonElement>(".lt-refine");
+    const runShouldDisable = m.readiness.kind !== "ready" || noop;
+    const refineShouldDisable = noop;
+    const presetChanged = this.contentEl.dataset.preset !== (m.presetId ?? "");
+    if (run !== null && run.disabled !== runShouldDisable) { this.draw(); return; }
+    if (refine !== null && refine.disabled !== refineShouldDisable) { this.draw(); return; }
     if (presetChanged) { this.draw(); return; }
-    this.contentEl.querySelectorAll<HTMLElement>(".lt-dial").forEach((row, i) => {
-      const dim = (["directness", "context", "social", "semantics"] as const)[i];
-      row.querySelector(".lt-dial-level")?.setText(t(`level.${dim}.${m.dials[dim]}`));
-    });
+    updateLevels();
   }
 
   private renderInto(el: HTMLElement, md: string, clear: boolean): Promise<void> {
@@ -187,14 +201,16 @@ export class LingoTunerView extends ItemView {
     this.preview = "";
     this.reasoning = "";
     this.draw();
-    const parts = this.parts;
-    if (parts === null) return;
-    parts.previewEl.empty();
-    const tail = parts.previewEl.createDiv({ cls: "lt-preview-tail" });
-    parts.tailEl = tail;
+    const initial = this.parts;
+    if (initial === null) return;
+    initial.previewEl.empty();
+    const tail = initial.previewEl.createDiv({ cls: "lt-preview-tail" });
+    initial.tailEl = tail;
 
     const onToken = (tk: string): void => {
       if (this.controller !== ctrl) return;
+      const parts = this.parts;
+      if (parts === null) return;
       this.preview += tk;
       const { stable, tail: rest } = splitStable(this.preview);
       if (stable.length > this.streamStableLen) {
@@ -208,7 +224,17 @@ export class LingoTunerView extends ItemView {
     };
     const onReasoning = (tk: string): void => { if (this.controller === ctrl) this.reasoning += tk; };
 
-    const result = await this.deps.run({ text: base, dials, note: this.note, basedOn, onToken, onReasoning, signal: ctrl.signal });
+    let result: TuneResult;
+    try {
+      result = await this.deps.run({ text: base, dials, note: this.note, basedOn, onToken, onReasoning, signal: ctrl.signal });
+    } catch (e) {
+      if (this.controller !== ctrl) return;
+      this.controller = null;
+      this.phase = "error";
+      this.statusText = e instanceof Error ? e.message : String(e);
+      this.draw();
+      return;
+    }
     if (this.controller !== ctrl) return;
     this.controller = null;
 

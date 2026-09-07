@@ -43,7 +43,7 @@ export interface PanelHandlers {
   onModel(m: string): void;
   onRefreshModels(): void;
   onToggleThinking(): void;
-  onToggleReasoning(): void;
+  onToggleReasoning(open: boolean): void;
   onReplaceSelection(): void;
   onReplaceNote(): void;
   onCopy(): void;
@@ -66,13 +66,14 @@ function readinessLine(r: Readiness, source: SourceKind): string {
   return t(source === "selection" ? "source.ready.selection" : "source.ready.note", String(r.chars), r.name ?? "");
 }
 
-function sourceRow(parent: El, m: PanelModel, h: PanelHandlers): void {
+function sourceRow(parent: El, m: PanelModel, h: PanelHandlers, busy: boolean): void {
   const row = parent.createDiv({ cls: "lt-sources" });
   const kinds: SourceKind[] = ["selection", "note", "text"];
   for (const k of kinds) {
     const b = row.createEl("button", { text: t(`source.${k}`), cls: "lt-source-chip" });
     b.toggleClass("is-active", m.source === k);
     b.setAttribute("aria-pressed", String(m.source === k));
+    b.disabled = busy;
     b.addEventListener("click", () => h.onSource(k));
   }
   const line = parent.createDiv({ cls: "lt-source-line", text: readinessLine(m.readiness, m.source) });
@@ -86,18 +87,20 @@ function sourceRow(parent: El, m: PanelModel, h: PanelHandlers): void {
   }
 }
 
-function presetRow(parent: El, m: PanelModel, h: PanelHandlers): void {
+function presetRow(parent: El, m: PanelModel, h: PanelHandlers, busy: boolean): void {
   const row = parent.createDiv({ cls: "lt-presets" });
   for (const p of m.presets) {
     const b = row.createEl("button", { text: p.label ?? t(`preset.${p.id}`), cls: "lt-preset-chip" });
     b.toggleClass("is-active", m.presetId === p.id);
     b.setAttribute("aria-pressed", String(m.presetId === p.id));
+    b.disabled = busy;
     b.addEventListener("click", () => h.onPreset(p.id));
   }
   if (m.presetId === null) row.createSpan({ text: t("preset.custom"), cls: "lt-preset-custom" });
   const save = row.createEl("button", { cls: "lt-preset-save clickable-icon" });
   setIcon(save, "save");
   save.setAttribute("aria-label", t("preset.save"));
+  save.disabled = busy;
   save.addEventListener("click", () => h.onSavePreset());
 }
 
@@ -148,13 +151,14 @@ function runRow(parent: El, m: PanelModel, h: PanelHandlers): void {
   }
   if (hasRounds && !busy) {
     const refine = row.createEl("button", { text: t("run.refine"), cls: "lt-refine" });
-    refine.disabled = m.note.trim() === "" && noop;
+    refine.disabled = noop;
     refine.addEventListener("click", () => h.onRefine());
   }
 
   const select = row.createEl("select", { cls: "lt-model dropdown" });
   select.setAttribute("aria-label", t("set.model"));
-  select.createEl("option", { text: t("ep.globalModelUnset"), value: "" });
+  select.disabled = busy;
+  select.createEl("option", { text: t("run.modelAuto"), value: "" });
   const ids = m.models.includes(m.model) || m.model === "" ? m.models : [m.model, ...m.models];
   for (const id of ids) select.createEl("option", { text: id, value: id });
   select.value = m.model;
@@ -162,6 +166,7 @@ function runRow(parent: El, m: PanelModel, h: PanelHandlers): void {
   const refresh = row.createEl("button", { cls: "lt-model-refresh clickable-icon" });
   setIcon(refresh, "refresh-cw");
   refresh.setAttribute("aria-label", t("ep.refreshModels"));
+  refresh.disabled = busy;
   refresh.addEventListener("click", () => h.onRefreshModels());
 
   const think = thinkToggleState(m.model, m.suppressThinking);
@@ -170,8 +175,9 @@ function runRow(parent: El, m: PanelModel, h: PanelHandlers): void {
   setIcon(toggle.createSpan(), "brain");
   toggle.createSpan({ text: t(`think.${think.mode}`) });
   if (think.hint !== null) toggle.setAttribute("title", t(`think.hint.${think.hint}`));
+  toggle.disabled = busy || think.disabled;
   if (think.disabled) toggle.setAttribute("aria-disabled", "true");
-  else toggle.addEventListener("click", () => h.onToggleThinking());
+  if (!think.disabled) toggle.addEventListener("click", () => h.onToggleThinking());
 }
 
 function statusRow(parent: El): Pick<PanelParts, "statusEl" | "statusIconEl" | "statusLabelEl"> {
@@ -199,7 +205,7 @@ export function paintStatus(parts: PanelParts, phase: RunPhase, text: string): v
   el.setAttribute("aria-label", text);
 }
 
-function historyList(parent: El, m: PanelModel, h: PanelHandlers): void {
+function historyList(parent: El, m: PanelModel, h: PanelHandlers, busy: boolean): void {
   if (m.session.rounds.length < 2) return;
   const box = parent.createDiv({ cls: "lt-history" });
   box.createDiv({ text: t("history.title"), cls: "lt-label" });
@@ -207,6 +213,7 @@ function historyList(parent: El, m: PanelModel, h: PanelHandlers): void {
     const row = box.createEl("button", { cls: "lt-history-row" });
     row.toggleClass("is-active", i === m.session.active);
     row.setAttribute("aria-pressed", String(i === m.session.active));
+    row.disabled = busy;
     const based = r.basedOn === null ? t("history.fromSource") : t("history.refined", String(r.basedOn + 1));
     const note = r.note.trim() === "" ? t("history.noteless") : r.note;
     row.setText(`${t("history.round", String(i + 1))} · ${based} · ${note}`);
@@ -231,8 +238,10 @@ function outputRow(parent: El, m: PanelModel, h: PanelHandlers): void {
 export function renderPanel(root: El, m: PanelModel, h: PanelHandlers): PanelParts {
   root.empty();
   root.addClass("lt-panel");
-  sourceRow(root, m, h);
-  presetRow(root, m, h);
+  root.dataset.preset = m.presetId ?? "";
+  const busy = m.phase === "probing" || m.phase === "streaming";
+  sourceRow(root, m, h, busy);
+  presetRow(root, m, h, busy);
   dialRows(root, m, h);
   noteRow(root, m, h);
   runRow(root, m, h);
@@ -246,9 +255,9 @@ export function renderPanel(root: El, m: PanelModel, h: PanelHandlers): PanelPar
     d.open = m.reasoningOpen;
     d.createEl("summary", { text: t("preview.thinking") });
     d.createEl("pre", { text: m.reasoning });
-    d.addEventListener("toggle", () => h.onToggleReasoning());
+    d.addEventListener("toggle", () => h.onToggleReasoning(d.open));
   }
-  historyList(root, m, h);
+  historyList(root, m, h, busy);
   outputRow(root, m, h);
   const parts: PanelParts = { ...status, previewEl, tailEl };
   paintStatus(parts, m.phase, m.statusText);

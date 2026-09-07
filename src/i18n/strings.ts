@@ -75,6 +75,7 @@ export const STRINGS = {
     "run.retune": "Tune again from source",
     "run.refine": "Refine this result",
     "run.abort": "Cancel",
+    "run.modelAuto": "Server picks the model",
     "run.noop": "All dials are in the middle and the note is empty — nothing to change.",
     "run.noEndpoint": "No reachable endpoint. Check the connection in the settings.",
 
@@ -270,6 +271,7 @@ export const STRINGS = {
     "run.retune": "Neu aus der Quelle tunen",
     "run.refine": "Dieses Ergebnis nachschärfen",
     "run.abort": "Abbrechen",
+    "run.modelAuto": "Server wählt das Modell",
     "run.noop": "Alle Regler stehen in der Mitte und die Anmerkung ist leer — nichts zu ändern.",
     "run.noEndpoint": "Kein erreichbarer Endpunkt. Verbindung in den Einstellungen prüfen.",
 

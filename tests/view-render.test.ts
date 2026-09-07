@@ -27,7 +27,7 @@ function handlers(): PanelHandlers {
 type El = { className: string; disabled?: boolean; textContent?: string; attrs?: Record<string, string>; getAttribute?(k: string): string | null; value?: string; children: El[] };
 
 describe("renderPanel", () => {
-  it("zeichnet drei Quellen-Chips, vier Regler, fuenf Preset-Chips, Anmerkung, Tunen-Knopf", () => {
+  it("zeichnet drei Quellen-Chips, vier Regler, vier Preset-Chips, Anmerkung, Tunen-Knopf", () => {
     const root = makeFakeEl();
     renderPanel(root, model(), handlers());
     expect(findAllByClass(root, "lt-source-chip")).toHaveLength(3);
@@ -89,12 +89,50 @@ describe("renderPanel", () => {
     expect(findByClass<El>(root, "lt-run")?.textContent).toBe("Cancel");
   });
 
-  it("Preset-Klick und Regler-Aenderung rufen die Handler", () => {
+  it("Preset-Klick ruft den Handler", () => {
     const root = makeFakeEl();
     const h = handlers();
     renderPanel(root, model(), h);
     const chip = findAllByClass<El & { click(): void }>(root, "lt-preset-chip")[1];
     chip.click();
     expect(h.onPreset).toHaveBeenCalledWith("clarity");
+  });
+
+  it("waehrend des Streams sind Chips, Modell, Refresh, Denken und Verlauf gesperrt", () => {
+    const r = { dials: NEUTRAL, note: "", input: "a", output: "b", model: "m", at: 1, basedOn: null, aborted: false, truncated: false };
+    const root = makeFakeEl();
+    renderPanel(root, model({
+      phase: "streaming",
+      readiness: { kind: "ready", text: "x", chars: 1, name: null },
+      note: "n",
+      session: { rounds: [r, { ...r, basedOn: 0 }], active: 1 },
+    }), handlers());
+    for (const cls of ["lt-source-chip", "lt-preset-chip", "lt-history-row"]) {
+      const els = findAllByClass<El>(root, cls);
+      expect(els.length).toBeGreaterThan(0);
+      for (const el of els) expect(el.disabled).toBe(true);
+    }
+    expect(findByClass<El>(root, "lt-model")?.disabled).toBe(true);
+    expect(findByClass<El>(root, "lt-model-refresh")?.disabled).toBe(true);
+    expect(findByClass<El>(root, "lt-think")?.disabled).toBe(true);
+    expect(findByClass<El>(root, "lt-run")?.textContent).toBe("Cancel");
+  });
+
+  it("paintStatus setzt Klasse, Icon-Form und aria-label je Phase", () => {
+    const cases: Array<["probing" | "streaming" | "done" | "error" | "aborted", string]> = [
+      ["streaming", "is-checking"],
+      ["done", "is-ok"],
+      ["error", "is-error"],
+      ["aborted", "is-warning"],
+    ];
+    const all = ["is-checking", "is-ok", "is-error", "is-warning"];
+    for (const [phase, cls] of cases) {
+      const root = makeFakeEl();
+      const parts = renderPanel(root, model({ phase, statusText: `text-${phase}` }), handlers());
+      const statusEl = parts.statusEl as unknown as El;
+      expect(statusEl.className).toContain(cls);
+      for (const other of all) if (other !== cls) expect(statusEl.className).not.toContain(other);
+      expect((statusEl as unknown as { getAttribute(k: string): string | null }).getAttribute("aria-label")).toBe(`text-${phase}`);
+    }
   });
 });
