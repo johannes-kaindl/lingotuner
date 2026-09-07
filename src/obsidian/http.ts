@@ -56,6 +56,9 @@ function streamSSE(
       if (xhr.status < 200 || xhr.status >= 300) reject(new StreamHttpError(xhr.status, xhr.responseText));
       else resolve({ content, reasoning, model, finishReason });
     };
+    // Ein bereits abgebrochenes Signal feuert kein `abort`-Ereignis mehr — ohne diesen Guard
+    // ginge die Anfrage raus und die Zusage bliebe fuer immer offen (der Test lief in den Timeout).
+    if (signal?.aborted) { reject(abortError()); return; }
     if (signal) signal.addEventListener("abort", () => xhr.abort());
     xhr.send(init.body);
   });

@@ -28,6 +28,15 @@ describe("xhrTransport", () => {
     await expect(p).rejects.toMatchObject({ status: 401, body: '{"detail":"nope"}' });
   });
 
+  it("bereits abgebrochenes Signal: kein send, sofort AbortError", async () => {
+    const xhr = installFakeXHR();
+    const ctrl = new AbortController();
+    ctrl.abort();
+    const p = xhrTransport.stream("u", init, () => {}, () => {}, ctrl.signal);
+    await expect(p).rejects.toMatchObject({ name: "AbortError" });
+    expect(xhr.body).toBe("");
+  });
+
   it("Abbruch ueber das Signal wird zum AbortError", async () => {
     const xhr = installFakeXHR();
     const ctrl = new AbortController();
