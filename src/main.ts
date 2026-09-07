@@ -82,6 +82,11 @@ export default class LingoTunerPlugin extends Plugin {
       },
       run: (req) => this.runFromPanel(req),
       output: (kind, text, sourceText, sourceName) => this.output(kind, text, sourceText, sourceName),
+      // Die einzige Stelle, an der die View erfaehrt, wo der Fokus liegt — als Naht, damit
+      // die Weiche in `softDraw()` und das Merken der Cursorposition in `draw()` pruefbar
+      // sind, ohne `activeDocument` zu faelschen.
+      activeElement: () => activeDocument.activeElement,
+      confirm: (o) => confirmAction(this.app, { ...o, warning: true }),
     }));
 
     // Mitschrift der Auswahl: ein Klick ins Panel nimmt dem Editor den Fokus — dann ist es zu spaet.

@@ -10,6 +10,20 @@ import { t } from "../vendor/kit/i18n";
 
 export const VIEW_TYPE_LINGOTUNER = "lingotuner-panel";
 
+/** Abstand zum unteren Rand, bis zu dem ein Bereich noch als „am Ende" gilt (px). */
+const FOLGE_SCHWELLE = 40;
+
+/** Ans Ende scrollen — aber NUR, wenn der Leser ohnehin dort steht.
+ *
+ *  Ein bedingungsloses `scrollTo` bei jedem Token reisst jeden zurueck, der waehrend des
+ *  Streams hochgescrollt hat, um den Anfang zu lesen; bei einem Reasoning-Modell mehrmals
+ *  pro Sekunde. Die Schwelle stammt aus `obsidian-kit` (`followTail`, dort aus vault-rag).
+ *  Fehlende Masse ergeben 0 und damit „folgen" — der allererste Token bleibt sichtbar. */
+function folgeAmEnde(el: HTMLElement): void {
+  const rest = (el.scrollHeight || 0) - (el.scrollTop || 0) - (el.clientHeight || 0);
+  if (rest < FOLGE_SCHWELLE) el.scrollTop = el.scrollHeight;
+}
+
 export interface RunRequest {
   text: string;
   dials: Dials;
@@ -34,6 +48,14 @@ export interface ViewDeps {
   savePreset(name: string, dials: Dials): void;
   run(req: RunRequest): Promise<TuneResult>;
   output(kind: "replace-selection" | "replace-note" | "copy" | "new-note", text: string, sourceText: string, sourceName: string | null): Promise<void>;
+  /** Wer hat gerade den Fokus? EINE injizierbare Naht statt eines direkten Griffs nach
+   *  `activeDocument` — sie traegt zwei Entscheidungen, die sonst beide untestbar waeren:
+   *  die Weiche in `softDraw()` (Voll-Draw nur ohne Fokus im Panel) und das Merken der
+   *  Cursorposition in `draw()`. Zwei getrennte Nahte dafuer waeren zwei Wahrheiten
+   *  darueber, wo der Fokus liegt. */
+  activeElement(): Element | null;
+  /** Rueckfrage vor einer zerstoerenden Aktion. `true` = ausfuehren. */
+  confirm(opts: { title: string; message: string; confirmLabel: string }): Promise<boolean>;
 }
 
 class PresetNameModal extends Modal {
@@ -129,20 +151,17 @@ export class LingoTunerView extends ItemView {
       onRefine: () => { void this.run(this.session.active); },
       onAbort: () => { this.controller?.abort(); },
       onReset: () => {
-        // Erst abbrechen, dann raeumen: ein laufender Stream schriebe sonst in eine Vorschau,
-        // die es nicht mehr gibt. `controller = null` laesst `run()` sein Ergebnis verwerfen.
-        this.controller?.abort();
-        this.controller = null;
-        this.session = EMPTY_SESSION;
-        this.preview = "";
-        this.reasoning = "";
-        this.reasoningOpen = false;
-        this.note = "";
-        this.freeText = "";
-        this.truncated = false;
-        this.phase = "idle";
-        this.statusText = t("status.idle");
-        this.draw();
+        // Nur fragen, wenn es etwas zu verlieren gibt. Der Knopf sitzt unmittelbar neben
+        // „Nachschaerfen", das man in einer Iterationsschleife oft klickt; ein Fehlgriff
+        // kostete sonst die ganze Runden-Kette samt eines noch nicht kopierten Ergebnisses,
+        // ohne Undo. Ohne Runden gibt es nichts zurueckzunehmen — dann sofort raeumen, sonst
+        // waere die Rueckfrage nur Reibung.
+        if (this.session.rounds.length === 0) { this.reset(); return; }
+        void this.deps.confirm({
+          title: t("run.resetTitle"),
+          message: t("run.resetBody", String(this.session.rounds.length)),
+          confirmLabel: t("run.reset"),
+        }).then((ok) => { if (ok) this.reset(); });
       },
       onSelectRound: (i) => {
         this.session = selectRound(this.session, i);
@@ -172,16 +191,68 @@ export class LingoTunerView extends ItemView {
     };
   }
 
+  /** Raeumt die Sitzung. Erst abbrechen, dann raeumen: ein laufender Stream schriebe sonst
+   *  in eine Vorschau, die es nicht mehr gibt. `controller = null` laesst `run()` sein
+   *  Ergebnis verwerfen. Die Regler bleiben bewusst stehen — sie sind eine Einstellung,
+   *  kein Sitzungszustand. */
+  private reset(): void {
+    this.controller?.abort();
+    this.controller = null;
+    this.session = EMPTY_SESSION;
+    this.preview = "";
+    this.reasoning = "";
+    this.reasoningOpen = false;
+    this.note = "";
+    this.freeText = "";
+    this.truncated = false;
+    this.phase = "idle";
+    this.statusText = t("status.idle");
+    this.draw();
+  }
+
   /** Liegt der Fokus IM Panel? Dann ist ein Voll-Draw verboten: er baut das Element unter
    *  dem Cursor neu, und Tippen bzw. ein gegriffener Regler bricht ab (Fehler 1). */
   private focusInPanel(): boolean {
-    const el = activeDocument.activeElement;
+    const el = this.deps.activeElement();
     return el !== null && this.contentEl.contains(el);
+  }
+
+  /** Cursor-Stand einer fokussierten Textarea im Panel — Vorbereitung fuer `draw()`. */
+  private merkeCursor(): { cls: string; start: number; end: number } | null {
+    const el = this.deps.activeElement();
+    if (el === null || !this.contentEl.contains(el)) return null;
+    const ta = el as Partial<HTMLTextAreaElement> & { className?: string };
+    if (typeof ta.selectionStart !== "number" || typeof ta.selectionEnd !== "number") return null;
+    const cls = (ta.className ?? "").split(" ").filter(Boolean)[0];
+    if (cls === undefined) return null;
+    return { cls, start: ta.selectionStart, end: ta.selectionEnd };
+  }
+
+  /** Cursor nach dem Neuaufbau zurueck ins gleichnamige Feld setzen.
+   *
+   *  Gesetzt werden `selectionStart`/`selectionEnd` direkt statt `setSelectionRange` — beides
+   *  ist im Browser gleichwertig, aber die Zuweisung ist auch ohne echtes DOM beobachtbar und
+   *  damit im Unit-Test pruefbar. Dass der FOKUS wirklich landet, kann nur ein echter Browser
+   *  sagen; dafuer gibt es den Smoke-Punkt B11. */
+  private stelleCursorHer(merk: { cls: string; start: number; end: number } | null): void {
+    if (merk === null) return;
+    const neu = this.contentEl.querySelectorAll<HTMLTextAreaElement>(`.${merk.cls}`)[0];
+    if (neu === undefined) return;
+    neu.focus();
+    neu.selectionStart = merk.start;
+    neu.selectionEnd = merk.end;
   }
 
   /** Voll-Draw: baut das Panel neu auf. Zieht Eingabefelder unter dem Cursor weg — deshalb
    *  nur ueber `softDraw()` oder aus einer Aktion, die den Fokus ohnehin verliert. */
   private draw(): void {
+    // Ein Voll-Draw laesst sich nicht immer vermeiden — der am ENDE eines Laufs zum Beispiel
+    // nicht, und genau dort tippt der Nutzer die Anmerkung fuer die naechste Runde, waehrend
+    // er auf das Ergebnis wartet (Textarea und Anmerkung sind waehrend eines Streams
+    // absichtlich NICHT gesperrt). Fehler 1 in einem schmaleren Fenster: einmal je Lauf statt
+    // bei jedem Tastendruck, und in dem Moment, in dem niemand hinsieht. Der Wert ueberlebt
+    // ohnehin (`onFreeText`/`onNote` halten ihn) — Fokus und Cursorposition nicht.
+    const merk = this.merkeCursor();
     if (this.mdComp !== null) this.removeChild(this.mdComp);
     this.mdComp = this.addChild(new Component());
     const m = this.model();
@@ -189,6 +260,7 @@ export class LingoTunerView extends ItemView {
     this.struct = structureKey(m);
     this.streamStableLen = 0;
     if (this.preview !== "") void this.renderInto(this.parts.bodyEl, this.preview, true);
+    this.stelleCursorHer(merk);
   }
 
   /** Der Weg fuer alles Beilaeufige (Tippen, Reglerzug, Auswahlwechsel im Editor, spaet
@@ -254,7 +326,7 @@ export class LingoTunerView extends ItemView {
         parts.bodyEl.appendChild(parts.tailEl);
       }
       parts.tailEl.setText(rest);
-      parts.previewEl.scrollTo({ top: parts.previewEl.scrollHeight });
+      folgeAmEnde(parts.previewEl);
     };
     // uebernommen aus koda-agent/src/obsidian/view.ts (streamReasoning), 2026-09-07 —
     // der Block entsteht beim ERSTEN Gedanken-Token und waechst per setText, statt erst
@@ -270,8 +342,11 @@ export class LingoTunerView extends ItemView {
         // Der Block gehoert VOR die Antwort — `createEl` haengt hinten an.
         parts.previewEl.insertBefore(parts.reasoningEl.parentElement ?? parts.reasoningEl, parts.bodyEl);
       }
-      parts.reasoningEl.setText(parts.reasoningEl.getText() + tk);
-      parts.previewEl.scrollTo({ top: parts.previewEl.scrollHeight });
+      // Der Rohtext liegt schon in `this.reasoning` — ihn aus dem DOM zurueckzulesen und
+      // neu zusammenzusetzen ist O(n²) ueber den ganzen Gedankenstrom (gemessen 12 184
+      // Zeichen; bei 40 k spuerbar) und kann ausserdem divergieren.
+      parts.reasoningEl.setText(this.reasoning);
+      folgeAmEnde(parts.previewEl);
     };
 
     let result: TuneResult;
