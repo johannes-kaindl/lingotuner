@@ -74,9 +74,10 @@ C deshalb rot bleibt, ist das ein protokollierter roter Punkt mit Grund, keine R
 
 ## Prüfpunkte
 
-Stand des letzten Laufs: **2026-09-07, 19:07 CEST**, Obsidian **1.14.0**, Zweitinstanz auf
+Stand des letzten Laufs: **2026-09-07, 23:5x CEST**, Obsidian **1.14.0**, Zweitinstanz auf
 `:9341`, Vault `$STAGING_VAULTS_DIR/lingotuner`, Endpunkt LM Studio `127.0.0.1:1234`
-(`qwen/qwen3.6-27b`, Modellwahl dem Server überlassen).
+(`qwen/qwen3.8-27b`, vom Treiber aus der Modellliste des Servers gewählt — siehe
+„Modellwahl" unten).
 
 | Id | Name | misst | Zustand | Datum |
 |---|---|---|---|---|
@@ -89,18 +90,63 @@ Stand des letzten Laufs: **2026-09-07, 19:07 CEST**, Obsidian **1.14.0**, Zweiti
 | B4 | Notiz als Quelle erkannt | `.lt-source-line` ohne `is-blocked`, mit Zeichenzahl — die Naht Tracker→Panel | grün | 2026-09-07 |
 | B5 | Noop sperrt Tunen | alle Regler 0 + keine Anmerkung → `.lt-run` disabled | grün | 2026-09-07 |
 | B6 | Regler gibt Tunen frei | social auf +2 → `.lt-run` aktiv | grün | 2026-09-07 |
-| B7 | Preset zeigt (angepasst) | `.lt-preset-custom` erscheint, sobald die Regler kein Preset mehr treffen | grün | 2026-09-07 |
+| B7 | Preset zeigt (angepasst) | `.lt-preset-custom` trägt **Text**, sobald die Regler kein Preset mehr treffen (der Span selbst steht immer da — siehe unten) | grün | 2026-09-07 |
 | B8 | Textfeld-Quelle zeigt Textarea | Quelle „Textfeld" rendert `.lt-freetext` | grün | 2026-09-07 |
 | B9 | Lesemodus blockiert die Quelle | Notiz auf `mode: preview` → `.lt-source-line.is-blocked` | grün | 2026-09-07 |
-| C1 | Stream liefert Ergebnis | `.lt-status.is-ok` und nichtleere `.lt-preview` nach einem echten Lauf | grün (56 Zeichen) | 2026-09-07 |
+| B10 | Tippen ins Textfeld behält den Fokus | `execCommand("insertText")` in `.lt-freetext`; nach 500 ms trägt die Textarea `abc` UND ist noch `document.activeElement` | grün | 2026-09-07 |
+| C1 | Stream liefert Ergebnis | `.lt-status.is-ok` und nichtleere `.lt-preview` nach einem echten Lauf | grün (169 Zeichen) | 2026-09-07 |
 | C2 | Kopieren freigegeben | `.lt-out-copy` nicht mehr disabled, sobald ein Ergebnis steht | grün | 2026-09-07 |
 | C3 | Notiz ersetzen schreibt Body | Datei ändert sich, `---\ntype: draft\n---` steht weiter oben — Frontmatter überlebt | grün | 2026-09-07 |
 | C4 | Neue Notiz entsteht | eine Datei mit `(tuned)`/`(getunt)` im Namen taucht auf | grün (`Mail-Entwurf (getunt).md`) | 2026-09-07 |
 | C5 | `is-checking` animiert | `getComputedStyle(".lt-status-icon svg").animationName === "lt-spin"` **während** des Streams | grün | 2026-09-07 |
 | C6 | Logbuch anlegen und anhängen | nach zwei Läufen: `LingoTuner/LingoTuner YYYY-MM.md` mit `type: lingotuner-log` und zwei `## `-Einträgen | grün (2 Einträge) | 2026-09-07 |
 | C7 | Ersetzen-Ziel sperrt bei geänderter Quelle | Editor-Inhalt ändern → `.lt-out-replace-note` disabled (Guard „Quelle geändert") | grün | 2026-09-07 |
+| C8 | Gedanken-Block während des Streams | eigener, absichtlich abgebrochener Lauf mit eingeschaltetem Denken: `.lt-reasoning` steht im DOM, **während** `.lt-status` auf `is-checking` steht | grün (10 Zeichen) | 2026-09-07 |
 
-**Bilanz des letzten Laufs: 19 grün · 0 rot · 1 übersprungen.**
+**Bilanz des letzten Laufs: 21 grün · 0 rot · 1 übersprungen.**
+
+### B10 und C8 — die zwei Punkte aus den UI-Fehlern vom 2026-09-07
+
+Beide decken einen gemeldeten Fehler ab, der vorher durch kein Netz fiel — und beide messen
+eine **Naht**, keine Datenstruktur; im Unit-Test wäre keiner von beiden entscheidbar.
+
+**B10** misst Fehler 1 („Textfeld lässt sich nicht beschreiben"). Ursache war ein Voll-Draw
+des Panels auf `selectionchange`: jede Cursorbewegung IN der Textarea feuert dieses Ereignis,
+`main.ts` gab es an `panel.refresh()` weiter, und `renderPanel` baute das Feld unter dem
+Cursor neu. Gemessen wird der Endzustand, nicht der Weg: nach `execCommand("insertText")`
+und 500 ms trägt die Textarea `abc` **und** ist noch `document.activeElement`. Vor dem Fix
+war das Zeichen da und der Fokus weg — ein einzelner der beiden Werte hätte den Fehler
+also verfehlt.
+
+**C8** misst Fehler 3 („Denken wird nicht gestreamt"). Der Punkt fährt einen **eigenen,
+absichtlich abgebrochenen** Lauf mit eingeschaltetem Denken. Der erste Entwurf hat die
+Messung in den zweiten Lauf gefaltet, um Zeit zu sparen; das ist gemessen schiefgegangen und
+steht hier, weil die Lehre allgemein ist: mit Denken überschritt derselbe Lauf die
+120-s-Grenze von `laufeTune`, und C3/C4 klickten danach auf Knöpfe, die während eines
+laufenden Streams gesperrt sind — **zwei rote und ein übersprungener Punkt als Preis einer
+eingesparten Minute.** Liefert das gewählte Modell gar keinen Gedankenstrom, wird C8
+**übersprungen mit genau diesem Grund**, nicht rot: das ist eine Modelleigenschaft, kein
+Plugin-Defekt.
+
+### Modellwahl: warum der Treiber sie seit dem 2026-09-07 selbst trifft
+
+Das Fixture stellt „Server wählt das Modell" ein (`model: ""`). Das trägt nur, solange dort
+**genau ein** Modell geladen ist. Am Abend des 2026-09-07 waren es neun, und LM Studio
+antwortete mit `400` — auf `model: ""` mit „Invalid model identifier", auf ein **fehlendes**
+Feld mit „Multiple models are loaded". Beide Nutzlast-Formen sind per `curl` gegengeprüft
+worden, bevor am Plugin etwas geändert wurde: **es ist eine Eigenschaft des Endpunkts, kein
+Plugin-Defekt** — ein „Fix" am Anfrage-Körper hätte hier nichts geheilt.
+
+Der Treiber liest deshalb `/v1/models` und setzt die erste Id für die Dauer des Laufs
+(zurückgestellt im `finally`). Ein Modellname im Repo käme nicht in Frage: das wäre die
+Modell-Bibliothek eines bestimmten Rechners in einer getrackten Datei.
+
+### B7 misst seit dem 2026-09-07 den Text statt der Existenz
+
+`.lt-preset-custom` ist jetzt ein **fester Platzhalter** im DOM: ein Reglerzug muss ihn
+umschalten können, ohne die Preset-Zeile neu zu bauen — sonst zöge er den gegriffenen Regler
+unter dem Zeiger weg (dieselbe Ursache wie Fehler 1). Eine Zählung wäre seitdem immer `1`
+und damit ein Prüfpunkt, der nichts mehr misst; gemessen wird der Text.
 
 ### C5, C6, C7 — warum diese drei zusätzlich
 
@@ -142,6 +188,39 @@ erneuter Lauf:
 etwas anderes messen. Danach `git checkout -- src/obsidian/view-render.ts`, bauen,
 deployen, reload, Lauf: **19 grün · 0 rot · 1 übersprungen.** Beide Richtungen belegt.
 
+### Gegenprobe für die neuen Punkte B10 und C8 (2026-09-07, abends)
+
+Ein neuer Prüfpunkt, der nie rot wird, misst nichts — beide sind deshalb gegen den
+**Zustand vor ihrem Fix** gefahren worden, in zwei Läufen.
+
+**Lauf A — nur die halbe Ursache gebrochen.** Gebrochen wurden `view.ts::refresh()` (zurück
+auf den unbedingten Voll-Draw) und der Gedanken-Block in `run()::onReasoning` (früher
+`return`, also nur sammeln statt zeichnen). Ergebnis: **20 grün · 1 rot**, rot war **nur C8**
+— und **B10 blieb grün.**
+
+⚠️ Das ist der lehrreiche Teil: **B10 misst das Zusammenspiel beider Hälften von Fix 1, und
+in diesem Szenario trägt die Hälfte in `main.ts` allein.** Der `selectionchange`-Guard dort
+verhindert, dass `refresh()` beim Tippen überhaupt gerufen wird; ob `refresh()` danach voll
+zeichnen würde, wird beim Tippen also gar nicht sichtbar. Wer nur die `view.ts`-Hälfte
+bricht und B10 grün sieht, schließt daraus fälschlich, der Punkt sei blind.
+
+**Lauf B — beide Hälften gebrochen.** Zusätzlich die Zeile
+`if (aktiv !== null && aktiv.closest(".lt-panel") !== null) return;` aus `main.ts` entfernt.
+Ergebnis: **20 grün · 1 rot**, rot war **nur B10**:
+
+```
+✗ B10 Tippen ins Textfeld behaelt den Fokus — value="abc",
+      activeElement="mod-macos is-frameless is-hidden-frameless obsidian-app them"
+```
+
+Das Zeichen kam an, der Fokus lag auf `<body>` — exakt der von Johannes gemeldete Zustand.
+Danach beide Dateien zurück, bauen, deployen, reload: **21 grün · 0 rot · 1 übersprungen.**
+
+Die `view.ts`-Hälfte ist damit **nicht** durch den Smoke belegt, sondern durch
+`tests/view-soft.test.ts` (`structureKey`/`patchPanel`). Sie deckt die Wege ab, die B10
+nicht anfasst: `active-leaf-change`, den gegriffenen Regler und die spät eintreffende
+Modell-Liste.
+
 ## Läufe vom 2026-09-07 (Protokoll)
 
 | # | Zeit | Stand | Ergebnis | Anmerkung |
@@ -153,6 +232,12 @@ deployen, reload, Lauf: **19 grün · 0 rot · 1 übersprungen.** Beide Richtung
 | 5 | 18:54 | Repo-Stand | 13 grün · 1 rot (C1) · 6 übersprungen | CORS war am Endpunkt wieder aus |
 | 6 | 18:58 | Repo-Stand, CORS an | 19 grün · 0 rot · 1 übersprungen | Rückweg der Gegenprobe geschlossen |
 | 7 | 19:07 | Repo-Stand, **Treiber im Commit-Stand** | **19 grün · 0 rot · 1 übersprungen** | maßgeblicher Lauf — nach Lauf 6 wurden zwei Listen im Treiber zusammengelegt; ein Lauf danach ist der einzige, der die committete Fassung belegt |
+| 8 | 23:33 | UI-Fixes, erster Lauf | 14 grün · 1 rot (C1) · 7 übersprungen | LM Studio wies `model: ""` mit 400 ab — neun Modelle geladen, Endpunktzustand, kein Plugin-Defekt (per `curl` gegengeprüft) |
+| 9 | 23:41 | Treiber wählt das Modell selbst | 18 grün · 2 rot (C3, C4) · 2 übersprungen | C8 war in Lauf 2 gefaltet; mit Denken riss der die 120-s-Grenze, C3/C4 klickten in einen laufenden Stream |
+| 10 | 23:48 | C8 als eigener, abgebrochener Lauf | **21 grün · 0 rot · 1 übersprungen** | erster vollständiger Lauf mit den Fixes |
+| 11 | 23:52 | **`refresh()` + Gedanken-Block gebrochen** | 20 grün · 1 rot (C8) · 1 übersprungen | Gegenprobe A — B10 blieb grün (siehe oben) |
+| 12 | 23:57 | **beide Hälften von Fix 1 gebrochen** | 20 grün · 1 rot (B10) · 1 übersprungen | Gegenprobe B |
+| 13 | 00:0x | Repo-Stand zurück | **21 grün · 0 rot · 1 übersprungen** | maßgeblicher Lauf |
 
 ### Was Lauf 1 gelehrt hat
 

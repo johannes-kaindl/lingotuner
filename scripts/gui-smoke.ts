@@ -102,13 +102,20 @@ function setupVault(): void {
 }
 
 async function endpointReachable(): Promise<boolean> {
+  return (await modelle()).length > 0;
+}
+
+/** Die Modell-Ids des Endpunkts. Leer = nicht erreichbar oder keine geladen. */
+async function modelle(): Promise<string[]> {
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 3000);
     const r = await fetch(`${ENDPOINT}/v1/models`, { signal: ctrl.signal });
     clearTimeout(timer);
-    return r.ok;
-  } catch { return false; }
+    if (!r.ok) return [];
+    const j = (await r.json()) as { data?: Array<{ id?: string }> };
+    return (j.data ?? []).map((m) => m.id ?? "").filter((id) => id !== "");
+  } catch { return []; }
 }
 
 /** Einen Quellen-Chip waehlen und BELEGEN, dass er aktiv wurde.
@@ -204,11 +211,44 @@ async function pruefePanel(cdp: Cdp): Promise<void> {
   await cdp.evaluate(`const i = document.querySelectorAll(".lt-dial-input")[2]; i.value = "2"; i.dispatchEvent(new Event("input", { bubbles: true })); return { ok: true };`);
   const enabled = await pollUntil<{ ok: boolean }>(cdp, `const b = document.querySelector(".lt-run"); return b && !b.disabled ? { ok: true } : null;`, 3000, 200);
   record("B6 Regler gibt Tunen frei", enabled !== null, enabled !== null ? "social=+2 → Tunen aktiv" : "Knopf bleibt aus");
-  record("B7 Preset zeigt (angepasst)", (await count(cdp, ".lt-preset-custom")) === 1, `${await count(cdp, ".lt-preset-custom")} Marker`);
+  // Gemessen wird der TEXT, nicht die Existenz: der Marker ist seit dem Fokus-Fix ein fester
+  // Platzhalter im DOM (ein Reglerzug schaltet ihn um, ohne die Zeile neu zu bauen — sonst
+  // zoege er den gegriffenen Regler unter dem Zeiger weg). Eine Zaehlung waere seitdem immer 1
+  // und damit ein Pruefpunkt, der nichts mehr misst.
+  const marker = (await text(cdp, ".lt-preset-custom")) ?? "";
+  record("B7 Preset zeigt (angepasst)", (await count(cdp, ".lt-preset-custom")) === 1 && marker !== "", `Marker-Text ${JSON.stringify(marker)}`);
 
   const klick8 = await waehleQuelle(cdp, 2);
   const ta = await pollUntil<{ ok: boolean }>(cdp, `return document.querySelector(".lt-freetext") ? { ok: true } : null;`, 3000, 200);
   record("B8 Textfeld-Quelle zeigt Textarea", ta !== null, `${ta !== null ? ".lt-freetext da" : "fehlt"}${klick8}`);
+
+  // B10 — der gemeldete Fehler 1: jede Cursorbewegung in der Textarea feuert
+  // `selectionchange`; zeichnete das Panel darauf voll neu, war das Feld unbeschreibbar.
+  // Gemessen wird beides zusammen: das Zeichen kam an UND der Fokus steht noch im Feld.
+  if (ta === null) {
+    skipped("B10 Tippen ins Textfeld behaelt den Fokus", "ohne .lt-freetext (B8 rot) ist der Punkt gegenstandslos");
+  } else {
+    const tipp = await cdp.evaluate<{ wert: string; aktiv: string }>(`
+      const ta = document.querySelector(".lt-freetext");
+      ta.value = "";
+      ta.dispatchEvent(new Event("input", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 600));
+      const feld = document.querySelector(".lt-freetext");
+      feld.focus();
+      feld.setSelectionRange(0, 0);
+      document.execCommand("insertText", false, "abc");
+      await new Promise((r) => setTimeout(r, 500));
+      const cur = document.querySelector(".lt-freetext");
+      return { wert: cur ? cur.value : "(keine Textarea)", aktiv: document.activeElement ? document.activeElement.className : "(null)" };
+    `);
+    const hatFokus = tipp.aktiv.split(" ").includes("lt-freetext");
+    record("B10 Tippen ins Textfeld behaelt den Fokus", hatFokus && tipp.wert === "abc", `value=${JSON.stringify(tipp.wert)}, activeElement=${hatFokus ? ".lt-freetext" : JSON.stringify(tipp.aktiv.slice(0, 60))}`);
+    await cdp.evaluate(`
+      const ta = document.querySelector(".lt-freetext");
+      if (ta) { ta.value = ""; ta.dispatchEvent(new Event("input", { bubbles: true })); ta.blur(); }
+      return { ok: true };
+    `);
+  }
 
   // Lesemodus blockiert Markierung/Notiz.
   await waehleQuelle(cdp, 1);
@@ -218,11 +258,52 @@ async function pruefePanel(cdp: Cdp): Promise<void> {
   await cdp.evaluate(`const v = app.workspace.getLeavesOfType("markdown")[0].view; await v.setState({ ...v.getState(), mode: "source" }, { history: false }); app.workspace.trigger("active-leaf-change"); return { ok: true };`);
 }
 
-/** Einen Tune-Lauf ausloesen und auf seinen Endzustand warten. `null` = nie fertig geworden. */
+/** Einen Tune-Lauf ausloesen und auf seinen Endzustand warten. `false` = nicht gruen geworden. */
 async function laufeTune(cdp: Cdp): Promise<boolean> {
   await clickReal(cdp, `document.querySelector(".lt-run")`);
   const done = await pollUntil<{ ok: boolean }>(cdp, `const s = document.querySelector(".lt-status"); return s && (s.classList.contains("is-ok") || s.classList.contains("is-error")) ? { ok: true } : null;`, 120_000, 1000);
   return done !== null && (await hasClass(cdp, ".lt-status", "is-ok"));
+}
+
+/** C8 — der gemeldete Fehler 3: erscheint der Gedanken-Block WAEHREND des Streams oder erst
+ *  danach?
+ *
+ *  Ein eigener, absichtlich ABGEBROCHENER Lauf. Der erste Entwurf hat die Messung in den
+ *  zweiten Lauf gefaltet, um Zeit zu sparen — das ging schief und ist der Grund, warum es
+ *  hier steht: mit eingeschaltetem Denken ueberschritt derselbe Lauf die 120-s-Grenze,
+ *  `laufeTune` gab auf, und C3/C4 klickten danach auf Knoepfe, die waehrend eines laufenden
+ *  Streams gesperrt sind. Zwei rote und ein uebersprungener Punkt aus einer Zeitersparnis.
+ *  Sobald der Block steht, ist die Frage beantwortet — der Rest des Laufs kostet nur noch
+ *  Minuten, deshalb der Abbruch. */
+async function pruefeGedanken(cdp: Cdp): Promise<void> {
+  await cdp.evaluate(`app.workspace.trigger("active-leaf-change"); return { ok: true };`);
+  const bereit = await pollUntil<{ ok: boolean }>(cdp, `const b = document.querySelector(".lt-run"); return b && !b.disabled ? { ok: true } : null;`, 5000, 250);
+  if (bereit === null) {
+    skipped("C8 Gedanken-Block waehrend des Streams", `Vorbedingung fehlt: .lt-run ist nicht bedienbar (Quelle: ${(await text(cdp, ".lt-source-line")) ?? "?"})`);
+    return;
+  }
+  await setPluginSetting(cdp, PLUGIN_ID, "suppressThinking", false);
+  await clickReal(cdp, `document.querySelector(".lt-run")`);
+  const beob = await pollUntil<{ block: boolean; laenge: number }>(cdp, `
+    const s = document.querySelector(".lt-status");
+    const d = document.querySelector(".lt-reasoning");
+    if (d && s && s.classList.contains("is-checking")) return { block: true, laenge: (d.querySelector("pre") || { textContent: "" }).textContent.length };
+    if (s && !s.classList.contains("is-checking")) return { block: false, laenge: 0 };
+    return null;
+  `, 60_000, 250);
+  // Abbrechen: waehrend des Streams TRAEGT `.lt-run` die Abbrechen-Rolle.
+  if (await hasClass(cdp, ".lt-status", "is-checking")) {
+    await clickReal(cdp, `document.querySelector(".lt-run")`);
+    await pollUntil<{ ok: boolean }>(cdp, `const s = document.querySelector(".lt-status"); return s && !s.classList.contains("is-checking") ? { ok: true } : null;`, 20_000, 500);
+  }
+  const danach = (await count(cdp, ".lt-reasoning")) > 0;
+  if (beob?.block === true) {
+    record("C8 Gedanken-Block waehrend des Streams", true, `.lt-reasoning stand mit ${beob.laenge} Zeichen da, waehrend .lt-status auf is-checking stand`);
+  } else if (!danach) {
+    skipped("C8 Gedanken-Block waehrend des Streams", "das gewaehlte Modell lieferte keinen Gedankenstrom (kein reasoning_content) — ohne einen ist der Punkt nicht messbar");
+  } else {
+    record("C8 Gedanken-Block waehrend des Streams", false, ".lt-reasoning erschien ERST nach dem Lauf — das ist der gemeldete Fehler 3");
+  }
 }
 
 /** Die Punkte, die ein Ergebnis VORAUSSETZEN — eine Liste, zwei Verwendungen (kein
@@ -232,6 +313,7 @@ async function laufeTune(cdp: Cdp): Promise<boolean> {
 const C_AUSGAENGE = [
   "C2 Kopieren freigegeben", "C3 Notiz ersetzen schreibt Body", "C4 Neue Notiz entsteht",
   "C6 Logbuch anlegen und anhaengen", "C7 Ersetzen-Ziel sperrt bei geaenderter Quelle",
+  "C8 Gedanken-Block waehrend des Streams",
 ];
 const C_NAMEN = ["C5 is-checking animiert", "C1 Stream liefert Ergebnis", ...C_AUSGAENGE];
 
@@ -243,7 +325,27 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
   }
   const vorher = (await cdp.evaluate<{ t: string }>(`return { t: await app.vault.read(app.vault.getAbstractFileByPath(${q(NOTE)})) };`)).t;
   let logbuchAn = false;
+  let denkenAn = false;
+  let modellGesetzt: unknown = null;
   try {
+    // Das Fixture ueberlaesst die Modellwahl dem Server („Server waehlt das Modell", model: "").
+    // Das traegt nur, solange dort GENAU EIN Modell geladen ist. Gemessen 2026-09-07, 23:2x:
+    // bei mehreren geladenen Modellen antwortet LM Studio mit 400 — auf `model: ""` mit
+    // „Invalid model identifier", auf ein FEHLENDES Feld mit „Multiple models are loaded".
+    // Das ist eine Eigenschaft des Endpunkts, kein Plugin-Defekt (beide Nutzlast-Formen per
+    // curl gegengeprueft). Der Treiber waehlt deshalb selbst eines — aus der Liste des
+    // Servers, nie hart verdrahtet: ein Modellname im Repo waere die Modell-Bibliothek eines
+    // bestimmten Rechners.
+    const konfiguriert = (await cdp.evaluate<{ m: string }>(`return { m: app.plugins.plugins[${q(PLUGIN_ID)}].settings.model };`)).m;
+    if (konfiguriert === "") {
+      const ids = await modelle();
+      const gewaehlt = ids[0];
+      if (gewaehlt !== undefined) {
+        modellGesetzt = "";
+        await setPluginSetting(cdp, PLUGIN_ID, "model", gewaehlt);
+        console.log(`  · Modell fuer diesen Lauf gesetzt: ${gewaehlt} (Einstellung war „Server waehlt", ${ids.length} Modelle geladen)`);
+      }
+    }
     // C6 braucht das Logbuch VOR dem ersten Lauf — es schreibt beim Abschluss eines Laufs.
     await cdp.evaluate(`
       const f = app.vault.getAbstractFileByPath(${q(LOGBOOK_FOLDER)});
@@ -335,6 +437,10 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
     const neu = await pollUntil<{ p: string }>(cdp, `const f = app.vault.getMarkdownFiles().find((x) => x.basename.includes("(tuned)") || x.basename.includes("(getunt)")); return f ? { p: f.path } : null;`, 10_000, 500);
     record("C4 Neue Notiz entsteht", neu !== null, neu?.p ?? "keine Datei mit (tuned)/(getunt)");
     if (neu !== null) await cdp.evaluate(`await app.vault.delete(app.vault.getAbstractFileByPath(${q(neu.p)})); return { ok: true };`);
+
+    // --- C8 zuletzt: der Lauf wird abgebrochen und hinterlaesst eine Teilrunde ----
+    denkenAn = true;
+    await pruefeGedanken(cdp);
   } finally {
     // Der Lauf hinterlaesst nichts im Vault: Notiz zurueck, Logbuch weg, Einstellung zurueck.
     await cdp.evaluate(`await app.vault.modify(app.vault.getAbstractFileByPath(${q(NOTE)}), ${q(vorher)}); return { ok: true };`).catch(() => null);
@@ -344,6 +450,8 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
       return { ok: true };
     `).catch(() => null);
     if (logbuchAn) await setPluginSetting(cdp, PLUGIN_ID, "logbookEnabled", false).catch(() => null);
+    if (denkenAn) await setPluginSetting(cdp, PLUGIN_ID, "suppressThinking", true).catch(() => null);
+    if (modellGesetzt !== null) await setPluginSetting(cdp, PLUGIN_ID, "model", modellGesetzt).catch(() => null);
   }
 }
 
