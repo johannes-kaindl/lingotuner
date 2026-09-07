@@ -23,7 +23,7 @@ export function renderLogEntry(e: LogEntry): string {
     "",
     t("logbook.heading", stamp, e.model || "–"),
     "",
-    `${t("logbook.dials", String(d.directness), String(d.context), String(d.social), String(d.semantics))} · ${["directness", "context", "social", "semantics"].map((k) => `${k} ${d[k as keyof Dials]}`).join(", ")}`,
+    t("logbook.dials", String(d.directness), String(d.context), String(d.social), String(d.semantics)),
   ];
   if (e.note.trim() !== "") lines.push(t("logbook.note", e.note.trim()));
   lines.push("", `**${t("logbook.original")}**`, "", quote(e.input), "", `**${t("logbook.result")}**`, "", quote(e.output), "");

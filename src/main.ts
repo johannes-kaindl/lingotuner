@@ -4,7 +4,7 @@ import { getLang, pickLang, setLang, t } from "./vendor/kit/i18n";
 import type { EndpointConfig } from "./vendor/kit/endpoint_config";
 import { copyToClipboard } from "./vendor/kit-obsidian/clipboard";
 import { confirmAction } from "./vendor/kit-obsidian/confirm";
-import { DEFAULT_SETTINGS, allPresets, loadSettings, upsertUserPreset, type LingoTunerSettings } from "./core/settings";
+import { DEFAULT_SETTINGS, PROBE_TIMEOUT_MS, allPresets, loadSettings, upsertUserPreset, type LingoTunerSettings } from "./core/settings";
 import { type Dials } from "./core/dials";
 import { buildMessages, systemPrompt } from "./core/prompt";
 import { loadOverrides } from "./core/examples/overrides";
@@ -22,7 +22,13 @@ import { LingoTunerSettingTab } from "./obsidian/settings-tab";
 import { LingoTunerView, VIEW_TYPE_LINGOTUNER, type RunRequest } from "./obsidian/view";
 
 const SELECTION_DEBOUNCE_MS = 150;
-const PROBE_TIMEOUT_MS = 5000;
+
+/** Name fuer eine neue Notiz ohne Quellnotiz (Textfeld-Lauf) — Spec 4.7 „Datum bei Textfeld".
+ *  Doppelpunkte gehen in Dateinamen nicht, deshalb `HH-mm`. */
+function noteStamp(d: Date): string {
+  const p = (n: number): string => String(n).padStart(2, "0");
+  return `LingoTuner ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}-${p(d.getMinutes())}`;
+}
 
 function safeGetLanguage(): string | null {
   try { return getLanguage(); } catch { return null; }
@@ -69,7 +75,7 @@ export default class LingoTunerPlugin extends Plugin {
         new Notice(replaced ? t("preset.exists") : t("preset.saved", name));
       },
       run: (req) => this.runFromPanel(req),
-      output: (kind, text, sourceText) => this.output(kind, text, sourceText),
+      output: (kind, text, sourceText, sourceName) => this.output(kind, text, sourceText, sourceName),
     }));
 
     // Mitschrift der Auswahl: ein Klick ins Panel nimmt dem Editor den Fokus — dann ist es zu spaet.
@@ -187,12 +193,12 @@ export default class LingoTunerPlugin extends Plugin {
     return result;
   }
 
-  private async output(kind: "replace-selection" | "replace-note" | "copy" | "new-note", text: string, sourceText: string): Promise<void> {
+  private async output(kind: "replace-selection" | "replace-note" | "copy" | "new-note", text: string, sourceText: string, sourceName: string | null): Promise<void> {
     try {
       const st = this.tracker.get();
       if (kind === "copy") { await copyToClipboard(text, { copiedMessage: t("out.copied"), failedMessage: t("out.copyFailed") }); return; }
       if (kind === "new-note") {
-        const base = st.selection?.name ?? st.note?.name ?? "LingoTuner";
+        const base = sourceName ?? noteStamp(new Date());
         const file = await createTunedNote(this.app, this.settings.newNoteFolder, base, text);
         new Notice(t("out.noteCreated", file.path));
         await this.app.workspace.getLeaf("tab").openFile(file);

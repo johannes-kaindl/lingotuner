@@ -20,6 +20,10 @@ export interface LingoTunerSettings {
 
 export const TIMEOUT_SEC_MIN = 5;
 
+/** Zeitlimit fuer Erreichbarkeits-Probe und Modell-Liste — EINE Zahl fuer Panel, Lauf und
+ *  Einstellungen; zwei Kopien liefen sonst beim naechsten Anfassen auseinander. */
+export const PROBE_TIMEOUT_MS = 5000;
+
 export const DEFAULT_SETTINGS: LingoTunerSettings = {
   endpoints: [{ url: "http://127.0.0.1:1234" }],
   model: "",

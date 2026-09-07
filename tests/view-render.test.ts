@@ -73,7 +73,7 @@ describe("renderPanel", () => {
   });
 
   it("ab zwei Runden erscheint der Verlauf mit der aktiven Runde markiert", () => {
-    const r = { dials: NEUTRAL, note: "", input: "a", output: "b", model: "m", at: 1, basedOn: null, aborted: false, truncated: false };
+    const r = { dials: NEUTRAL, note: "", input: "a", output: "b", model: "m", at: 1, basedOn: null, sourceName: "Mail", aborted: false, truncated: false };
     const root = makeFakeEl();
     renderPanel(root, model({ session: { rounds: [r, { ...r, basedOn: 0 }], active: 0 }, phase: "done", preview: "b" }), handlers());
     const rows = findAllByClass<El>(root, "lt-history-row");
@@ -99,7 +99,7 @@ describe("renderPanel", () => {
   });
 
   it("waehrend des Streams sind Chips, Modell, Refresh, Denken und Verlauf gesperrt", () => {
-    const r = { dials: NEUTRAL, note: "", input: "a", output: "b", model: "m", at: 1, basedOn: null, aborted: false, truncated: false };
+    const r = { dials: NEUTRAL, note: "", input: "a", output: "b", model: "m", at: 1, basedOn: null, sourceName: "Mail", aborted: false, truncated: false };
     const root = makeFakeEl();
     renderPanel(root, model({
       phase: "streaming",

@@ -11,7 +11,7 @@ import type { EndpointRole } from "../vendor/kit/endpoint_config";
 import { clientFor } from "./http";
 import { writeShippedTexts } from "../core/examples/overrides";
 import { vaultOverrideWriter } from "./overrides-io";
-import { removeUserPreset, TIMEOUT_SEC_MIN } from "../core/settings";
+import { PROBE_TIMEOUT_MS, removeUserPreset, TIMEOUT_SEC_MIN } from "../core/settings";
 import { getLang } from "../vendor/kit/i18n";
 
 type ControlDef = { type: "text" | "toggle" | "number" | "folder"; key: string; placeholder?: string; min?: number };
@@ -32,8 +32,6 @@ const WARN_KEY: Record<string, string> = {
   "port": "ep.warn.port",
   "placeholder-ip": "ep.warn.placeholderIp",
 };
-
-const PROBE_TIMEOUT_MS = 5000;
 
 export class LingoTunerSettingTab extends PluginSettingTab {
   /** Modell-Listen je Endpunkt — Lebensdauer des TABS (Kit-Vertrag), clear() in hide(). */

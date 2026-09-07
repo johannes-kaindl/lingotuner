@@ -1,6 +1,6 @@
 import { Component, ItemView, MarkdownRenderer, Modal, Setting, type App, type WorkspaceLeaf } from "obsidian";
 import { DIMENSIONS, isNoop, levelKey, presetFor, type Dials, type Dimension, type Level, type Preset } from "../core/dials";
-import { EMPTY_SESSION, activeRound, addRound, selectRound, type Session } from "../core/session";
+import { EMPTY_SESSION, activeRound, addRound, rootInput, rootSourceName, selectRound, type Session } from "../core/session";
 import { type Readiness, type SourceKind } from "../core/source";
 import { splitStable } from "../core/stream-blocks";
 import { errorMessageKey } from "../core/llm/errors";
@@ -33,7 +33,7 @@ export interface ViewDeps {
   setSuppress(v: boolean): void;
   savePreset(name: string, dials: Dials): void;
   run(req: RunRequest): Promise<TuneResult>;
-  output(kind: "replace-selection" | "replace-note" | "copy" | "new-note", text: string, sourceText: string): Promise<void>;
+  output(kind: "replace-selection" | "replace-note" | "copy" | "new-note", text: string, sourceText: string, sourceName: string | null): Promise<void>;
 }
 
 class PresetNameModal extends Modal {
@@ -93,25 +93,10 @@ export class LingoTunerView extends ItemView {
     this.draw();
   }
 
-  /** Eingabe der WURZEL-Runde der aktiven Kette (ueber `basedOn` bis `basedOn === null`),
-   *  oder `null` ohne Runden. Das ist der Text, gegen den ein Ersetzen die aktuell lebende
-   *  Markierung/Notiz prueft — nicht die Quelle zum Klickzeitpunkt (die kann inzwischen eine
-   *  andere sein). */
-  private sourceTextOfActive(): string | null {
-    let idx = this.session.active;
-    if (idx < 0) return null;
-    let round = this.session.rounds[idx];
-    while (round !== undefined && round.basedOn !== null) {
-      idx = round.basedOn;
-      round = this.session.rounds[idx];
-    }
-    return round?.input ?? null;
-  }
-
   private model(): PanelModel {
     const dials = this.deps.getDials();
     const presets = this.deps.presets();
-    const sourceText = this.sourceTextOfActive();
+    const sourceText = rootInput(this.session);
     return {
       source: this.source,
       readiness: this.deps.readiness(this.source, this.freeText),
@@ -156,15 +141,15 @@ export class LingoTunerView extends ItemView {
       onToggleThinking: () => { this.deps.setSuppress(!this.deps.getSuppress()); this.draw(); },
       onToggleReasoning: (open) => { this.reasoningOpen = open; },
       onReplaceSelection: () => {
-        const s = this.sourceTextOfActive();
-        if (s !== null) void this.deps.output("replace-selection", this.preview, s);
+        const s = rootInput(this.session);
+        if (s !== null) void this.deps.output("replace-selection", this.preview, s, rootSourceName(this.session));
       },
       onReplaceNote: () => {
-        const s = this.sourceTextOfActive();
-        if (s !== null) void this.deps.output("replace-note", this.preview, s);
+        const s = rootInput(this.session);
+        if (s !== null) void this.deps.output("replace-note", this.preview, s, rootSourceName(this.session));
       },
-      onCopy: () => { void this.deps.output("copy", this.preview, this.sourceTextOfActive() ?? ""); },
-      onNewNote: () => { void this.deps.output("new-note", this.preview, this.sourceTextOfActive() ?? ""); },
+      onCopy: () => { void this.deps.output("copy", this.preview, rootInput(this.session) ?? "", rootSourceName(this.session)); },
+      onNewNote: () => { void this.deps.output("new-note", this.preview, rootInput(this.session) ?? "", rootSourceName(this.session)); },
     };
   }
 
@@ -212,6 +197,12 @@ export class LingoTunerView extends ItemView {
     const dials = this.deps.getDials();
     const readiness = this.deps.readiness(this.source, this.freeText);
     const base = basedOn === null ? (readiness.kind === "ready" ? readiness.text : null) : (activeRound(this.session)?.output ?? null);
+    // Der Quellname gehoert zur WURZEL der Kette: beim Lauf aus der Quelle der aktuelle
+    // Bereitschafts-Name, beim Nachschaerfen der Name, unter dem die Kette begonnen hat.
+    // VOR addRound lesen — danach zeigt `active` auf die neue Runde.
+    const sourceName = basedOn === null
+      ? (readiness.kind === "ready" ? readiness.name : null)
+      : rootSourceName(this.session);
     if (base === null || isNoop(dials, this.note)) { this.statusText = t("run.noop"); this.phase = "error"; this.draw(); return; }
 
     this.controller?.abort();
@@ -265,13 +256,13 @@ export class LingoTunerView extends ItemView {
       this.truncated = result.truncated;
       this.phase = "done";
       this.statusText = t("status.done");
-      this.session = addRound(this.session, { dials: { ...dials }, note: this.note, input: base, output: result.text, model: result.model, at: Date.now(), basedOn, aborted: false, truncated: result.truncated });
+      this.session = addRound(this.session, { dials: { ...dials }, note: this.note, input: base, output: result.text, model: result.model, at: Date.now(), basedOn, sourceName, aborted: false, truncated: result.truncated });
     } else if (result.error.kind === "aborted") {
       this.preview = result.partial;
       this.phase = "aborted";
       this.statusText = t("status.aborted");
       if (result.partial.trim() !== "") {
-        this.session = addRound(this.session, { dials: { ...dials }, note: this.note, input: base, output: result.partial, model: "", at: Date.now(), basedOn, aborted: true, truncated: false });
+        this.session = addRound(this.session, { dials: { ...dials }, note: this.note, input: base, output: result.partial, model: "", at: Date.now(), basedOn, sourceName, aborted: true, truncated: false });
       }
     } else {
       const { key, args } = errorMessageKey(result.error);

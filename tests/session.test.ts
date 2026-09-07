@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { EMPTY_SESSION, addRound, selectRound, activeRound, refineInput, type Round } from "../src/core/session";
+import { EMPTY_SESSION, addRound, selectRound, activeRound, refineInput, rootRound, rootInput, rootSourceName, type Round } from "../src/core/session";
 import { NEUTRAL } from "../src/core/dials";
 
 const round = (n: number, basedOn: number | null = null): Round => ({
-  dials: { ...NEUTRAL, social: 1 }, note: "", input: `in${n}`, output: `out${n}`, model: "m", at: n, basedOn, aborted: false, truncated: false,
+  dials: { ...NEUTRAL, social: 1 }, note: "", input: `in${n}`, output: `out${n}`, model: "m", at: n, basedOn,
+  sourceName: basedOn === null ? `note${n}` : null, aborted: false, truncated: false,
 });
 
 describe("session", () => {
@@ -45,5 +46,53 @@ describe("session", () => {
     const a = addRound(EMPTY_SESSION, round(1));
     addRound(a, round(2));
     expect(a.rounds).toHaveLength(1);
+  });
+});
+
+describe("Wurzel der Runden-Kette", () => {
+  it("leere Session: keine Wurzel, keine Wurzel-Eingabe, kein Quellname", () => {
+    expect(rootRound(EMPTY_SESSION)).toBeNull();
+    expect(rootInput(EMPTY_SESSION)).toBeNull();
+    expect(rootSourceName(EMPTY_SESSION)).toBeNull();
+  });
+
+  it("Runde ohne Kette ist ihre eigene Wurzel", () => {
+    const s = addRound(EMPTY_SESSION, round(1));
+    expect(rootRound(s)?.output).toBe("out1");
+    expect(rootInput(s)).toBe("in1");
+    expect(rootSourceName(s)).toBe("note1");
+  });
+
+  it("Kette 0→1→2, aktiv 2: Wurzel ist Runde 0", () => {
+    let s = addRound(EMPTY_SESSION, round(1));
+    s = addRound(s, round(2, 0));
+    s = addRound(s, round(3, 1));
+    expect(s.active).toBe(2);
+    expect(rootRound(s)?.output).toBe("out1");
+    expect(rootInput(s)).toBe("in1");
+    expect(rootSourceName(s)).toBe("note1");
+  });
+
+  it("Rueckwahl auf 1: Wurzel bleibt Runde 0", () => {
+    let s = addRound(EMPTY_SESSION, round(1));
+    s = addRound(s, round(2, 0));
+    s = addRound(s, round(3, 1));
+    s = selectRound(s, 1);
+    expect(rootInput(s)).toBe("in1");
+    expect(rootSourceName(s)).toBe("note1");
+  });
+
+  it("abgebrochene Zwischenrunde mit basedOn: Wurzel bleibt Runde 0", () => {
+    let s = addRound(EMPTY_SESSION, round(1));
+    s = addRound(s, { ...round(2, 0), aborted: true, model: "" });
+    s = addRound(s, round(3, 1));
+    expect(rootInput(s)).toBe("in1");
+    expect(rootSourceName(s)).toBe("note1");
+  });
+
+  it("Wurzel aus dem Textfeld hat keinen Quellnamen", () => {
+    const s = addRound(EMPTY_SESSION, { ...round(1), sourceName: null });
+    expect(rootInput(s)).toBe("in1");
+    expect(rootSourceName(s)).toBeNull();
   });
 });
