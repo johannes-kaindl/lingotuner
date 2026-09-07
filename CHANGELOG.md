@@ -6,13 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A "Reset" button in the run row clears session, preview, reasoning, note and text field and cancels a running stream. It appears as soon as there is something to reset, and asks before discarding a session that already has rounds. The dials stay as they are.
+
 ### Fixed
 
+- Typing survives the end of a run: the final redraw puts focus and cursor back into the field they were in, instead of dropping them on `<body>` while you wait for the result.
+- The output buttons stay reachable on a short panel: the preview floor yields (`min(14em, 40%)`) instead of pushing them out of a panel that clips its overflow.
+- Streaming no longer yanks the view back to the bottom while you are reading further up; it follows only when you are already at the end.
 - The text field can be typed into again: a caret move inside the panel no longer redraws it, so the field under the cursor survives (it was rebuilt on every `selectionchange`, which took the focus away immediately).
 - Long output stays inside its own scrolling preview box instead of running on top of the four output buttons; the action bar now sits below it and keeps its place.
 - The run row (tune, refine, reset, model) stays put instead of scrolling out of reach once a result fills the panel.
 - Model reasoning is streamed into an open block as it arrives, above the answer, instead of appearing only once the run has finished.
-- A "Reset" button clears session, preview, reasoning, note and text field and cancels a running stream; it appears as soon as there is something to reset.
 - The run timeout is now cleared by the first token of any kind, so a reasoning model that thinks for a while before answering is no longer cut off.
 - A new note made from a text-field run is named with a date stamp instead of whatever note happened to be selected; a run from a note keeps that note's name through every refine round.
 - The active endpoint is resolved once at load, so the settings list marks the active row before the first run instead of after it.

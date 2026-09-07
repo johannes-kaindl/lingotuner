@@ -177,6 +177,18 @@ erlaubt, stillschweigend abzuweichen nicht.
   ein gruener Haken neben „Bereit" behauptete einen Erfolg, den es nicht gab (Final-Review 2026-09-07).
   `gilt-solange:` `paintStatus` in `src/obsidian/view-render.ts` setzt fuer `phase === "idle"` das Icon
   `circle` und keine Zustandsklasse; `aria-label` bleibt gesetzt.
+- **Der Streaming-Antwortbereich ist eigen gebaut statt aus `buildStreamArea`** (§8 fuehrt den
+  Baustein seit `obsidian-kit` 0.32.0 als verbindlich). Grund ist die Zeitrechnung, nicht eine
+  Bewertung: `buildStreamArea` entstand am 2026-09-07 um **23:37**, der hiesige Fix war um
+  **23:50** committet — 13 Minuten, und der Kopf von `obsidian-kit/src/obsidian/stream-area.ts`
+  nennt `lingotuner/src/obsidian/view-render.ts` ausdruecklich als **Quelle** der reicheren
+  Haelfte (Gedankenblock offen, Toggle persistierbar). Dieses Repo ist Spender, nicht
+  Nachzuegler. Uebernommen wird beim naechsten Anfassen dieser Datei; die eigentliche Arbeit ist
+  dabei nicht der Funktionsaufruf, sondern die Frage, ob `STREAM_AREA_CSS` mit dem hiesigen
+  Layout-Vertrag (`.lt-controls`/`.lt-preview`, Panel scrollt nicht als Ganzes) vertraeglich ist.
+  `gilt-solange:` `src/obsidian/view-render.ts` importiert nichts aus
+  `src/vendor/kit-obsidian/stream-area.ts` — aufzuloesen mit der Task
+  „0.1.1 taggen und Nachlese der Fix-Welle".
 
 ## Gotchas
 
