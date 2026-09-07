@@ -172,7 +172,10 @@ function runRow(parent: El, m: PanelModel, h: PanelHandlers): void {
     refine.addEventListener("click", () => h.onRefine());
   }
   // Zuruecksetzen erscheint, sobald es etwas zurueckzusetzen GIBT — Runden oder eine Vorschau.
-  // Waehrend eines Streams bleibt er bedienbar: er bricht ab und raeumt in einem Zug.
+  // Waehrend des ERSTEN Laufs gibt es deshalb keinen: `run()` setzt `preview = ""` und es gibt
+  // noch keine Runde, also steht dort nur „Abbrechen" — und mehr braucht es da auch nicht, weil
+  // noch nichts zu verwerfen ist. Ab dem zweiten Lauf ist er auch waehrend des Streams da und
+  // bricht dann ab und raeumt in einem Zug.
   if (hasRounds || m.preview !== "") {
     const reset = row.createEl("button", { text: t("run.reset"), cls: "lt-reset" });
     reset.addEventListener("click", () => h.onReset());
@@ -293,17 +296,27 @@ export function structureKey(m: PanelModel): string {
   return [
     m.source, m.phase,
     String(m.session.rounds.length), String(m.session.active),
-    m.models.join(""), m.model, String(m.suppressThinking),
-    m.presets.map((p) => p.id).join(""),
+    m.models.join(" "), m.model, String(m.suppressThinking),
+    m.presets.map((p) => p.id).join(" "),
     String(m.truncated),
     m.preview === "" ? "0" : "1",
     m.reasoning === "" ? "0" : "1",
-  ].join("");
+    // Trenner als SICHTBARES Leerzeichen. Hier standen drei unsichtbare Steuerzeichen
+    // (2x U+0002, 1x U+0001) — sie trennten zwar korrekt, waren aber in jeder Ansicht
+    // unsichtbar, gingen so in `main.js` mit und wurden in der Review als `join("")`
+    // gelesen. `check-no-nul-bytes` prueft nur U+0000 und sah sie nicht.
+  ].join(" ");
 }
 
 /** Aktualisierung OHNE Neuaufbau — der einzige zulaessige Weg, solange der Fokus im Panel
- *  liegt. Deckt genau das ab, was sich ohne Strukturwechsel aendern kann: Bereitschaftszeile,
- *  Knopf-Sperren, Stufennamen, Preset-Markierung und die Ausgangsknoepfe. */
+ *  liegt. Deckt Bereitschaftszeile, Knopf-Sperren, Stufennamen, Preset-Markierung und die
+ *  Ausgangsknoepfe ab.
+ *
+ *  ⚠️ AUSGENOMMEN ist der Status-Indikator: `paintStatus` laeuft nur aus `renderPanel`.
+ *  Das ist heute folgenlos, weil jeder Pfad, der `statusText` oder `phase` aendert, ohnehin
+ *  `draw()` ruft — aber es ist eine Annahme ueber die Aufrufer, keine Eigenschaft dieser
+ *  Funktion. Wer `statusText` kuenftig ohne Voll-Draw aendert, ergaenzt hier `paintStatus`
+ *  (dafuer muessten die `PanelParts` hereingereicht werden). */
 export function patchPanel(root: El, m: PanelModel): void {
   root.dataset.preset = m.presetId ?? "";
   root.dataset.output = hasOutput(m) ? "1" : "0";
