@@ -93,8 +93,9 @@ Stand des letzten Laufs: **2026-09-07, 23:5x CEST**, Obsidian **1.14.0**, Zweiti
 | B7 | Preset zeigt (angepasst) | `.lt-preset-custom` trägt **Text**, sobald die Regler kein Preset mehr treffen (der Span selbst steht immer da — siehe unten) | grün | 2026-09-07 |
 | B8 | Textfeld-Quelle zeigt Textarea | Quelle „Textfeld" rendert `.lt-freetext` | grün | 2026-09-07 |
 | B9 | Lesemodus blockiert die Quelle | Notiz auf `mode: preview` → `.lt-source-line.is-blocked` | grün | 2026-09-07 |
-| B10 | Tippen ins Textfeld behält den Fokus | `execCommand("insertText")` in `.lt-freetext`; nach 500 ms trägt die Textarea `abc` UND ist noch `document.activeElement` | grün | 2026-09-07 |
-| C1 | Stream liefert Ergebnis | `.lt-status.is-ok` und nichtleere `.lt-preview` nach einem echten Lauf | grün (2578 Zeichen) | 2026-09-07 |
+| B10 | Tippen ins Textfeld behält den Fokus | `execCommand("insertText")` in `.lt-freetext`, dann `selectionchange` gefeuert; der Fokus darf **1200 ms lang nicht wegfallen** (Poll auf den negativen Zustand), danach trägt die Textarea `abc` | grün | 2026-09-08 |
+| B11 | Tippen überlebt das Ende eines Laufs | **während** des Streams in `.lt-note` tippen; nach dem Schluss-`draw()` liegt der Fokus noch dort und der Text steht | grün | 2026-09-08 |
+| C1 | Stream liefert Ergebnis | `.lt-status.is-ok` und nichtleere `.lt-preview` nach einem echten Lauf | grün (2415 Zeichen) | 2026-09-08 |
 | C2 | Kopieren freigegeben | `.lt-out-copy` nicht mehr disabled, sobald ein Ergebnis steht | grün | 2026-09-07 |
 | C3 | Notiz ersetzen schreibt Body | Datei ändert sich, `---\ntype: draft\n---` steht weiter oben — Frontmatter überlebt | grün | 2026-09-07 |
 | C4 | Neue Notiz entsteht | eine Datei mit `(tuned)`/`(getunt)` im Namen taucht auf | grün (`Mail-Entwurf (getunt).md`) | 2026-09-07 |
@@ -102,9 +103,11 @@ Stand des letzten Laufs: **2026-09-07, 23:5x CEST**, Obsidian **1.14.0**, Zweiti
 | C6 | Logbuch anlegen und anhängen | nach zwei Läufen: `LingoTuner/LingoTuner YYYY-MM.md` mit `type: lingotuner-log` und zwei `## `-Einträgen | grün (2 Einträge) | 2026-09-07 |
 | C7 | Ersetzen-Ziel sperrt bei geänderter Quelle | Editor-Inhalt ändern → `.lt-out-replace-note` disabled (Guard „Quelle geändert") | grün | 2026-09-07 |
 | C8 | Gedanken-Block während des Streams | eigener, absichtlich abgebrochener Lauf mit eingeschaltetem Denken: `.lt-reasoning` steht im DOM, **während** `.lt-status` auf `is-checking` steht | grün (9 Zeichen) | 2026-09-07 |
-| C9 | kein Bedienelement wird verdeckt | Ausgabebereich künstlich gefüllt, dann je `.lt-run`/`.lt-refine`/`.lt-reset`/`.lt-out`: trifft `elementFromPoint` auf die Knopfmitte noch den Knopf? | grün (7 von 7, 8210 px in 208 px) | 2026-09-07 |
+| C9 | kein Bedienelement wird verdeckt (natürliche Höhe) | Ausgabebereich künstlich gefüllt, dann je `.lt-run`/`.lt-refine`/`.lt-reset`/`.lt-out`: trifft `elementFromPoint` auf die Knopfmitte noch den Knopf? Ein Knopf ohne Fläche zählt als verdeckt | grün (7 von 7, 8267 px in 208 px) | 2026-09-08 |
+| C9b | dasselbe auf einem **kurzen Panel** | Leaf-Höhe auf 420 px gedrückt, danach zurückgesetzt — deckt den geteilten rechten Seitenbereich ab | grün (7 von 7, Vorschau 148 px) | 2026-09-08 |
+| C10 | Zurücksetzen fragt nach und räumt | mit Runden: Klick auf `.lt-reset` öffnet den Bestätigungsdialog; nach dem Bestätigen 0 Runden, kein `.lt-reset`, Leerzustand da | grün (vorher 2 Runden) | 2026-09-08 |
 
-**Bilanz des letzten Laufs: 22 grün · 0 rot · 1 übersprungen.**
+**Bilanz des letzten Laufs: 25 grün · 0 rot · 1 übersprungen — von 26 Prüfpunkten.**
 
 ### B10, C8 und C9 — die Punkte aus den UI-Fehlern vom 2026-09-07
 
@@ -149,6 +152,26 @@ laufenden Streams gesperrt sind — **zwei rote und ein übersprungener Punkt al
 eingesparten Minute.** Liefert das gewählte Modell gar keinen Gedankenstrom, wird C8
 **übersprungen mit genau diesem Grund**, nicht rot: das ist eine Modelleigenschaft, kein
 Plugin-Defekt.
+
+### B11, C9b und C10 — die Punkte aus der Review vom 2026-09-08
+
+**B11** ist B10s Zwilling in einem schmaleren Fenster. Die Anmerkung ist während eines Streams
+absichtlich **nicht** gesperrt — der Nutzer tippt dort die nächste Runde, während er auf das
+Ergebnis wartet. `run()` schließt mit einem bedingungslosen `draw()` ab, und das ersetzte bis
+zum 2026-09-08 das Feld unter dem Cursor: derselbe Fehler wie Nr. 1, aber einmal je Lauf statt
+bei jedem Tastendruck — und in dem Moment, in dem niemand hinsieht. Die Nummer folgt dem
+Fehlerbild, der Ort der Abhängigkeit: gemessen wird im C-Teil, weil es ohne echten Lauf kein
+Ende eines Laufs gibt.
+
+**C9b** ist dieselbe Funktion wie C9 auf einem **kurzen Panel** (Leaf-Höhe 420 px, danach
+zurückgesetzt). Eine einzelne Panelhöhe misst nur den Rechner, auf dem sie lief; ein geteilter
+rechter Seitenbereich mit zwei gestapelten Panels ist der Normalfall. Der Punkt hat sich sofort
+bezahlt gemacht — siehe die Gegenprobe unten.
+
+**C10** deckt die Rückfrage vor dem Zurücksetzen. Der Knopf sitzt unmittelbar neben
+„Nachschärfen", das man in einer Iterationsschleife oft klickt; ohne Rückfrage kostete ein
+Fehlgriff die ganze Runden-Kette samt eines noch nicht kopierten Ergebnisses, ohne Undo.
+Gemessen wird beides: dass der Dialog kommt **und** dass danach wirklich geräumt ist.
 
 ### Modellwahl: warum der Treiber sie seit dem 2026-09-07 selbst trifft
 
@@ -276,6 +299,42 @@ Danach `style.removeProperty(...)`, Höhe wieder 90 px. **Wer eine Gegenprobe f�
 zuerst, ob sie den Zustand überhaupt hergestellt hat** — sonst misst man die Gegenprobe
 statt den Prüfpunkt.
 
+### Gegenproben für B11, C9b und C10 (2026-09-08)
+
+**C9b brauchte keine gestellte Gegenprobe — er war beim ersten Lauf rot, und der Befund war
+echt.** Die Review hatte ihn aus dem CSS *abgeleitet* und ausdrücklich als ungemessen markiert:
+`min-height` ist für Flexbox eine harte Untergrenze, außer `.lt-controls` schrumpft nichts, und
+bei `overflow: hidden` wird ein Überstand ersatzlos abgeschnitten. Gemessen bei 420 px:
+
+```
+✗ C9b — lt-out lt-out-copy → workspace-tab-container · lt-out lt-out-new-note → workspace-tab-container
+```
+
+„Kopieren" und „Neue Notiz" hatten **keine Fläche mehr**. Nach `min-height: min(14em, 40%)`:
+7 von 7 klickbar, Vorschau 148 px statt 208 px. Bei 760 px ändert sich nichts (40 % ≈ 290 px
+> 208 px) — die natürliche Lage ist in beiden Läufen identisch grün.
+
+**B11 und C10** gegen ihren Vor-Zustand gefahren (Wiederherstellung auskommentiert,
+Rückfrage-Zweig übersprungen): **23 grün · 2 rot**, rot waren genau die beiden:
+
+```
+✗ B11 — value="abc", Fokus fiel auf "mod-macos is-frameless is-hidden-frameless is-focused obsidi"
+✗ C10 — kein Bestaetigungsdialog nach dem Klick — 2 Runden waeren ungefragt weg gewesen
+```
+
+Danach zurück: **25 grün · 0 rot · 1 übersprungen.**
+
+ⓘ **Was C9b zusätzlich sichtbar gemacht hat und was er NICHT prüft.** Bei 420 px ist
+`.lt-controls` auf **0 px** zusammengefaltet — Quellen, Presets, Regler und Anmerkung sind dann
+unsichtbar und mangels Höhe auch nicht scrollbar. Über die Panelhöhe gemessen (Vorschau in
+Klammern): 420 → 0 px (150), 470 → 10 (170), 520 → 40 (190), 570 → 70 (210), 620 → 120 (210),
+760 → 260 (210). **Verdeckt war bei keiner Höhe etwas** — C9/C9b bleiben also zu Recht grün, sie
+messen Erreichbarkeit, nicht Nutzbarkeit. Der Platz geht an die Ausführen-Zeile, die schmal
+umgebrochen 132 px belegt und per Vertrag nicht schrumpfen darf. Ein Boden auf `.lt-controls`
+wäre die naheliegende Antwort und genau der Fehler, den C9b eben gefunden hat: die Summe der
+Untergrenzen überschritte die Panelhöhe wieder, und dann würde erneut abgeschnitten. Offen als
+Design-Frage, nicht als Defekt.
+
 ## Läufe vom 2026-09-07 (Protokoll)
 
 | # | Zeit | Stand | Ergebnis | Anmerkung |
@@ -296,7 +355,11 @@ statt den Prüfpunkt.
 | 14 | 00:0x | B10 in Skill-Form, C9 neu | 21 grün · **1 rot (C9)** · 1 übersprungen | C9 fand einen echten Defekt: die Ausführen-Zeile war aus dem rollenden Block herausgerollt |
 | 15 | 00:1x | `.lt-run-row` in den festen Teil | 22 grün · 0 rot · 1 übersprungen | C9 grün |
 | 16 | 00:1x | **beide Hälften von Fix 1 gebrochen** | 21 grün · 1 rot (B10) · 1 übersprungen | Gegenprobe für die neue B10-Form |
-| 17 | 00:2x | Repo-Stand, Vorschau-Boden statt Deckel | **22 grün · 0 rot · 1 übersprungen** | maßgeblicher Lauf |
+| 17 | 00:2x | Repo-Stand, Vorschau-Boden statt Deckel | 22 grün · 0 rot · 1 übersprungen | letzter Lauf der ersten Welle |
+| 18 | 00:5x | Fix-Runde 2, **vor** dem C-1-Fix | 24 grün · **1 rot (C9b)** · 1 übersprungen | C9b bestätigt den aus dem CSS abgeleiteten Befund: zwei Ausgangsknöpfe ohne Fläche |
+| 19 | 01:0x | `min-height: min(14em, 40%)` | 25 grün · 0 rot · 1 übersprungen | beide Lagen grün |
+| 20 | 01:1x | **Wiederherstellung + Rückfrage gebrochen** | 23 grün · 2 rot (B11, C10) · 1 übersprungen | Gegenprobe |
+| 21 | 01:2x | Repo-Stand zurück | **25 grün · 0 rot · 1 übersprungen** | maßgeblicher Lauf |
 
 ### Was Lauf 1 gelehrt hat
 

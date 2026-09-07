@@ -332,7 +332,16 @@ async function pruefeGedanken(cdp: Cdp): Promise<void> {
   if (beob?.block === true) {
     record("C8 Gedanken-Block waehrend des Streams", true, `.lt-reasoning stand mit ${beob.laenge} Zeichen da, waehrend .lt-status auf is-checking stand`);
   } else if (!danach) {
-    skipped("C8 Gedanken-Block waehrend des Streams", "das gewaehlte Modell lieferte keinen Gedankenstrom (kein reasoning_content) — ohne einen ist der Punkt nicht messbar");
+    // Zwei sehr verschiedene Gruende landen sonst unter derselben Ueberschrift: „das Modell
+    // denkt nicht" und „der Lauf ist gescheitert, bevor ein Gedanke kommen konnte" (Netzfehler,
+    // 400, Timeout). Der Beobachtungs-Poll gibt in beiden Faellen `{block:false}` zurueck.
+    // Eine Modelleigenschaft zu melden, wo ein Endpunktfehler vorlag, ist genau die Sorte
+    // Skip-Grund, gegen die CORE-TEST-19 steht.
+    if (await hasClass(cdp, ".lt-status", "is-error")) {
+      skipped("C8 Gedanken-Block waehrend des Streams", `Lauf gescheitert, bevor ein Gedanke kam: ${(await text(cdp, ".lt-status-label")) ?? "?"}`);
+    } else {
+      skipped("C8 Gedanken-Block waehrend des Streams", "das gewaehlte Modell lieferte keinen Gedankenstrom (kein reasoning_content) — ohne einen ist der Punkt nicht messbar");
+    }
   } else {
     record("C8 Gedanken-Block waehrend des Streams", false, ".lt-reasoning erschien ERST nach dem Lauf — das ist der gemeldete Fehler 3");
   }
@@ -345,9 +354,16 @@ async function pruefeGedanken(cdp: Cdp): Promise<void> {
 const C_AUSGAENGE = [
   "C2 Kopieren freigegeben", "C3 Notiz ersetzen schreibt Body", "C4 Neue Notiz entsteht",
   "C6 Logbuch anlegen und anhaengen", "C7 Ersetzen-Ziel sperrt bei geaenderter Quelle",
-  "C8 Gedanken-Block waehrend des Streams", "C9 kein Bedienelement wird verdeckt",
+  "C8 Gedanken-Block waehrend des Streams",
+  "C9 kein Bedienelement wird verdeckt (natuerliche Hoehe)",
+  "C9b kein Bedienelement wird verdeckt (kurzes Panel, 420 px)",
+  "C10 Zuruecksetzen fragt nach und raeumt",
 ];
-const C_NAMEN = ["C5 is-checking animiert", "C1 Stream liefert Ergebnis", ...C_AUSGAENGE];
+// B11 haengt am ERSTEN Lauf, nicht an dessen Ergebnis: er wird gemessen, sobald der Lauf
+// endet — auch wenn er scheitert, denn der Schluss-Draw laeuft in beiden Faellen. Er gehoert
+// deshalb NICHT in C_AUSGAENGE (dort wuerde er zusaetzlich als uebersprungen gefuehrt und
+// stuende doppelt im Protokoll), wohl aber in C_NAMEN: ohne Endpunkt gibt es keinen Lauf.
+const C_NAMEN = ["C5 is-checking animiert", "C1 Stream liefert Ergebnis", "B11 Tippen ueberlebt das Ende eines Laufs", ...C_AUSGAENGE];
 
 /** C9 — Pflicht-Punkt (b) aus dem Skill `gui-smoke-setup` § 3a: waechst der Ausgabebereich
  *  ueber die Aktionsleiste, sind die Knoepfe da, aber nicht mehr erreichbar.
@@ -363,6 +379,12 @@ const C_NAMEN = ["C5 is-checking animiert", "C1 Stream liefert Ergebnis", ...C_A
  *  aufgefuellt und die Vorbedingung im Detailtext mitgemeldet, damit sichtbar bleibt, ob
  *  der Punkt ueberhaupt haette rot werden koennen.
  *
+ *  Gemessen wird in ZWEI Lagen: natuerliche Panelhoehe (C9) und kuenstlich auf 420 px
+ *  gedrueckte Leaf-Hoehe (C9b). Eine einzelne Hoehe misst nur den Rechner, auf dem sie
+ *  lief; die zweite Lage kostet vier Zeilen und deckt den geteilten Seitenbereich ab.
+ *  Ein Knopf ohne Flaeche zaehlt dabei als verdeckt — bei `overflow: hidden` wird ein
+ *  Ueberstand ersatzlos abgeschnitten, der Knopf hat dann gar keine Box mehr.
+ *
  *  ⚠️ Zwei Fallen im Renderer-Ausdruck, beide hier hineingelaufen: `cdp.evaluate` schickt
  *  ihn als STRING, und er steht im Treiber in einem Template-Literal. Ein echtes Newline
  *  darin (etwa aus einem `join`) bricht drueben das String-Literal auf, ein Backtick im
@@ -371,7 +393,8 @@ const C_NAMEN = ["C5 is-checking animiert", "C1 Stream liefert Ergebnis", ...C_A
  *  im Typecheck auf. Deshalb: Zeilen als eigene Elemente, keine Backticks in Kommentaren
  *  innerhalb eines Renderer-Ausdrucks. */
 async function pruefeUeberdeckung(cdp: Cdp): Promise<void> {
-  const vor = await cdp.evaluate<{ scrollH: number; clientH: number }>(`
+  // Fuellen: einmal fuer beide Lagen.
+  const gefuellt = await cdp.evaluate<{ scrollH: number; clientH: number }>(`
     const p = document.querySelector(".lt-preview");
     const body = document.querySelector(".lt-preview-body");
     if (!p || !body) return { scrollH: 0, clientH: 0 };
@@ -381,30 +404,148 @@ async function pruefeUeberdeckung(cdp: Cdp): Promise<void> {
     for (let i = 0; i < 150; i += 1) f.createDiv({ text: "Fuellzeile " + i + " fuer die Ueberdeckungsprobe." });
     return { scrollH: p.scrollHeight, clientH: p.clientHeight };
   `);
-  if (vor.scrollH <= vor.clientH + 8) {
-    skipped("C9 kein Bedienelement wird verdeckt", `Vorbedingung fehlt: der Ausgabebereich laeuft nicht ueber (scrollHeight ${vor.scrollH} <= clientHeight ${vor.clientH}) — der Punkt koennte nicht rot werden`);
+  if (gefuellt.scrollH <= gefuellt.clientH + 8) {
+    skipped("C9 kein Bedienelement wird verdeckt (natuerliche Hoehe)", `Vorbedingung fehlt: der Ausgabebereich laeuft nicht ueber (scrollHeight ${gefuellt.scrollH} <= clientHeight ${gefuellt.clientH})`);
+    skipped("C9b kein Bedienelement wird verdeckt (kurzes Panel, 420 px)", "ohne ueberlaufenden Ausgabebereich gegenstandslos");
   } else {
-    const r = await cdp.evaluate<{ geprueft: number; schlecht: Array<{ cls: string; deckt: string }> }>(`
-      const schlecht = [];
-      let geprueft = 0;
-      for (const b of document.querySelectorAll(".lt-run, .lt-refine, .lt-reset, .lt-out")) {
-        const box = b.getBoundingClientRect();
-        if (box.width === 0 || box.height === 0) continue;
-        geprueft += 1;
-        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-        if (!(b === hit || b.contains(hit))) schlecht.push({ cls: b.className, deckt: hit ? String(hit.className || hit.tagName) : "(nichts)" });
-      }
-      return { geprueft, schlecht };
+    await messeUeberdeckung(cdp, "C9 kein Bedienelement wird verdeckt (natuerliche Hoehe)", gefuellt);
+
+    // --- Zweite Lage: kurzes Panel ------------------------------------------------
+    // Ein Boden (`min-height`) auf der Vorschau ist fuer Flexbox eine HARTE Untergrenze;
+    // alles andere ausser `.lt-controls` schrumpft ebenfalls nicht. Unterschreitet die
+    // Panelhoehe die Summe der Untergrenzen, laeuft das Panel ueber — und weil es
+    // `overflow: hidden` traegt, wird der Ueberstand ERSATZLOS abgeschnitten, ohne
+    // Rollbalken irgendwo. Abgeschnitten wird, was zuletzt kommt: die Ausgangsknoepfe.
+    // Ein geteilter rechter Seitenbereich (zwei gestapelte Panels) ist der Normalfall,
+    // nicht die Verrenkung — deshalb ist das eine Pflichtlage und keine Kuer.
+    const kurz = await cdp.evaluate<{ ok: boolean; vorher: string; hoehe: number }>(`
+      const leaf = document.querySelector(".lt-panel").closest(".workspace-leaf");
+      if (!leaf) return { ok: false, vorher: "", hoehe: 0 };
+      const vorher = leaf.style.height || "";
+      leaf.style.height = "420px";
+      await new Promise((r) => setTimeout(r, 400));
+      return { ok: true, vorher, hoehe: Math.round(document.querySelector(".lt-panel").getBoundingClientRect().height) };
     `);
-    const detail = r.schlecht.length === 0
-      ? `${r.geprueft} Bedienelemente treffen sich selbst (Ausgabebereich ${vor.scrollH} px in ${vor.clientH} px)`
-      : r.schlecht.map((x) => `${x.cls} verdeckt von ${x.deckt}`).join(" · ");
-    record("C9 kein Bedienelement wird verdeckt", r.schlecht.length === 0 && r.geprueft > 0, detail);
+    if (!kurz.ok) {
+      skipped("C9b kein Bedienelement wird verdeckt (kurzes Panel, 420 px)", "kein .workspace-leaf ueber dem Panel gefunden");
+    } else {
+      const masse = await cdp.evaluate<{ scrollH: number; clientH: number }>(`
+        const p = document.querySelector(".lt-preview");
+        return { scrollH: p.scrollHeight, clientH: p.clientHeight };
+      `);
+      await messeUeberdeckung(cdp, "C9b kein Bedienelement wird verdeckt (kurzes Panel, 420 px)", masse, ` · Panel ${kurz.hoehe} px`);
+      await cdp.evaluate(`
+        const leaf = document.querySelector(".lt-panel").closest(".workspace-leaf");
+        if (leaf) leaf.style.height = ${q(kurz.vorher)};
+        await new Promise((r) => setTimeout(r, 300));
+        return { ok: true };
+      `);
+    }
   }
   await cdp.evaluate(`
     for (const f of document.querySelectorAll(".lt-smoke-fueller")) f.remove();
     return { ok: true };
   `);
+}
+
+/** Die eigentliche Messung, zweimal gebraucht (natuerliche und kurze Panelhoehe). */
+async function messeUeberdeckung(cdp: Cdp, name: string, masse: { scrollH: number; clientH: number }, zusatz = ""): Promise<void> {
+  const r = await cdp.evaluate<{ geprueft: number; schlecht: Array<{ cls: string; deckt: string }> }>(`
+    const schlecht = [];
+    let geprueft = 0;
+    for (const b of document.querySelectorAll(".lt-run, .lt-refine, .lt-reset, .lt-out")) {
+      const box = b.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) { schlecht.push({ cls: b.className, deckt: "(keine Flaeche — abgeschnitten)" }); continue; }
+      geprueft += 1;
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      if (!(b === hit || b.contains(hit))) schlecht.push({ cls: b.className, deckt: hit ? String(hit.className || hit.tagName) : "(nichts)" });
+    }
+    return { geprueft, schlecht };
+  `);
+  const detail = r.schlecht.length === 0
+    ? `${r.geprueft} Bedienelemente treffen sich selbst (Ausgabebereich ${masse.scrollH} px in ${masse.clientH} px)${zusatz}`
+    : `${r.schlecht.map((x) => `${x.cls} → ${x.deckt}`).join(" · ")}${zusatz}`;
+  record(name, r.schlecht.length === 0 && r.geprueft > 0, detail);
+}
+
+/** B11 — Fehler 1 in seinem schmaleren Fenster: der Voll-Draw am ENDE eines Laufs.
+ *
+ *  Die Anmerkung ist waehrend eines Streams absichtlich NICHT gesperrt; der Nutzer tippt dort
+ *  die naechste Runde, waehrend er auf das Ergebnis wartet. `run()` schliesst mit einem
+ *  bedingungslosen `draw()` ab, und das ersetzte bis 2026-09-08 das Feld unter dem Cursor.
+ *  Einmal je Lauf statt bei jedem Tastendruck — und in dem Moment, in dem niemand hinsieht.
+ *
+ *  Gemessen in der B10-Form: Mutation getrennt, danach ein Fenster auf den NEGATIVEN Zustand.
+ *  Die Mutation laeuft WAEHREND des Streams, gemessen wird NACH seinem Ende. Nummer nach
+ *  Fehlerbild (B10s Zwilling), Ort nach Abhaengigkeit — ohne echten Lauf ist er nicht messbar.
+ *  Der Rueckgabewert sagt, ob gemessen werden konnte. */
+async function tippeWaehrendDesLaufs(cdp: Cdp): Promise<boolean> {
+  return (await cdp.evaluate<{ ok: boolean }>(`
+    const el = document.querySelector(".lt-note");
+    if (!el) return { ok: false };
+    el.focus();
+    el.value = "";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    document.execCommand("insertText", false, "abc");
+    document.dispatchEvent(new Event("selectionchange"));
+    return { ok: true };
+  `)).ok;
+}
+
+async function messeB11(cdp: Cdp): Promise<void> {
+  const verloren = await pollUntil<{ aktiv: string }>(cdp, `
+    const a = document.activeElement;
+    if (a && a.matches(".lt-note")) return null;
+    return { aktiv: a ? (a.className || a.tagName) : "(null)" };
+  `, 1200, 100);
+  const stand = await cdp.evaluate<{ wert: string; aktiv: string }>(`
+    const el = document.querySelector(".lt-note");
+    const a = document.activeElement;
+    return { wert: el ? el.value : "(keine Textarea)", aktiv: a ? (a.className || a.tagName) : "(null)" };
+  `);
+  const gehalten = verloren === null && stand.aktiv.split(" ").includes("lt-note");
+  record("B11 Tippen ueberlebt das Ende eines Laufs", gehalten && stand.wert === "abc",
+    gehalten ? `value=${JSON.stringify(stand.wert)}, Fokus blieb nach dem Schluss-Draw in .lt-note`
+             : `value=${JSON.stringify(stand.wert)}, Fokus fiel auf ${JSON.stringify((verloren?.aktiv ?? stand.aktiv).slice(0, 60))}`);
+  await cdp.evaluate(`
+    const el = document.querySelector(".lt-note");
+    if (el) { el.value = ""; el.dispatchEvent(new Event("input", { bubbles: true })); el.blur(); }
+    return { ok: true };
+  `);
+}
+
+/** C10 — Zuruecksetzen fragt nach, wenn Runden existieren, und raeumt danach wirklich. */
+async function pruefeZuruecksetzen(cdp: Cdp): Promise<void> {
+  const vor = await cdp.evaluate<{ reset: number; runden: number; vorschau: number }>(`
+    return {
+      reset: document.querySelectorAll(".lt-reset").length,
+      runden: app.workspace.getLeavesOfType(${q(VIEW_TYPE)})[0].view.session.rounds.length,
+      vorschau: (document.querySelector(".lt-preview") || { textContent: "" }).textContent.trim().length,
+    };
+  `);
+  if (vor.reset !== 1 || vor.runden === 0) {
+    skipped("C10 Zuruecksetzen fragt nach und raeumt", `Vorbedingung fehlt: .lt-reset=${vor.reset}, Runden=${vor.runden} — ohne Runde gibt es keine Rueckfrage zu messen`);
+    return;
+  }
+  await clickReal(cdp, `document.querySelector(".lt-reset")`);
+  const modal = await pollUntil<{ ok: boolean }>(cdp, `return document.querySelector(".modal-button-container") ? { ok: true } : null;`, 5000, 200);
+  if (modal === null) {
+    record("C10 Zuruecksetzen fragt nach und raeumt", false, `kein Bestaetigungsdialog nach dem Klick — ${vor.runden} Runden waeren ungefragt weg gewesen`);
+    return;
+  }
+  await clickReal(cdp, `Array.from(document.querySelectorAll(".modal-button-container button")).at(-1)`);
+  const leer = await pollUntil<{ reset: number; runden: number; leerzustand: number }>(cdp, `
+    const v = app.workspace.getLeavesOfType(${q(VIEW_TYPE)})[0].view;
+    if (v.session.rounds.length !== 0) return null;
+    return {
+      reset: document.querySelectorAll(".lt-reset").length,
+      runden: v.session.rounds.length,
+      leerzustand: document.querySelectorAll(".lt-empty").length,
+    };
+  `, 5000, 250);
+  record("C10 Zuruecksetzen fragt nach und raeumt", leer !== null && leer.reset === 0 && leer.leerzustand === 1,
+    leer === null ? `Dialog bestaetigt, aber die Sitzung steht noch (${vor.runden} Runden)`
+                  : `Rueckfrage kam, danach 0 Runden, .lt-reset weg, Leerzustand da (vorher ${vor.runden} Runden, ${vor.vorschau} Zeichen)`);
 }
 
 async function pruefeLauf(cdp: Cdp): Promise<void> {
@@ -416,7 +557,8 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
   const vorher = (await cdp.evaluate<{ t: string }>(`return { t: await app.vault.read(app.vault.getAbstractFileByPath(${q(NOTE)})) };`)).t;
   let logbuchAn = false;
   let denkenAn = false;
-  let modellGesetzt: unknown = null;
+  let modellGeaendert = false;
+  let modellVorwert = "";
   try {
     // Das Fixture ueberlaesst die Modellwahl dem Server („Server waehlt das Modell", model: "").
     // Das traegt nur, solange dort GENAU EIN Modell geladen ist. Gemessen 2026-09-07, 23:2x:
@@ -431,7 +573,8 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
       const ids = await modelle();
       const gewaehlt = ids[0];
       if (gewaehlt !== undefined) {
-        modellGesetzt = "";
+        modellGeaendert = true;
+        modellVorwert = konfiguriert;
         await setPluginSetting(cdp, PLUGIN_ID, "model", gewaehlt);
         console.log(`  · Modell fuer diesen Lauf gesetzt: ${gewaehlt} (Einstellung war „Server waehlt", ${ids.length} Modelle geladen)`);
       }
@@ -465,7 +608,12 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
       record("C5 is-checking animiert", anim.a === "lt-spin", `animationName=${anim.a}`);
     }
 
+    // B11: WAEHREND des Streams in die Anmerkung tippen — gemessen wird nach dem Schluss-Draw.
+    const getippt = await tippeWaehrendDesLaufs(cdp);
+
     const done = await pollUntil<{ ok: boolean }>(cdp, `const s = document.querySelector(".lt-status"); return s && (s.classList.contains("is-ok") || s.classList.contains("is-error")) ? { ok: true } : null;`, 120_000, 1000);
+    if (getippt) await messeB11(cdp);
+    else skipped("B11 Tippen ueberlebt das Ende eines Laufs", "keine .lt-note im Panel — ohne Eingabefeld ist der Punkt gegenstandslos");
     const ok = done !== null && (await hasClass(cdp, ".lt-status", "is-ok"));
     const preview = (await text(cdp, ".lt-preview")) ?? "";
     record("C1 Stream liefert Ergebnis", ok && preview.length > 0, ok ? `${preview.length} Zeichen` : `Status: ${(await text(cdp, ".lt-status")) ?? "?"}`);
@@ -532,9 +680,12 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
     record("C4 Neue Notiz entsteht", neu !== null, neu?.p ?? "keine Datei mit (tuned)/(getunt)");
     if (neu !== null) await cdp.evaluate(`await app.vault.delete(app.vault.getAbstractFileByPath(${q(neu.p)})); return { ok: true };`);
 
-    // --- C8 zuletzt: der Lauf wird abgebrochen und hinterlaesst eine Teilrunde ----
+    // --- C8: der Lauf wird abgebrochen und hinterlaesst eine Teilrunde -----------
     denkenAn = true;
     await pruefeGedanken(cdp);
+
+    // --- C10 ganz zuletzt: er raeumt die Sitzung, alles danach saehe eine leere ---
+    await pruefeZuruecksetzen(cdp);
   } finally {
     // Der Lauf hinterlaesst nichts im Vault: Notiz zurueck, Logbuch weg, Einstellung zurueck.
     await cdp.evaluate(`await app.vault.modify(app.vault.getAbstractFileByPath(${q(NOTE)}), ${q(vorher)}); return { ok: true };`).catch(() => null);
@@ -545,7 +696,7 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
     `).catch(() => null);
     if (logbuchAn) await setPluginSetting(cdp, PLUGIN_ID, "logbookEnabled", false).catch(() => null);
     if (denkenAn) await setPluginSetting(cdp, PLUGIN_ID, "suppressThinking", true).catch(() => null);
-    if (modellGesetzt !== null) await setPluginSetting(cdp, PLUGIN_ID, "model", modellGesetzt).catch(() => null);
+    if (modellGeaendert) await setPluginSetting(cdp, PLUGIN_ID, "model", modellVorwert).catch(() => null);
   }
 }
 
