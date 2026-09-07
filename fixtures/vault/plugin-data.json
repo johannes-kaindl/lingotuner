@@ -1,0 +1,1 @@
+{ "endpoints": [{ "url": "http://127.0.0.1:1234" }], "model": "", "suppressThinking": true, "timeoutSec": 60, "overrideFolder": "", "userPresets": [], "lastDials": { "directness": 0, "context": 0, "social": 0, "semantics": 0 }, "logbookEnabled": false, "logbookFolder": "LingoTuner", "newNoteFolder": "" }
