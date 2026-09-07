@@ -21,13 +21,16 @@
   npm run lab:tune -- --model qwen/qwen3.6-35b-a3b --lang en --runs 1
   ```
   Dazu zwei gezielte Nachläufe (`--dim directness`, `--dim context`, je
-  `--runs 2`), weil im ersten DE-Durchlauf vier von 32 Aufrufen mit
+  `--runs 2`), weil im ersten DE-Durchlauf sechs von 32 Aufrufen mit
   `HTTP 400 "Failed to load model … Operation canceled"` bzw.
-  `"Model unloaded."` scheiterten (directness:2 beide Läufe, context:-2 beide
-  Läufe, context:-1 beide Läufe). Die Nachläufe liefen erfolgreich bis auf
-  einen einzelnen Ausreißer (directness:-2, Lauf #1 im Nachlauf), der beim
-  ursprünglichen Lauf bereits sauber gemessen war — die Werte unten stammen
-  aus dem jeweils vollständig erfolgreichen Durchgang je Fall.
+  `"Model unloaded."` scheiterten — jeweils **beide** Läufe (#1 und #2) bei
+  drei Fällen: `directness:2` (beide), `context:-2` (beide), `context:-1`
+  (beide). Alle anderen Fälle im ersten Durchlauf liefen bei #1 und #2 sauber
+  durch. Die Nachläufe liefen erfolgreich bis auf einen einzelnen Ausreißer
+  (`directness:-2`, Lauf #1 im Nachlauf — dieser Fall war im ursprünglichen
+  Durchlauf gar nicht betroffen und bereits dort sauber gemessen) — die
+  Werte unten stammen aus dem jeweils vollständig erfolgreichen Durchgang je
+  Fall.
 
 ### Reasoning-Herkunft
 
@@ -50,11 +53,12 @@ erwartungsgemäß: das Skript unterdrückt Denken per Default.
 - **Englisch, warmes Modell, `--runs 1`:** Median über 16 Aufrufe **461 ms** —
   deckungsgleich mit dem deutschen Median bei warmem Modell.
 - **Kaltes/entladenes Modell:** zwei Aufrufe brauchten 7,7–9,6 s, weil LM
-  Studio das Modell zwischenzeitlich entladen hatte (JIT-Reload). Vier
-  weitere Aufrufe scheiterten in dem Fenster ganz (HTTP 400). Das ist eine
-  Eigenschaft von LM Studios Modell-Verwaltung, nicht des Skripts oder des
-  Prompts — festgehalten, weil es die Baseline für "der erste Aufruf nach
-  einer Pause kann scheitern oder lange dauern" liefert.
+  Studio das Modell zwischenzeitlich entladen hatte (JIT-Reload). Sechs
+  weitere Aufrufe scheiterten in dem Fenster ganz (HTTP 400) — jeweils beide
+  Läufe bei `directness:2`, `context:-2` und `context:-1` (s. o.). Das ist
+  eine Eigenschaft von LM Studios Modell-Verwaltung, nicht des Skripts oder
+  des Prompts — festgehalten, weil es die Baseline für "der erste Aufruf
+  nach einer Pause kann scheitern oder lange dauern" liefert.
 
 ### Beobachtungen je Dimension
 
