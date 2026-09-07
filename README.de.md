@@ -33,9 +33,15 @@ Neurodivergente und neurotypische Kommunikationsstile unterscheiden sich entlang
 
 ## Installation
 
-### Katalog (empfohlen, sobald das Repository öffentlich ist)
+### Katalog (empfohlen)
 
-Verteilt wird über den Katalog „Order from Traces“ für den [AnySource Sideloader](https://git.jkaindl.de/jkaindl/anysource-sideloader) — Katalog dort eintragen und LingoTuner aus der Liste installieren. Der Katalog-Eintrag kommt, sobald dieses Repository öffentlich ist; bis dahin gilt der manuelle Weg.
+**Über den [AnySource Sideloader](https://git.jkaindl.de/jkaindl/anysource-sideloader)**, der Plugins von jeder Git-Forge installiert und aktualisiert. Den Katalog „Order from Traces“ einmal unter **Einstellungen → AnySource Sideloader → Kataloge → Hinzufügen** eintragen:
+
+```
+https://git.jkaindl.de/jkaindl/obsidian-catalog/raw/branch/main/catalog.json
+```
+
+LingoTuner erscheint dann in der Plugin-Liste des Sideloaders und aktualisiert sich wie jedes andere Plugin; jeder Download wird per Prüfsumme verifiziert. Wer nur dieses eine Plugin ohne Katalog will, trägt stattdessen die Repository-URL als Quelle ein: `https://git.jkaindl.de/jkaindl/lingotuner`.
 
 ### Manuell
 

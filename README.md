@@ -33,9 +33,15 @@ Neurodivergent and neurotypical communication styles differ along a few well-des
 
 ## Install
 
-### Catalog (recommended, once the repository is public)
+### Catalog (recommended)
 
-The plugin is distributed through the Order from Traces catalog for [AnySource Sideloader](https://git.jkaindl.de/jkaindl/anysource-sideloader) — add the catalog there and install LingoTuner from the list. The catalog entry is added as soon as this repository is public; until then use the manual route below.
+**Via [AnySource Sideloader](https://git.jkaindl.de/jkaindl/anysource-sideloader)**, which installs and updates plugins from any git forge. Subscribe to the Order from Traces catalog once under **Settings → AnySource Sideloader → Catalogs → Add**:
+
+```
+https://git.jkaindl.de/jkaindl/obsidian-catalog/raw/branch/main/catalog.json
+```
+
+LingoTuner then appears in the sideloader's plugin list and updates like any other plugin; every download is checksum-verified. To install just this one plugin without the catalog, add its repository URL as a source instead: `https://git.jkaindl.de/jkaindl/lingotuner`.
 
 ### Manual
 
