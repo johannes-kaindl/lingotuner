@@ -39,7 +39,7 @@ Verteilt wird über den Katalog „Order from Traces“ für den [AnySource Side
 
 ### Manuell
 
-`main.js`, `manifest.json` und `styles.css` aus dem [letzten Release](https://git.jkaindl.de/jkaindl/lingotuner/releases) (oder das Bündel `lingotuner-<version>.zip`, das genau diese drei Dateien enthält) nach `<vault>/.obsidian/plugins/lingotuner/` legen und das Plugin unter **Einstellungen → Community-Plugins** aktivieren.
+`main.js`, `manifest.json` und `styles.css` aus dem [letzten Release](https://git.jkaindl.de/jkaindl/lingotuner/releases) (oder das Bündel `lingotuner.zip`, das genau diese drei Dateien enthält) nach `<vault>/.obsidian/plugins/lingotuner/` legen und das Plugin unter **Einstellungen → Community-Plugins** aktivieren.
 
 ### Aus dem Quellcode
 

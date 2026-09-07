@@ -39,7 +39,7 @@ The plugin is distributed through the Order from Traces catalog for [AnySource S
 
 ### Manual
 
-Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://git.jkaindl.de/jkaindl/lingotuner/releases) (or the `lingotuner-<version>.zip` bundle, which contains exactly those three files) into `<vault>/.obsidian/plugins/lingotuner/`, then enable the plugin under **Settings → Community plugins**.
+Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://git.jkaindl.de/jkaindl/lingotuner/releases) (or the `lingotuner.zip` bundle, which contains exactly those three files) into `<vault>/.obsidian/plugins/lingotuner/`, then enable the plugin under **Settings → Community plugins**.
 
 ### From source
 
