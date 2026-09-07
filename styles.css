@@ -68,3 +68,54 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+
+.lt-panel { display: flex; flex-direction: column; gap: var(--size-4-2); padding: var(--size-4-3) var(--size-4-4) var(--size-4-6); }
+.lt-label { color: var(--text-muted); font-size: var(--font-ui-small); }
+
+/* Quellen- und Preset-Chips: Zustand ueber Form (gefuellter Hintergrund) + aria-pressed, nicht nur Farbe. */
+.lt-sources, .lt-presets { display: flex; flex-wrap: wrap; gap: var(--size-2-2); align-items: center; }
+.lt-source-chip, .lt-preset-chip { font-size: var(--font-ui-small); padding: var(--size-2-1) var(--size-4-2); border-radius: var(--radius-s); background: var(--background-secondary); color: var(--text-muted); }
+.lt-source-chip.is-active, .lt-preset-chip.is-active { background: var(--interactive-accent); color: var(--text-on-accent); font-weight: var(--font-semibold); }
+.lt-preset-custom { color: var(--text-faint); font-size: var(--font-ui-smaller); }
+.lt-source-line { font-size: var(--font-ui-small); color: var(--text-muted); }
+.lt-source-line.is-blocked { color: var(--text-error); }
+.lt-freetext, .lt-note { width: 100%; font-size: var(--font-ui-small); resize: vertical; }
+
+.lt-dials { display: flex; flex-direction: column; gap: var(--size-4-2); }
+.lt-dial-head { display: flex; justify-content: space-between; font-size: var(--font-ui-small); }
+.lt-dial-name { color: var(--text-normal); }
+.lt-dial-level { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.lt-dial-line { display: flex; align-items: center; gap: var(--size-4-2); }
+.lt-dial-pole { color: var(--text-faint); font-size: var(--font-ui-smaller); min-width: 5em; }
+.lt-dial-pole:last-child { text-align: right; }
+.lt-dial-input { flex: 1 1 auto; min-width: 0; }
+
+.lt-run-row { display: flex; flex-wrap: wrap; gap: var(--size-2-2); align-items: center; }
+.lt-run:disabled, .lt-refine:disabled, .lt-out:disabled { opacity: 0.4; cursor: not-allowed; }
+.lt-model { flex: 1 1 8em; min-width: 0; font-size: var(--font-ui-small); }
+.lt-think { display: inline-flex; gap: var(--size-2-1); align-items: center; font-size: var(--font-ui-small); }
+.lt-think.is-off { color: var(--text-muted); }
+.lt-think[aria-disabled="true"] { opacity: 0.6; cursor: default; }
+
+/* §8 Status-Indikator: Form UND Farbe UND Klasse; is-checking dreht sich. */
+.lt-status { display: flex; gap: var(--size-2-2); align-items: center; font-size: var(--font-ui-small); color: var(--text-muted); }
+.lt-status-icon svg { width: 14px; height: 14px; }
+.lt-status.is-ok .lt-status-icon { color: var(--text-success); }
+.lt-status.is-error .lt-status-icon { color: var(--text-error); }
+.lt-status.is-warning .lt-status-icon { color: var(--text-accent); }
+.lt-status.is-checking .lt-status-icon svg { animation: lt-spin 1.2s linear infinite; }
+@keyframes lt-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .lt-status.is-checking .lt-status-icon svg { animation: none; } }
+
+.lt-preview { border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); padding: var(--size-4-2) var(--size-4-3); min-height: 6em; }
+.lt-preview-tail { white-space: pre-wrap; color: var(--text-muted); }
+.lt-empty { color: var(--text-faint); font-size: var(--font-ui-small); }
+.lt-warning { color: var(--text-error); font-size: var(--font-ui-small); }
+.lt-reasoning summary { font-size: var(--font-ui-small); color: var(--text-muted); cursor: pointer; }
+.lt-reasoning pre { font-size: var(--font-ui-smaller); white-space: pre-wrap; }
+
+.lt-history { display: flex; flex-direction: column; gap: var(--size-2-1); }
+.lt-history-row { text-align: left; font-size: var(--font-ui-smaller); background: var(--background-secondary); color: var(--text-muted); }
+.lt-history-row.is-active { background: var(--background-modifier-hover); color: var(--text-normal); font-weight: var(--font-semibold); }
+
+.lt-outputs { display: flex; flex-wrap: wrap; gap: var(--size-2-2); }
