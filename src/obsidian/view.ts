@@ -1,11 +1,11 @@
 import { Component, ItemView, MarkdownRenderer, Modal, Setting, type App, type WorkspaceLeaf } from "obsidian";
-import { DIMENSIONS, isNoop, levelKey, presetFor, type Dials, type Dimension, type Level, type Preset } from "../core/dials";
+import { isNoop, presetFor, type Dials, type Dimension, type Level, type Preset } from "../core/dials";
 import { EMPTY_SESSION, activeRound, addRound, rootInput, rootSourceName, selectRound, type Session } from "../core/session";
 import { type Readiness, type SourceKind } from "../core/source";
 import { splitStable } from "../core/stream-blocks";
 import { errorMessageKey } from "../core/llm/errors";
 import type { TuneResult } from "../core/llm/client";
-import { renderPanel, type PanelHandlers, type PanelModel, type PanelParts, type RunPhase } from "./view-render";
+import { createReasoningBlock, patchPanel, renderPanel, structureKey, type PanelHandlers, type PanelModel, type PanelParts, type RunPhase } from "./view-render";
 import { t } from "../vendor/kit/i18n";
 
 export const VIEW_TYPE_LINGOTUNER = "lingotuner-panel";
@@ -67,6 +67,8 @@ export class LingoTunerView extends ItemView {
   private controller: AbortController | null = null;
   private mdComp: Component | null = null;
   private streamStableLen = 0;
+  /** Strukturschluessel des zuletzt VOLL gezeichneten Stands (`structureKey`). */
+  private struct = "";
 
   constructor(leaf: WorkspaceLeaf, private readonly deps: ViewDeps) { super(leaf); }
 
@@ -78,7 +80,7 @@ export class LingoTunerView extends ItemView {
     this.draw();
     // Die Modell-Liste kommt asynchron und darf einen laufenden Stream NICHT neu zeichnen —
     // ein Voll-Draw mitten im Stream reisst die Vorschau ab. Merken, zeichnen beim naechsten Draw.
-    void this.deps.listModels().then((m) => { this.models = m; if (this.phase === "streaming") return; this.draw(); });
+    void this.deps.listModels().then((m) => { this.models = m; this.softDraw(); });
     return Promise.resolve();
   }
 
@@ -89,11 +91,10 @@ export class LingoTunerView extends ItemView {
     return Promise.resolve();
   }
 
-  /** Vom Plugin gerufen, wenn sich Markierung/Notiz geaendert haben. Nie waehrend eines Streams. */
-  refresh(): void {
-    if (this.phase === "streaming") return;
-    this.draw();
-  }
+  /** Vom Plugin gerufen, wenn sich Markierung/Notiz geaendert haben. Zeichnet NIE voll,
+   *  solange der Fokus im Panel liegt — das war Fehler 1: jede Cursorbewegung in der
+   *  Textarea feuert `selectionchange`, und ein Voll-Draw baute das Feld unter dem Cursor neu. */
+  refresh(): void { this.softDraw(); }
 
   private model(): PanelModel {
     const dials = this.deps.getDials();
@@ -116,17 +117,33 @@ export class LingoTunerView extends ItemView {
   private handlers(): PanelHandlers {
     return {
       onSource: (k) => { this.source = k; this.draw(); },
-      onFreeText: (v) => { this.freeText = v; this.drawSoft(); },
-      onDial: (dim: Dimension, level: Level) => { this.deps.setDials({ ...this.deps.getDials(), [dim]: level }); this.drawSoft(); },
+      onFreeText: (v) => { this.freeText = v; this.softDraw(); },
+      onDial: (dim: Dimension, level: Level) => { this.deps.setDials({ ...this.deps.getDials(), [dim]: level }); this.softDraw(); },
       onPreset: (id) => {
         const p = this.deps.presets().find((x) => x.id === id);
         if (p) { this.deps.setDials({ ...p.dials }); this.draw(); }
       },
       onSavePreset: () => { new PresetNameModal(this.app, (name) => { this.deps.savePreset(name, this.deps.getDials()); this.draw(); }).open(); },
-      onNote: (v) => { this.note = v; this.drawSoft(); },
+      onNote: (v) => { this.note = v; this.softDraw(); },
       onTune: () => { void this.run(null); },
       onRefine: () => { void this.run(this.session.active); },
       onAbort: () => { this.controller?.abort(); },
+      onReset: () => {
+        // Erst abbrechen, dann raeumen: ein laufender Stream schriebe sonst in eine Vorschau,
+        // die es nicht mehr gibt. `controller = null` laesst `run()` sein Ergebnis verwerfen.
+        this.controller?.abort();
+        this.controller = null;
+        this.session = EMPTY_SESSION;
+        this.preview = "";
+        this.reasoning = "";
+        this.reasoningOpen = false;
+        this.note = "";
+        this.freeText = "";
+        this.truncated = false;
+        this.phase = "idle";
+        this.statusText = t("status.idle");
+        this.draw();
+      },
       onSelectRound: (i) => {
         this.session = selectRound(this.session, i);
         const r = activeRound(this.session);
@@ -155,37 +172,35 @@ export class LingoTunerView extends ItemView {
     };
   }
 
-  /** Voll-Draw: zieht Eingabefelder unter dem Cursor weg — nur, wenn sich Struktur aendert. */
+  /** Liegt der Fokus IM Panel? Dann ist ein Voll-Draw verboten: er baut das Element unter
+   *  dem Cursor neu, und Tippen bzw. ein gegriffener Regler bricht ab (Fehler 1). */
+  private focusInPanel(): boolean {
+    const el = activeDocument.activeElement;
+    return el !== null && this.contentEl.contains(el);
+  }
+
+  /** Voll-Draw: baut das Panel neu auf. Zieht Eingabefelder unter dem Cursor weg — deshalb
+   *  nur ueber `softDraw()` oder aus einer Aktion, die den Fokus ohnehin verliert. */
   private draw(): void {
     if (this.mdComp !== null) this.removeChild(this.mdComp);
     this.mdComp = this.addChild(new Component());
-    this.parts = renderPanel(this.contentEl, this.model(), this.handlers());
+    const m = this.model();
+    this.parts = renderPanel(this.contentEl, m, this.handlers());
+    this.struct = structureKey(m);
     this.streamStableLen = 0;
-    if (this.preview !== "") void this.renderInto(this.parts.previewEl, this.preview, true);
+    if (this.preview !== "") void this.renderInto(this.parts.bodyEl, this.preview, true);
   }
 
-  /** Teil-Draw fuer Tipp-Ereignisse: nur Stufennamen, Preset-Markierung und Knopf-Zustand.
-   *  Einfachste korrekte Form in 0.1: Voll-Draw NUR, wenn sich der Knopf-Zustand aendert.
-   *  Waehrend eines laufenden Streams NIE Voll-Draw — das raesse die Vorschau ab (Fix 1b). */
-  private drawSoft(): void {
+  /** Der Weg fuer alles Beilaeufige (Tippen, Reglerzug, Auswahlwechsel im Editor, spaet
+   *  eintreffende Modell-Liste): in place patchen. Voll gezeichnet wird nur bei einem
+   *  STRUKTURwechsel — und auch dann nicht, solange ein Stream laeuft oder der Fokus im
+   *  Panel liegt. */
+  private softDraw(): void {
     const m = this.model();
-    const updateLevels = (): void => {
-      this.contentEl.querySelectorAll<HTMLElement>(".lt-dial").forEach((row, i) => {
-        const dim = DIMENSIONS[i];
-        row.querySelector(".lt-dial-level")?.setText(t(levelKey(dim, m.dials[dim])));
-      });
-    };
-    if (m.phase === "streaming") { updateLevels(); return; }
-    const noop = isNoop(m.dials, m.note);
-    const run = this.contentEl.querySelector<HTMLButtonElement>(".lt-run");
-    const refine = this.contentEl.querySelector<HTMLButtonElement>(".lt-refine");
-    const runShouldDisable = m.readiness.kind !== "ready" || noop;
-    const refineShouldDisable = noop;
-    const presetChanged = this.contentEl.dataset.preset !== (m.presetId ?? "");
-    if (run !== null && run.disabled !== runShouldDisable) { this.draw(); return; }
-    if (refine !== null && refine.disabled !== refineShouldDisable) { this.draw(); return; }
-    if (presetChanged) { this.draw(); return; }
-    updateLevels();
+    const strukturell = structureKey(m) !== this.struct;
+    const gesperrt = m.phase === "streaming" || this.focusInPanel();
+    if (strukturell && !gesperrt) { this.draw(); return; }
+    patchPanel(this.contentEl, m);
   }
 
   private renderInto(el: HTMLElement, md: string, clear: boolean): Promise<void> {
@@ -218,10 +233,12 @@ export class LingoTunerView extends ItemView {
     this.draw();
     const initial = this.parts;
     if (initial === null) return;
-    initial.previewEl.empty();
-    const tail = initial.previewEl.createDiv({ cls: "lt-preview-tail" });
-    initial.tailEl = tail;
+    // Nur den Antwort-Bereich leeren, nicht den Scroll-Bereich: der Gedanken-Block sitzt
+    // daneben und darf nicht mit weggeraeumt werden.
+    initial.bodyEl.empty();
+    initial.tailEl = initial.bodyEl.createDiv({ cls: "lt-preview-tail" });
 
+    // uebernommen aus koda-agent/src/obsidian/view.ts (streamToken), 2026-09-07
     const onToken = (tk: string): void => {
       if (this.controller !== ctrl) return;
       const parts = this.parts;
@@ -231,13 +248,31 @@ export class LingoTunerView extends ItemView {
       if (stable.length > this.streamStableLen) {
         const fresh = stable.slice(this.streamStableLen);
         this.streamStableLen = stable.length;
-        const block = parts.previewEl.createDiv({ cls: "lt-stream-block" });
+        const block = parts.bodyEl.createDiv({ cls: "lt-stream-block" });
         void this.renderInto(block, fresh, false);
-        parts.previewEl.appendChild(parts.tailEl);
+        // Der laufende Absatz gehoert immer ans Ende.
+        parts.bodyEl.appendChild(parts.tailEl);
       }
       parts.tailEl.setText(rest);
+      parts.previewEl.scrollTo({ top: parts.previewEl.scrollHeight });
     };
-    const onReasoning = (tk: string): void => { if (this.controller === ctrl) this.reasoning += tk; };
+    // uebernommen aus koda-agent/src/obsidian/view.ts (streamReasoning), 2026-09-07 —
+    // der Block entsteht beim ERSTEN Gedanken-Token und waechst per setText, statt erst
+    // beim Schluss-Draw aufzutauchen (Fehler 3).
+    const onReasoning = (tk: string): void => {
+      if (this.controller !== ctrl) return;
+      this.reasoning += tk;
+      const parts = this.parts;
+      if (parts === null) return;
+      if (parts.reasoningEl === null) {
+        this.reasoningOpen = true;
+        parts.reasoningEl = createReasoningBlock(parts.previewEl, true, "", (open) => { this.reasoningOpen = open; });
+        // Der Block gehoert VOR die Antwort — `createEl` haengt hinten an.
+        parts.previewEl.insertBefore(parts.reasoningEl.parentElement ?? parts.reasoningEl, parts.bodyEl);
+      }
+      parts.reasoningEl.setText(parts.reasoningEl.getText() + tk);
+      parts.previewEl.scrollTo({ top: parts.previewEl.scrollHeight });
+    };
 
     let result: TuneResult;
     try {

@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- The text field can be typed into again: a caret move inside the panel no longer redraws it, so the field under the cursor survives (it was rebuilt on every `selectionchange`, which took the focus away immediately).
+- Long output stays inside its own scrolling preview box instead of running on top of the four output buttons; the action bar now sits below it and keeps its place.
+- Model reasoning is streamed into an open block as it arrives, above the answer, instead of appearing only once the run has finished.
+- A "Reset" button clears session, preview, reasoning, note and text field and cancels a running stream; it appears as soon as there is something to reset.
 - The run timeout is now cleared by the first token of any kind, so a reasoning model that thinks for a while before answering is no longer cut off.
 - A new note made from a text-field run is named with a date stamp instead of whatever note happened to be selected; a run from a note keeps that note's name through every refine round.
 - The active endpoint is resolved once at load, so the settings list marks the active row before the first run instead of after it.

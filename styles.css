@@ -69,7 +69,30 @@
   min-width: 0;
 }
 
-.lt-panel { display: flex; flex-direction: column; gap: var(--size-4-2); padding: var(--size-4-3) var(--size-4-4) var(--size-4-6); }
+/* Layout-Vertrag des Panels (Muster aus koda-agent/styles.css: .koda-root/.koda-log):
+   Das Panel selbst scrollt NICHT — es teilt seine feste Hoehe auf. Genau EIN Bereich waechst
+   und scrollt (.lt-preview), die Aktionsleiste steht unterhalb und behaelt ihre Inhaltshoehe.
+
+   Warum das noetig war (gemessen 2026-09-07, Zweitinstanz :9341): `.lt-panel` ist `contentEl`
+   und damit ein Flex-Container mit FESTER Hoehe. Flex-Kinder schrumpfen per Default unter ihre
+   Inhaltshoehe; `.lt-preview` blieb dadurch bei clientHeight=116 px stehen, waehrend
+   scrollHeight=2734 px betrug — und weil `overflow` auf `visible` stand, lief der Text
+   2609 px WEIT ueber die Ausgangsknoepfe hinweg. Die Knoepfe standen mitten im Text. */
+.lt-panel { display: flex; flex-direction: column; gap: var(--size-4-2); padding: var(--size-4-3) var(--size-4-4) var(--size-4-6); height: 100%; overflow: hidden; }
+/* Bedienelemente: behalten ihre Hoehe, solange Platz ist, und scrollen selbst, wenn nicht —
+   `min-height: 0` ist Pflicht, sonst schrumpft ein Flex-Kind nie unter seinen Inhalt. */
+.lt-controls { display: flex; flex-direction: column; gap: var(--size-4-2); flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+/* Die Kinder darin schrumpfen NICHT mit: sonst quetscht der Block die Textarea zusammen —
+   gemessen 2026-09-07 war das mit `rows="6"` angeforderte Textfeld auf einen Streifen von
+   einer halben Zeile eingedampft, in dem der eigene Text unlesbar war. Zu wenig Platz gehoert
+   in den Rollbalken des Blocks, nicht in die Hoehe der Felder. */
+.lt-controls > * { flex: 0 0 auto; }
+/* Solange kein Ergebnis da ist, gehoert der Platz den Bedienelementen. Sobald eines entsteht
+   (auch waehrend des Streams), teilt sich das Panel: die Vorschau bekommt gut die Haelfte,
+   die Bedienelemente rollen dann in sich. Ohne diesen Deckel blieb die Vorschau bei 88 px —
+   drei Zeilen fuer ein 2800-Zeichen-Ergebnis. */
+.lt-panel[data-output="1"] .lt-controls { max-height: 55%; }
+.lt-status, .lt-warning, .lt-history, .lt-outputs { flex: 0 0 auto; }
 .lt-label { color: var(--text-muted); font-size: var(--font-ui-small); }
 
 /* Quellen- und Preset-Chips: Zustand ueber Form (gefuellter Hintergrund) + aria-pressed, nicht nur Farbe. */
@@ -93,7 +116,7 @@
 .lt-run-row { display: flex; flex-wrap: wrap; gap: var(--size-2-2); align-items: center; }
 /* Gesperrter Zustand fuer JEDES Bedienelement, das renderPanel waehrend eines Streams auf
    disabled setzt — sonst sieht ein gesperrter Chip aus wie ein anklickbarer. */
-.lt-run:disabled, .lt-refine:disabled, .lt-out:disabled,
+.lt-run:disabled, .lt-refine:disabled, .lt-reset:disabled, .lt-out:disabled,
 .lt-source-chip:disabled, .lt-preset-chip:disabled, .lt-preset-save:disabled,
 .lt-history-row:disabled, .lt-model:disabled, .lt-model-refresh:disabled,
 .lt-think:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -112,15 +135,24 @@
 @keyframes lt-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .lt-status.is-checking .lt-status-icon svg { animation: none; } }
 
-.lt-preview { border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); padding: var(--size-4-2) var(--size-4-3); min-height: 6em; }
+/* `flex: 1 1 0` statt `1 1 auto`: mit Basis `auto` zaehlt die INHALTShoehe der Vorschau in die
+   Schrumpf-Rechnung, und ein langes Ergebnis quetschte dann die Bedienelemente darueber
+   zusammen (Regler und Textarea auf wenige Pixel). Mit Basis 0 bekommt die Vorschau schlicht
+   den Rest — und scrollt selbst. */
+.lt-preview { border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); padding: var(--size-4-2) var(--size-4-3); flex: 1 1 0; min-height: 6em; overflow-y: auto; }
 .lt-preview-tail { white-space: pre-wrap; color: var(--text-muted); }
 .lt-empty { color: var(--text-faint); font-size: var(--font-ui-small); }
 /* Abschneiden am Token-Limit ist eine Warnung, kein Fehler — das Ergebnis ist da, nur unvollstaendig. */
 .lt-warning { color: var(--text-warning); font-size: var(--font-ui-small); }
+/* Der Gedanken-Block sitzt IM Scroll-Bereich, oberhalb der Antwort — dieselbe Reihenfolge, in
+   der die Token ankommen. Er waechst waehrend des Streams mit (koda-agent-Muster). */
+.lt-reasoning { border-bottom: 1px solid var(--background-modifier-border); margin-bottom: var(--size-4-2); padding-bottom: var(--size-4-1); }
 .lt-reasoning summary { font-size: var(--font-ui-small); color: var(--text-muted); cursor: pointer; }
-.lt-reasoning pre { font-size: var(--font-ui-smaller); white-space: pre-wrap; }
+.lt-reasoning pre { font-size: var(--font-ui-smaller); white-space: pre-wrap; color: var(--text-muted); margin: var(--size-4-1) 0 0 0; }
 
-.lt-history { display: flex; flex-direction: column; gap: var(--size-2-1); }
+/* Der Verlauf steht fest unter der Vorschau; ab vielen Runden scrollt er in sich, statt der
+   Vorschau ihren Platz zu nehmen. */
+.lt-history { display: flex; flex-direction: column; gap: var(--size-2-1); max-height: 20vh; overflow-y: auto; }
 .lt-history-row { text-align: left; font-size: var(--font-ui-smaller); background: var(--background-secondary); color: var(--text-muted); }
 .lt-history-row.is-active { background: var(--background-modifier-hover); color: var(--text-normal); font-weight: var(--font-semibold); }
 
@@ -134,5 +166,7 @@
      .lt-out-*         — die vier Ausgangsknoepfe werden einzeln adressiert (GUI-Smoke, Tests).
      .lt-stream-block  — je stabil gewordener Markdown-Block waehrend des Streams; die Grenze
                          zwischen fertig gerendert und rohem Schwanz (.lt-preview-tail).
+     .lt-preview-body  — Ziel fuer Markdown und Stream-Bloecke INNERHALB des Scroll-Bereichs;
+                         eigenes Element, damit ein empty() den Gedanken-Block nicht mitnimmt.
      .lt-note-row      — Traeger der Anmerkungszeile, Layout kommt von .lt-label/.lt-note.
      .lt-status-label  — Textknoten des Status-Indikators, den paintStatus beschriftet. */

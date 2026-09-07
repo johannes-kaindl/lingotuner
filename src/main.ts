@@ -86,6 +86,11 @@ export default class LingoTunerPlugin extends Plugin {
 
     // Mitschrift der Auswahl: ein Klick ins Panel nimmt dem Editor den Fokus — dann ist es zu spaet.
     this.registerDomEvent(activeDocument, "selectionchange", () => {
+      // Die Mitschrift gilt dem EDITOR. Jede Cursorbewegung in Textfeld oder Anmerkung feuert
+      // dieses Ereignis ebenfalls; ein `refresh()` darauf zog das Feld unter dem Cursor weg und
+      // machte das Textfeld unbeschreibbar (Fehler 1a). Im Panel gibt es nichts mitzuschreiben.
+      const aktiv = activeDocument.activeElement;
+      if (aktiv !== null && aktiv.closest(".lt-panel") !== null) return;
       if (this.selectionDebounce !== null) window.clearTimeout(this.selectionDebounce);
       this.selectionDebounce = window.setTimeout(() => {
         this.selectionDebounce = null;

@@ -39,6 +39,7 @@ export interface PanelHandlers {
   onTune(): void;
   onRefine(): void;
   onAbort(): void;
+  onReset(): void;
   onSelectRound(i: number): void;
   onModel(m: string): void;
   onRefreshModels(): void;
@@ -54,11 +55,23 @@ export interface PanelParts {
   statusEl: HTMLElement;
   statusIconEl: HTMLElement;
   statusLabelEl: HTMLElement;
+  /** Der SCROLLENDE Bereich (Rahmen, `overflow-y: auto`). Traegt den Gedanken-Block und `bodyEl`. */
   previewEl: HTMLElement;
+  /** Ziel fuer Markdown und Stream-Bloecke — NICHT `previewEl`: ein `empty()` auf dem
+   *  Scroll-Bereich raeumte den Gedanken-Block mit weg. */
+  bodyEl: HTMLElement;
   tailEl: HTMLElement;
+  /** Das `<pre>` im Gedanken-Block, `null` bis zum ersten Reasoning-Token. */
+  reasoningEl: HTMLElement | null;
 }
 
 type El = HTMLElement;
+
+/** Erster Treffer eines Selektors. Kein `querySelector`, weil der Obsidian-Mock der Tests
+ *  nur `querySelectorAll` kennt — und ein Patch, der im Test nicht laeuft, ist kein Patch. */
+function one<T extends HTMLElement>(root: El, sel: string): T | null {
+  return (root.querySelectorAll(sel)[0] as T | undefined) ?? null;
+}
 
 function readinessLine(r: Readiness, source: SourceKind): string {
   if (r.kind !== "ready") return t(readinessKey(r));
@@ -96,7 +109,11 @@ function presetRow(parent: El, m: PanelModel, h: PanelHandlers, busy: boolean): 
     b.disabled = busy;
     b.addEventListener("click", () => h.onPreset(p.id));
   }
-  if (m.presetId === null) row.createSpan({ text: t("preset.custom"), cls: "lt-preset-custom" });
+  // Der Marker ist ein FESTER Platzhalter, kein bedingtes Element: ein Reglerzug muss ihn
+  // umschalten koennen, ohne die Zeile neu zu bauen — sonst zieht er den gegriffenen Regler
+  // unter dem Zeiger weg (Fehler 1). Leer heisst „Preset getroffen"; ein leerer Span rendert
+  // nichts.
+  row.createSpan({ text: m.presetId === null ? t("preset.custom") : "", cls: "lt-preset-custom" });
   const save = row.createEl("button", { cls: "lt-preset-save clickable-icon" });
   setIcon(save, "save");
   save.setAttribute("aria-label", t("preset.save"));
@@ -153,6 +170,12 @@ function runRow(parent: El, m: PanelModel, h: PanelHandlers): void {
     const refine = row.createEl("button", { text: t("run.refine"), cls: "lt-refine" });
     refine.disabled = noop;
     refine.addEventListener("click", () => h.onRefine());
+  }
+  // Zuruecksetzen erscheint, sobald es etwas zurueckzusetzen GIBT — Runden oder eine Vorschau.
+  // Waehrend eines Streams bleibt er bedienbar: er bricht ab und raeumt in einem Zug.
+  if (hasRounds || m.preview !== "") {
+    const reset = row.createEl("button", { text: t("run.reset"), cls: "lt-reset" });
+    reset.addEventListener("click", () => h.onReset());
   }
 
   const select = row.createEl("select", { cls: "lt-model dropdown" });
@@ -241,31 +264,116 @@ function outputRow(parent: El, m: PanelModel, h: PanelHandlers): void {
   mk("lt-out-new-note", "out.newNote", hasResult, () => h.onNewNote());
 }
 
+/** Gedanken-Block anlegen und sein `<pre>` liefern.
+ *  uebernommen aus koda-agent/src/obsidian/view.ts (streamReasoning), 2026-09-07 — dort ein
+ *  `<details>` mit `<summary>`, dessen `<pre>` per `setText(getText() + tk)` waechst. Hier
+ *  ausgelagert, weil ihn ZWEI Wege brauchen: der erste Reasoning-Token waehrend des Streams
+ *  und der Schluss-Draw aus dem Modell.
+ *  `open` steht beim Anlegen offen — ein Gedanke, den man erst aufklappen muss, ist waehrend
+ *  des Streams unsichtbar und damit genau der gemeldete Fehler. */
+export function createReasoningBlock(parent: El, open: boolean, text: string, onToggle: (open: boolean) => void): HTMLElement {
+  const d = parent.createEl("details", { cls: "lt-reasoning" });
+  d.open = open;
+  d.createEl("summary", { text: t("preview.thinking") });
+  const pre = d.createEl("pre", { text });
+  d.addEventListener("toggle", () => onToggle(d.open));
+  return pre;
+}
+
+/** Steht (oder entsteht) ein Ergebnis? Steuert die Platzaufteilung im Panel: erst dann
+ *  bekommt die Vorschau ihren Anteil (`.lt-panel[data-output="1"]` in styles.css).
+ *  Der Stream zaehlt mit — sonst bliebe die Vorschau genau waehrend des Zusehens schmal. */
+function hasOutput(m: PanelModel): boolean {
+  return m.preview !== "" || m.phase === "streaming";
+}
+
+/** Was einen VOLL-Draw erzwingt. Alles andere ist ein Patch (`patchPanel`) — ein Voll-Draw
+ *  zieht jedes Eingabefeld unter dem Cursor weg und war die Ursache von Fehler 1. */
+export function structureKey(m: PanelModel): string {
+  return [
+    m.source, m.phase,
+    String(m.session.rounds.length), String(m.session.active),
+    m.models.join(""), m.model, String(m.suppressThinking),
+    m.presets.map((p) => p.id).join(""),
+    String(m.truncated),
+    m.preview === "" ? "0" : "1",
+    m.reasoning === "" ? "0" : "1",
+  ].join("");
+}
+
+/** Aktualisierung OHNE Neuaufbau — der einzige zulaessige Weg, solange der Fokus im Panel
+ *  liegt. Deckt genau das ab, was sich ohne Strukturwechsel aendern kann: Bereitschaftszeile,
+ *  Knopf-Sperren, Stufennamen, Preset-Markierung und die Ausgangsknoepfe. */
+export function patchPanel(root: El, m: PanelModel): void {
+  root.dataset.preset = m.presetId ?? "";
+  root.dataset.output = hasOutput(m) ? "1" : "0";
+  const busy = m.phase === "streaming";
+
+  const line = one(root, ".lt-source-line");
+  if (line !== null) {
+    line.setText(readinessLine(m.readiness, m.source));
+    line.toggleClass("is-blocked", m.readiness.kind !== "ready");
+  }
+
+  root.querySelectorAll<HTMLElement>(".lt-dial").forEach((row, i) => {
+    const dim = DIMENSIONS[i];
+    if (dim === undefined) return;
+    one(row, ".lt-dial-level")?.setText(t(levelKey(dim, m.dials[dim])));
+  });
+
+  root.querySelectorAll<HTMLButtonElement>(".lt-preset-chip").forEach((b, i) => {
+    const p = m.presets[i];
+    if (p === undefined) return;
+    b.toggleClass("is-active", m.presetId === p.id);
+    b.setAttribute("aria-pressed", String(m.presetId === p.id));
+  });
+  one(root, ".lt-preset-custom")?.setText(m.presetId === null ? t("preset.custom") : "");
+
+  const noop = isNoop(m.dials, m.note);
+  // Waehrend des Streams traegt `.lt-run` die Abbrechen-Rolle und darf NIE gesperrt werden.
+  const run = one<HTMLButtonElement>(root, ".lt-run");
+  if (run !== null && !busy) run.disabled = m.readiness.kind !== "ready" || noop;
+  const refine = one<HTMLButtonElement>(root, ".lt-refine");
+  if (refine !== null && !busy) refine.disabled = noop;
+
+  const hasResult = m.preview.trim() !== "" && (m.phase === "done" || m.phase === "aborted");
+  const setOut = (cls: string, enabled: boolean): void => {
+    const b = one<HTMLButtonElement>(root, cls);
+    if (b !== null) b.disabled = !enabled;
+  };
+  setOut(".lt-out-replace-selection", hasResult && m.canReplaceSelection);
+  setOut(".lt-out-replace-note", hasResult && m.canReplaceNote);
+  setOut(".lt-out-copy", hasResult);
+  setOut(".lt-out-new-note", hasResult);
+}
+
 export function renderPanel(root: El, m: PanelModel, h: PanelHandlers): PanelParts {
   root.empty();
   root.addClass("lt-panel");
   root.dataset.preset = m.presetId ?? "";
+  root.dataset.output = hasOutput(m) ? "1" : "0";
   const busy = m.phase === "streaming";
-  sourceRow(root, m, h, busy);
-  presetRow(root, m, h, busy);
-  dialRows(root, m, h);
-  noteRow(root, m, h);
-  runRow(root, m, h);
+  // Die Bedienelemente sitzen in einem eigenen Block: er darf schrumpfen und selbst scrollen,
+  // damit die Vorschau darunter ihren festen Anteil behaelt (Layout-Vertrag in styles.css).
+  const controls = root.createDiv({ cls: "lt-controls" });
+  sourceRow(controls, m, h, busy);
+  presetRow(controls, m, h, busy);
+  dialRows(controls, m, h);
+  noteRow(controls, m, h);
+  runRow(controls, m, h);
   const status = statusRow(root);
-  const previewEl = root.createDiv({ cls: "lt-preview markdown-rendered" });
-  const tailEl = previewEl.createDiv({ cls: "lt-preview-tail" });
-  if (m.preview === "" && m.phase === "idle") previewEl.createDiv({ cls: "lt-empty", text: t("preview.empty") });
+  const previewEl = root.createDiv({ cls: "lt-preview" });
+  // Gedanken zuerst, Antwort darunter — dieselbe Reihenfolge wie im Stream (koda-agent).
+  const reasoningEl = m.reasoning === ""
+    ? null
+    : createReasoningBlock(previewEl, m.reasoningOpen, m.reasoning, (open) => h.onToggleReasoning(open));
+  const bodyEl = previewEl.createDiv({ cls: "lt-preview-body markdown-rendered" });
+  const tailEl = bodyEl.createDiv({ cls: "lt-preview-tail" });
+  if (m.preview === "" && m.phase === "idle") bodyEl.createDiv({ cls: "lt-empty", text: t("preview.empty") });
   if (m.truncated) root.createDiv({ cls: "lt-warning", text: t("status.truncated") });
-  if (m.reasoning !== "") {
-    const d = root.createEl("details", { cls: "lt-reasoning" });
-    d.open = m.reasoningOpen;
-    d.createEl("summary", { text: t("preview.thinking") });
-    d.createEl("pre", { text: m.reasoning });
-    d.addEventListener("toggle", () => h.onToggleReasoning(d.open));
-  }
   historyList(root, m, h, busy);
   outputRow(root, m, h);
-  const parts: PanelParts = { ...status, previewEl, tailEl };
+  const parts: PanelParts = { ...status, previewEl, bodyEl, tailEl, reasoningEl };
   paintStatus(parts, m.phase, m.statusText);
   return parts;
 }

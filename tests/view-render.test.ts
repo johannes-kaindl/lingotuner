@@ -20,7 +20,7 @@ function model(over: Partial<PanelModel> = {}): PanelModel {
 
 function handlers(): PanelHandlers {
   const h: Record<string, ReturnType<typeof vi.fn>> = {};
-  for (const k of ["onSource","onFreeText","onDial","onPreset","onSavePreset","onNote","onTune","onRefine","onAbort","onSelectRound","onModel","onRefreshModels","onToggleThinking","onToggleReasoning","onReplaceSelection","onReplaceNote","onCopy","onNewNote"]) h[k] = vi.fn();
+  for (const k of ["onSource","onFreeText","onDial","onPreset","onSavePreset","onNote","onTune","onRefine","onAbort","onReset","onSelectRound","onModel","onRefreshModels","onToggleThinking","onToggleReasoning","onReplaceSelection","onReplaceNote","onCopy","onNewNote"]) h[k] = vi.fn();
   return h as unknown as PanelHandlers;
 }
 
