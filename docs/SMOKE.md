@@ -36,7 +36,9 @@ cp ~/Library/Application\ Support/obsidian/obsidian-1.14.0.asar "$UD"/
 PID=$!                       # merken — SO wird sie beendet, nie mit pkill/killall/quit app
 
 python3 ~/.claude/hooks/obsidian-cdp-lock.py acquire --label lingotuner \
-  --intent "GUI-Smoke Zweitinstanz :9341" --exclusive focus --ttl 300
+  --intent "GUI-Smoke Zweitinstanz :9341" --exclusive focus --ttl 1800
+# 1800 statt 300: Teil C fährt zwei echte LLM-Läufe (C8 mit Denken); mit 900 lief der Lock
+# am 2026-09-08 mitten im Lauf ab. Ein Lauf ohne erreichbaren Endpunkt (Teil C übersprungen) braucht 300.
 npm run smoke:gui -- --port 9341
 python3 ~/.claude/hooks/obsidian-cdp-lock.py release
 
