@@ -15,7 +15,15 @@ export function activeMarkdownView(workspace: Workspace): MarkdownView | null {
 
 export class SelectionTracker {
   private state: CaptureState = EMPTY_CAPTURE;
-  private editors = new Map<Capture, Editor>();
+  /** WeakMap statt Map, NIE neu zugewiesen und NIE geleert: ein frueher per `get()`
+   *  herausgereichtes Capture (z.B. das Panel waehrend eines 30-Sekunden-Streams) behaelt
+   *  seinen Editor auch dann, wenn ein spaeteres `capture()` (selectionchange,
+   *  active-leaf-change) die Karte fuer NEUE Captures weiterschreibt. Eintraege sterben mit
+   *  dem Capture-Objekt selbst (GC) statt mit dem naechsten `capture()`-Lauf. Fix-Runde 1,
+   *  Review-Befund: ein neu gebautes `Map` liess `isLive(altesCapture)` auf `false` fallen,
+   *  obwohl Editor/Datei/Modus unveraendert waren (vault-rag haengt den Editor direkt ans
+   *  Capture und hat das Problem nicht). */
+  private readonly editors = new WeakMap<Capture, Editor>();
 
   constructor(private readonly workspace: Workspace) {}
 
@@ -43,7 +51,6 @@ export class SelectionTracker {
       from: editor.getCursor("from"), to: editor.getCursor("to"),
     };
 
-    this.editors = new Map();
     this.editors.set(note, editor);
     if (selection !== null) this.editors.set(selection, editor);
     this.state = { selection, note, blocked: null };
@@ -51,7 +58,6 @@ export class SelectionTracker {
 
   private set(next: CaptureState): void {
     this.state = next;
-    this.editors = new Map();
   }
 
   get(): CaptureState { return this.state; }
@@ -100,9 +106,10 @@ export function replaceCapture(tracker: SelectionTracker, cap: Capture, text: st
 
 export async function createTunedNote(app: App, folder: string, baseName: string, text: string): Promise<TFile> {
   const dir = normalizePath(folder.trim());
-  if (dir !== "" && dir !== "/" && app.vault.getAbstractFileByPath(dir) === null) await app.vault.createFolder(dir);
+  const atRoot = dir === "" || dir === "/";
+  if (!atRoot && app.vault.getAbstractFileByPath(dir) === null) await app.vault.createFolder(dir);
   const stem = `${baseName} ${t("out.newNoteSuffix")}`;
-  const pathFor = (n: number): string => normalizePath(`${dir === "" ? "" : `${dir}/`}${stem}${n === 1 ? "" : ` ${n}`}.md`);
+  const pathFor = (n: number): string => normalizePath(`${atRoot ? "" : `${dir}/`}${stem}${n === 1 ? "" : ` ${n}`}.md`);
   let n = 1;
   while (app.vault.getAbstractFileByPath(pathFor(n)) !== null) n += 1;
   return app.vault.create(pathFor(n), text);

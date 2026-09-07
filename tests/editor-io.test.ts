@@ -59,6 +59,16 @@ describe("SelectionTracker", () => {
     s.view.file = new TFile("B/Andere.md", "md");
     expect(s.tracker.isLive(cap)).toBe(false);
   });
+
+  it("ein zweites capture() laesst ein aelteres Capture live, solange Editor, Datei und Modus gleich sind", () => {
+    const s = scene("alt");
+    s.tracker.capture();
+    const cap = s.tracker.get().note!;
+    s.tracker.capture();
+    expect(s.tracker.isLive(cap)).toBe(true);
+    expect(replaceCapture(s.tracker, cap, "neu")).toBe("ok");
+    expect(s.view.editor.getValue()).toBe("neu");
+  });
 });
 
 describe("replaceCapture", () => {
@@ -105,5 +115,18 @@ describe("createTunedNote", () => {
     expect(a.path).toBe("Out/Mail (tuned).md");
     expect(b.path).toBe("Out/Mail (tuned) 2.md");
     expect(files.get("Out/Mail (tuned) 2.md")).toBe("y");
+  });
+
+  it("legt bei leerem Ordner in der Vault-Wurzel an", async () => {
+    const files = new Map<string, string>();
+    const app = {
+      vault: {
+        getAbstractFileByPath: (p: string) => (files.has(p) ? {} : null),
+        createFolder: () => { throw new Error("darf bei Wurzel nicht gerufen werden"); },
+        create: (p: string, c: string) => { files.set(p, c); return Promise.resolve(new TFile(p, "md")); },
+      },
+    } as unknown as App;
+    const f = await createTunedNote(app, "", "Mail", "x");
+    expect(f.path).toBe("Mail (tuned).md");
   });
 });
