@@ -11,8 +11,7 @@ import type { EndpointRole } from "../vendor/kit/endpoint_config";
 import { clientFor } from "./http";
 import { writeShippedTexts } from "../core/examples/overrides";
 import { vaultOverrideWriter } from "./overrides-io";
-import { removeUserPreset } from "../core/settings";
-import { TIMEOUT_SEC_MIN } from "../core/settings";
+import { removeUserPreset, TIMEOUT_SEC_MIN } from "../core/settings";
 import { getLang } from "../vendor/kit/i18n";
 
 type ControlDef = { type: "text" | "toggle" | "number" | "folder"; key: string; placeholder?: string; min?: number };
@@ -170,13 +169,19 @@ export class LingoTunerSettingTab extends PluginSettingTab {
   private renderOverrideWrite(setting: Setting): void {
     setting.addButton((b) => b.setButtonText(t("set.overrideWrite")).onClick(() => {
       const folder = this.plugin.settings.overrideFolder.trim() || "LingoTuner";
-      void writeShippedTexts(vaultOverrideWriter(this.app), folder, getLang()).then((n) => {
-        new Notice(t("set.overrideWritten", String(n), folder));
-        if (this.plugin.settings.overrideFolder.trim() === "") {
-          this.plugin.settings.overrideFolder = folder;
-          void this.plugin.saveSettings().then(() => this.refreshUi());
-        }
-      });
+      b.buttonEl.disabled = true;
+      void writeShippedTexts(vaultOverrideWriter(this.app), folder, getLang())
+        .then((n) => {
+          new Notice(t("set.overrideWritten", String(n), folder));
+          if (this.plugin.settings.overrideFolder.trim() === "") {
+            this.plugin.settings.overrideFolder = folder;
+            void this.plugin.saveSettings().then(() => this.refreshUi());
+          }
+        })
+        .catch((e: unknown) => {
+          new Notice(t("set.overrideWriteFailed", e instanceof Error ? e.message : String(e)));
+        })
+        .finally(() => { b.buttonEl.disabled = false; });
     }));
   }
 
