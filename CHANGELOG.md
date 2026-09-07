@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-09-07
+
 ### Added
 
 - Four style dials, a note field, streaming preview, presets, round history, four outputs, provider API, llm-lab logging, logbook.
