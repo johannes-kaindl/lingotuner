@@ -433,13 +433,19 @@ async function pruefeUeberdeckung(cdp: Cdp): Promise<void> {
         const p = document.querySelector(".lt-preview");
         return { scrollH: p.scrollHeight, clientH: p.clientHeight };
       `);
-      await messeUeberdeckung(cdp, "C9b kein Bedienelement wird verdeckt (kurzes Panel, 420 px)", masse, ` · Panel ${kurz.hoehe} px`);
-      await cdp.evaluate(`
-        const leaf = document.querySelector(".lt-panel").closest(".workspace-leaf");
-        if (leaf) leaf.style.height = ${q(kurz.vorher)};
-        await new Promise((r) => setTimeout(r, 300));
-        return { ok: true };
-      `);
+      try {
+        await messeUeberdeckung(cdp, "C9b kein Bedienelement wird verdeckt (kurzes Panel, 420 px)", masse, ` · Panel ${kurz.hoehe} px`);
+      } finally {
+        // Die Leaf-Hoehe ist Zustand der Zweitinstanz, nicht des Pruefpunkts: sie wird auch
+        // dann zurueckgesetzt, wenn die Messung wirft — sonst misst jeder folgende Punkt
+        // ein 420-px-Panel und meldet es als Eigenschaft des Plugins (CORE-TEST-21).
+        await cdp.evaluate(`
+          const leaf = document.querySelector(".lt-panel").closest(".workspace-leaf");
+          if (leaf) leaf.style.height = ${q(kurz.vorher)};
+          await new Promise((r) => setTimeout(r, 300));
+          return { ok: true };
+        `);
+      }
     }
   }
   await cdp.evaluate(`
