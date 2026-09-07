@@ -95,8 +95,22 @@
    Ein Boden statt eines Deckels auf `.lt-controls`: ein Prozent-Deckel zwang die
    Bedienelemente auch dann in den Rollbalken, wenn reichlich Platz da war, und musste bei
    jeder Aenderung an der Zeilenzahl der Ausfuehren-Zeile neu geraten werden. Der Boden
-   braucht keine Kenntnis davon, was ueber der Vorschau steht. */
-.lt-panel[data-output="1"] .lt-preview { min-height: 14em; }
+   braucht keine Kenntnis davon, was ueber der Vorschau steht.
+
+   ⚠️ `min(14em, 40%)`, nicht `14em` — und das ist gemessen, nicht vorsorglich. `min-height`
+   ist fuer Flexbox eine HARTE Untergrenze; ausser `.lt-controls` schrumpft hier nichts. Bei
+   14em fest unterschritt ein 420 px hohes Panel die Summe der Untergrenzen, das Panel lief
+   ueber, und wegen `overflow: hidden` wurde der Ueberstand ERSATZLOS abgeschnitten — ohne
+   Rollbalken irgendwo. Abgeschnitten wird, was zuletzt kommt: gemessen am 2026-09-08 waren
+   „Kopieren" und „Neue Notiz" weg (C9b meldete sie mit Box-Groesse 0, verdeckt vom
+   workspace-tab-container). Also derselbe Fehler wie Nr. 2 und Nr. 5 ein drittes Mal, nur in
+   einem schmaleren Fenster — ein geteilter rechter Seitenbereich mit zwei gestapelten Panels
+   ist der Normalfall, nicht die Verrenkung.
+   Der Prozentwert loest gegen die definite Hoehe des Flex-Containers auf: bei 760 px sind
+   40 % ca. 290 px > 208 px, das gemessene Layout aendert sich also NICHT; bei 420 px sinkt
+   der Boden mit, und statt Abschneiden rollt der Bedienblock.
+   Restgrenze, benannt statt verschwiegen: unter ~250 px Panelhoehe klemmt es auch damit. */
+.lt-panel[data-output="1"] .lt-preview { min-height: min(14em, 40%); }
 .lt-run-row, .lt-status, .lt-warning, .lt-history, .lt-outputs { flex: 0 0 auto; }
 .lt-label { color: var(--text-muted); font-size: var(--font-ui-small); }
 
@@ -166,7 +180,7 @@
 /* Klassen OHNE Regel in dieser Datei, absichtlich: sie sind Verhaltens-Haken, keine Optik.
    Wer hier aufraeumt und sie im TypeScript mitnimmt, bricht Bedienung oder Tests —
    Obsidians Theme deckt ihr Aussehen bereits ab.
-     .lt-dial          — drawSoft() sucht die Reglerzeilen per querySelectorAll, um nur die
+     .lt-dial          — patchPanel() sucht die Reglerzeilen per querySelectorAll, um nur die
                          Stufennamen nachzuziehen statt einen Voll-Draw zu fahren.
      .lt-out-*         — die vier Ausgangsknoepfe werden einzeln adressiert (GUI-Smoke, Tests).
      .lt-stream-block  — je stabil gewordener Markdown-Block waehrend des Streams; die Grenze
