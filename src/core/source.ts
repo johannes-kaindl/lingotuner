@@ -68,7 +68,7 @@ export function splitSelectionAffix(text: string): { lead: string; core: string;
 
 /** YAML-Kopf abtrennen; `head` endet mit der Trennzeile samt Zeilenumbruch. */
 export function splitFrontmatter(content: string): { head: string; body: string } {
-  const m = /^---\r?\n[\s\S]*?\r?\n---\r?\n/.exec(content);
+  const m = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/.exec(content);
   if (m === null) return { head: "", body: content };
   return { head: m[0], body: content.slice(m[0].length) };
 }

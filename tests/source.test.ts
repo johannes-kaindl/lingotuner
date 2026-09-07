@@ -46,6 +46,8 @@ describe("Helfer", () => {
     expect(splitFrontmatter(c)).toEqual({ head: "---\ntitle: x\n---\n", body: "\nBody" });
     expect(splitFrontmatter("kein fm")).toEqual({ head: "", body: "kein fm" });
     expect(splitFrontmatter("---\r\na: 1\r\n---\r\nB")).toEqual({ head: "---\r\na: 1\r\n---\r\n", body: "B" });
+    expect(splitFrontmatter("---\ntitle: x\n---")).toEqual({ head: "---\ntitle: x\n---", body: "" });
+    expect(splitFrontmatter("---\ntitle: x\n---\n")).toEqual({ head: "---\ntitle: x\n---\n", body: "" });
   });
   it("noteName ist der Dateiname ohne .md", () => {
     expect(noteName("A/B/Mail an X.md")).toBe("Mail an X");
