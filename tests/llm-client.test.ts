@@ -74,6 +74,7 @@ describe("errors", () => {
     expect(errorMessageKey({ kind: "http", status: 500, detail: "boom" })).toEqual({ key: "error.http", args: ["500", "boom"] });
     expect(errorMessageKey({ kind: "cors-suspected" })).toEqual({ key: "error.corsSuspected", args: [] });
     expect(errorMessageKey({ kind: "thought-only" }).key).toBe("error.thoughtOnly");
+    expect(errorMessageKey({ kind: "timeout", seconds: 60 })).toEqual({ key: "error.timeout", args: ["60"] });
   });
   it("classifyNetworkFailure: Probe gruen + Stream rot = CORS-Verdacht", () => {
     expect(classifyNetworkFailure(true)).toEqual({ kind: "cors-suspected" });

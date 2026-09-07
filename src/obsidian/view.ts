@@ -22,7 +22,7 @@ export interface RunRequest {
 
 export interface ViewDeps {
   readiness(kind: SourceKind, freeText: string): Readiness;
-  canReplace(kind: "selection" | "note"): boolean;
+  canReplace(kind: "selection" | "note", sourceText: string): boolean;
   presets(): Preset[];
   getDials(): Dials;
   setDials(d: Dials): void;
@@ -33,7 +33,7 @@ export interface ViewDeps {
   setSuppress(v: boolean): void;
   savePreset(name: string, dials: Dials): void;
   run(req: RunRequest): Promise<TuneResult>;
-  output(kind: "replace-selection" | "replace-note" | "copy" | "new-note", text: string): Promise<void>;
+  output(kind: "replace-selection" | "replace-note" | "copy" | "new-note", text: string, sourceText: string): Promise<void>;
 }
 
 class PresetNameModal extends Modal {
@@ -93,9 +93,25 @@ export class LingoTunerView extends ItemView {
     this.draw();
   }
 
+  /** Eingabe der WURZEL-Runde der aktiven Kette (ueber `basedOn` bis `basedOn === null`),
+   *  oder `null` ohne Runden. Das ist der Text, gegen den ein Ersetzen die aktuell lebende
+   *  Markierung/Notiz prueft — nicht die Quelle zum Klickzeitpunkt (die kann inzwischen eine
+   *  andere sein). */
+  private sourceTextOfActive(): string | null {
+    let idx = this.session.active;
+    if (idx < 0) return null;
+    let round = this.session.rounds[idx];
+    while (round !== undefined && round.basedOn !== null) {
+      idx = round.basedOn;
+      round = this.session.rounds[idx];
+    }
+    return round?.input ?? null;
+  }
+
   private model(): PanelModel {
     const dials = this.deps.getDials();
     const presets = this.deps.presets();
+    const sourceText = this.sourceTextOfActive();
     return {
       source: this.source,
       readiness: this.deps.readiness(this.source, this.freeText),
@@ -105,8 +121,8 @@ export class LingoTunerView extends ItemView {
       models: this.models, model: this.deps.getModel(), suppressThinking: this.deps.getSuppress(),
       phase: this.phase, statusText: this.statusText, truncated: this.truncated,
       session: this.session, preview: this.preview, reasoning: this.reasoning, reasoningOpen: this.reasoningOpen,
-      canReplaceSelection: this.source === "selection" && this.deps.canReplace("selection"),
-      canReplaceNote: this.source === "note" && this.deps.canReplace("note"),
+      canReplaceSelection: this.source === "selection" && sourceText !== null && this.deps.canReplace("selection", sourceText),
+      canReplaceNote: this.source === "note" && sourceText !== null && this.deps.canReplace("note", sourceText),
     };
   }
 
@@ -139,10 +155,16 @@ export class LingoTunerView extends ItemView {
       onRefreshModels: () => { void this.deps.listModels().then((m) => { this.models = m; this.draw(); }); },
       onToggleThinking: () => { this.deps.setSuppress(!this.deps.getSuppress()); this.draw(); },
       onToggleReasoning: (open) => { this.reasoningOpen = open; },
-      onReplaceSelection: () => { void this.deps.output("replace-selection", this.preview); },
-      onReplaceNote: () => { void this.deps.output("replace-note", this.preview); },
-      onCopy: () => { void this.deps.output("copy", this.preview); },
-      onNewNote: () => { void this.deps.output("new-note", this.preview); },
+      onReplaceSelection: () => {
+        const s = this.sourceTextOfActive();
+        if (s !== null) void this.deps.output("replace-selection", this.preview, s);
+      },
+      onReplaceNote: () => {
+        const s = this.sourceTextOfActive();
+        if (s !== null) void this.deps.output("replace-note", this.preview, s);
+      },
+      onCopy: () => { void this.deps.output("copy", this.preview, this.sourceTextOfActive() ?? ""); },
+      onNewNote: () => { void this.deps.output("new-note", this.preview, this.sourceTextOfActive() ?? ""); },
     };
   }
 

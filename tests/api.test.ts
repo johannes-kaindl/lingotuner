@@ -19,6 +19,11 @@ describe("LingoTunerApi", () => {
     expect(await api.tune("x", "nope")).toEqual({ ok: false, reason: "unknown-preset" });
     expect(await api.tune("x", NEUTRAL)).toEqual({ ok: false, reason: "noop" });
     const failing = createLingoTunerApi({ presets: () => [], run: () => Promise.resolve({ ok: false as const, error: { kind: "network" as const }, partial: "" }) });
-    expect(await failing.tune("x", { ...NEUTRAL, social: 1 })).toMatchObject({ ok: false, reason: "failed" });
+    expect(await failing.tune("x", { ...NEUTRAL, social: 1 })).toEqual({ ok: false, reason: "failed", error: { kind: "network" } });
+  });
+  it("normalisiert Regler-Objekte", async () => {
+    const r = await api.tune("x", { directness: 7, context: 0, social: 0, semantics: 0 } as never);
+    expect(run).toHaveBeenCalledWith("x", { directness: 2, context: 0, social: 0, semantics: 0 }, "", undefined);
+    expect(r).toEqual({ ok: true, text: "out", truncated: false });
   });
 });

@@ -1,13 +1,14 @@
 // Anbieter-Muster: vault-rag/src/plugin_api.ts (apiVersion, ok-diskriminierte Union, duenner Adapter ueber Deps)
-import { isNoop, type Dials, type Preset } from "./dials";
+import { isNoop, normalizeDials, type Dials, type Preset } from "./dials";
 import type { TuneResult } from "./llm/client";
-import { errorMessageKey } from "./llm/errors";
+import type { TuneError } from "./llm/errors";
 
 export const LINGOTUNER_API_VERSION = 1;
 
 export type TuneApiResult =
   | { ok: true; text: string; truncated: boolean }
-  | { ok: false; reason: "unknown-preset" | "noop" | "failed"; message?: string };
+  | { ok: false; reason: "unknown-preset" | "noop" }
+  | { ok: false; reason: "failed"; error: TuneError };
 
 export interface LingoTunerApi {
   readonly apiVersion: number;
@@ -31,13 +32,13 @@ export function createLingoTunerApi(deps: ApiDeps): LingoTunerApi {
         if (p === undefined) return { ok: false, reason: "unknown-preset" };
         dials = p.dials;
       } else {
-        dials = style;
+        dials = normalizeDials(style);
       }
       const note = opts?.note ?? "";
       if (isNoop(dials, note)) return { ok: false, reason: "noop" };
       const r = await deps.run(text, dials, note, opts?.signal);
       if (r.ok) return { ok: true, text: r.text, truncated: r.truncated };
-      return { ok: false, reason: "failed", message: errorMessageKey(r.error).key };
+      return { ok: false, reason: "failed", error: r.error };
     },
   };
 }

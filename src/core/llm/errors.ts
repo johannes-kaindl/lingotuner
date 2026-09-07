@@ -4,7 +4,8 @@ export type TuneError =
   | { kind: "cors-suspected" }
   | { kind: "thought-only" }
   | { kind: "empty" }
-  | { kind: "aborted" };
+  | { kind: "aborted" }
+  | { kind: "timeout"; seconds: number };
 
 export function errorMessageKey(e: TuneError): { key: string; args: string[] } {
   switch (e.kind) {
@@ -14,6 +15,7 @@ export function errorMessageKey(e: TuneError): { key: string; args: string[] } {
     case "thought-only": return { key: "error.thoughtOnly", args: [] };
     case "empty": return { key: "error.empty", args: [] };
     case "aborted": return { key: "error.aborted", args: [] };
+    case "timeout": return { key: "error.timeout", args: [String(e.seconds)] };
   }
 }
 

@@ -108,6 +108,7 @@ export const STRINGS = {
     "out.confirmNoteBody": "The body of \"{0}\" will be replaced with the tuned text. Frontmatter stays. Cmd+Z undoes it.",
     "out.confirmNoteOk": "Replace",
     "out.newNoteSuffix": "(tuned)",
+    "out.sourceChanged": "The selection or note changed since this result was made — select the original text again or tune anew.",
 
     "error.http": "The server rejected the request ({0}): {1}",
     "error.network": "The server did not answer.",
@@ -115,6 +116,7 @@ export const STRINGS = {
     "error.thoughtOnly": "The model only reasoned and returned no text. Turn thinking off or raise the token limit.",
     "error.empty": "The model returned an empty answer.",
     "error.aborted": "Cancelled.",
+    "error.timeout": "No answer within {0} seconds. Check the server or raise the timeout in the settings.",
     "error.overrideFile": "Override file could not be read, shipped text used: {0}",
 
     "set.groupConnection": "Connection",
@@ -304,6 +306,7 @@ export const STRINGS = {
     "out.confirmNoteBody": "Der Text von „{0}“ wird durch das getunte Ergebnis ersetzt. Das Frontmatter bleibt. Cmd+Z macht es rückgängig.",
     "out.confirmNoteOk": "Ersetzen",
     "out.newNoteSuffix": "(getunt)",
+    "out.sourceChanged": "Markierung oder Notiz haben sich seit diesem Ergebnis geändert — den ursprünglichen Text erneut markieren oder neu tunen.",
 
     "error.http": "Der Server hat die Anfrage abgelehnt ({0}): {1}",
     "error.network": "Der Server hat nicht geantwortet.",
@@ -311,6 +314,7 @@ export const STRINGS = {
     "error.thoughtOnly": "Das Modell hat nur gedacht und keinen Text geliefert. Denken ausschalten oder das Token-Limit erhöhen.",
     "error.empty": "Das Modell hat eine leere Antwort geliefert.",
     "error.aborted": "Abgebrochen.",
+    "error.timeout": "Keine Antwort innerhalb von {0} Sekunden. Server prüfen oder das Zeitlimit in den Einstellungen erhöhen.",
     "error.overrideFile": "Override-Datei nicht lesbar, Auslieferungstext verwendet: {0}",
 
     "set.groupConnection": "Verbindung",

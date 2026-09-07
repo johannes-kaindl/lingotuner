@@ -50,7 +50,10 @@ export default class LingoTunerPlugin extends Plugin {
 
     this.registerView(VIEW_TYPE_LINGOTUNER, (leaf: WorkspaceLeaf) => new LingoTunerView(leaf, {
       readiness: (kind, freeText) => this.readiness(kind, freeText),
-      canReplace: (kind) => { const cap = kind === "selection" ? this.tracker.get().selection : this.tracker.get().note; return cap !== null && this.tracker.isLive(cap); },
+      canReplace: (kind, sourceText) => {
+        const cap = kind === "selection" ? this.tracker.get().selection : this.tracker.get().note;
+        return cap !== null && this.tracker.isLive(cap) && cap.text === sourceText;
+      },
       presets: () => allPresets(this.settings),
       getDials: () => this.settings.lastDials,
       setDials: (d) => { this.settings.lastDials = { ...d }; void this.saveSettings(); },
@@ -66,7 +69,7 @@ export default class LingoTunerPlugin extends Plugin {
         new Notice(replaced ? t("preset.exists") : t("preset.saved", name));
       },
       run: (req) => this.runFromPanel(req),
-      output: (kind, text) => this.output(kind, text),
+      output: (kind, text, sourceText) => this.output(kind, text, sourceText),
     }));
 
     // Mitschrift der Auswahl: ein Klick ins Panel nimmt dem Editor den Fokus — dann ist es zu spaet.
@@ -139,10 +142,23 @@ export default class LingoTunerPlugin extends Plugin {
 
     const started = Date.now();
     let first: number | undefined;
-    const onToken = (tk: string): void => { first ??= Date.now(); p.onToken?.(tk); };
-    let result = await streamTune(xhrTransport, { messages, endpoint: ep, model, suppressThinking: this.settings.suppressThinking, signal: p.signal, onToken, onReasoning: p.onReasoning });
+    const ctrl = new AbortController();
+    if (p.signal) {
+      if (p.signal.aborted) ctrl.abort();
+      else p.signal.addEventListener("abort", () => { ctrl.abort(); });
+    }
+    let timedOut = false;
+    const timer = window.setTimeout(() => { timedOut = true; ctrl.abort(); }, this.settings.timeoutSec * 1000);
+    const onToken = (tk: string): void => {
+      if (first === undefined) { first = Date.now(); window.clearTimeout(timer); }
+      p.onToken?.(tk);
+    };
+    let result = await streamTune(xhrTransport, { messages, endpoint: ep, model, suppressThinking: this.settings.suppressThinking, signal: ctrl.signal, onToken, onReasoning: p.onReasoning });
+    window.clearTimeout(timer);
 
-    if (!result.ok && result.error.kind === "network") {
+    if (!result.ok && result.error.kind === "aborted" && timedOut) {
+      result = { ok: false, error: { kind: "timeout", seconds: this.settings.timeoutSec }, partial: result.partial };
+    } else if (!result.ok && result.error.kind === "network") {
       // „Probe gruen, Chat rot" — ein lokaler Server ohne CORS-Header antwortet requestUrl, nicht XHR.
       const probe = await probeEndpoint(ep, PROBE_TIMEOUT_MS);
       result = { ok: false, error: classifyNetworkFailure(probe.reachable), partial: result.partial };
@@ -171,24 +187,29 @@ export default class LingoTunerPlugin extends Plugin {
     return result;
   }
 
-  private async output(kind: "replace-selection" | "replace-note" | "copy" | "new-note", text: string): Promise<void> {
-    const st = this.tracker.get();
-    if (kind === "copy") { await copyToClipboard(text, { copiedMessage: t("out.copied"), failedMessage: t("out.copyFailed") }); return; }
-    if (kind === "new-note") {
-      const base = st.selection?.name ?? st.note?.name ?? "LingoTuner";
-      const file = await createTunedNote(this.app, this.settings.newNoteFolder, base, text);
-      new Notice(t("out.noteCreated", file.path));
-      await this.app.workspace.getLeaf("tab").openFile(file);
-      return;
+  private async output(kind: "replace-selection" | "replace-note" | "copy" | "new-note", text: string, sourceText: string): Promise<void> {
+    try {
+      const st = this.tracker.get();
+      if (kind === "copy") { await copyToClipboard(text, { copiedMessage: t("out.copied"), failedMessage: t("out.copyFailed") }); return; }
+      if (kind === "new-note") {
+        const base = st.selection?.name ?? st.note?.name ?? "LingoTuner";
+        const file = await createTunedNote(this.app, this.settings.newNoteFolder, base, text);
+        new Notice(t("out.noteCreated", file.path));
+        await this.app.workspace.getLeaf("tab").openFile(file);
+        return;
+      }
+      const cap = kind === "replace-selection" ? st.selection : st.note;
+      if (cap === null) { new Notice(t("source.notLive")); return; }
+      if (cap.text !== sourceText) { new Notice(t("out.sourceChanged")); return; }
+      if (kind === "replace-note") {
+        const ok = await confirmAction(this.app, { title: t("out.confirmNoteTitle"), message: t("out.confirmNoteBody", cap.name), confirmLabel: t("out.confirmNoteOk"), warning: true });
+        if (!ok) return;
+      }
+      const outcome = replaceCapture(this.tracker, cap, text);
+      new Notice(outcome === "ok" ? t("out.replaced") : outcome === "stale" ? t("source.stale") : t("source.notLive"));
+      if (outcome === "ok") { this.tracker.capture(); this.panel()?.refresh(); }
+    } catch (e) {
+      new Notice(e instanceof Error ? e.message : String(e));
     }
-    const cap = kind === "replace-selection" ? st.selection : st.note;
-    if (cap === null) { new Notice(t("source.notLive")); return; }
-    if (kind === "replace-note") {
-      const ok = await confirmAction(this.app, { title: t("out.confirmNoteTitle"), message: t("out.confirmNoteBody", cap.name), confirmLabel: t("out.confirmNoteOk"), warning: true });
-      if (!ok) return;
-    }
-    const outcome = replaceCapture(this.tracker, cap, text);
-    new Notice(outcome === "ok" ? t("out.replaced") : outcome === "stale" ? t("source.stale") : t("source.notLive"));
-    if (outcome === "ok") { this.tracker.capture(); this.panel()?.refresh(); }
   }
 }
