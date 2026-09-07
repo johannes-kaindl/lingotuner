@@ -5,7 +5,7 @@ import { readinessKey, type Readiness, type SourceKind } from "../core/source";
 import { thinkToggleState } from "../vendor/kit/think-toggle";
 import { t } from "../vendor/kit/i18n";
 
-export type RunPhase = "idle" | "probing" | "streaming" | "done" | "error" | "aborted";
+export type RunPhase = "idle" | "streaming" | "done" | "error" | "aborted";
 
 export interface PanelModel {
   source: SourceKind;
@@ -137,7 +137,7 @@ function runRow(parent: El, m: PanelModel, h: PanelHandlers): void {
   const row = parent.createDiv({ cls: "lt-run-row" });
   const ready = m.readiness.kind === "ready";
   const noop = isNoop(m.dials, m.note);
-  const busy = m.phase === "probing" || m.phase === "streaming";
+  const busy = m.phase === "streaming";
   const hasRounds = m.session.rounds.length > 0;
 
   const run = row.createEl("button", { cls: "lt-run mod-cta" });
@@ -187,19 +187,23 @@ function statusRow(parent: El): Pick<PanelParts, "statusEl" | "statusIconEl" | "
   return { statusEl, statusIconEl, statusLabelEl };
 }
 
-/** §8 Status-Indikator: Form (Icon) UND Klasse UND aria-label — nie Farbe allein. */
+/** §8 Status-Indikator: Form (Icon) UND Klasse UND aria-label — nie Farbe allein.
+ *  `idle` ist bewusst NEUTRAL: ein leerer Ausgangszustand ist kein Erfolg, und ein gruenes
+ *  is-ok vor dem ersten Lauf behauptete genau das (leerer Kreis, keine Zustandsklasse). */
 export function paintStatus(parts: PanelParts, phase: RunPhase, text: string): void {
   const el = parts.statusEl;
   el.removeClass("is-checking", "is-ok", "is-error", "is-warning");
-  const icon = phase === "probing" || phase === "streaming" ? "loader"
+  const icon = phase === "streaming" ? "loader"
     : phase === "error" ? "circle-x"
     : phase === "aborted" ? "alert-triangle"
+    : phase === "idle" ? "circle"
     : "circle-check";
-  const cls = phase === "probing" || phase === "streaming" ? "is-checking"
+  const cls = phase === "streaming" ? "is-checking"
     : phase === "error" ? "is-error"
     : phase === "aborted" ? "is-warning"
+    : phase === "idle" ? null
     : "is-ok";
-  el.addClass(cls);
+  if (cls !== null) el.addClass(cls);
   setIcon(parts.statusIconEl, icon);
   parts.statusLabelEl.setText(text);
   el.setAttribute("aria-label", text);
@@ -216,7 +220,9 @@ function historyList(parent: El, m: PanelModel, h: PanelHandlers, busy: boolean)
     row.disabled = busy;
     const based = r.basedOn === null ? t("history.fromSource") : t("history.refined", String(r.basedOn + 1));
     const note = r.note.trim() === "" ? t("history.noteless") : r.note;
-    row.setText(`${t("history.round", String(i + 1))} · ${based} · ${note}`);
+    const segments = [t("history.round", String(i + 1)), based, note];
+    if (r.aborted) segments.push(t("history.aborted"));
+    row.setText(segments.join(" · "));
     row.addEventListener("click", () => h.onSelectRound(i));
   });
 }
@@ -239,7 +245,7 @@ export function renderPanel(root: El, m: PanelModel, h: PanelHandlers): PanelPar
   root.empty();
   root.addClass("lt-panel");
   root.dataset.preset = m.presetId ?? "";
-  const busy = m.phase === "probing" || m.phase === "streaming";
+  const busy = m.phase === "streaming";
   sourceRow(root, m, h, busy);
   presetRow(root, m, h, busy);
   dialRows(root, m, h);

@@ -76,7 +76,9 @@ export class LingoTunerView extends ItemView {
 
   onOpen(): Promise<void> {
     this.draw();
-    void this.deps.listModels().then((m) => { this.models = m; this.draw(); });
+    // Die Modell-Liste kommt asynchron und darf einen laufenden Stream NICHT neu zeichnen —
+    // ein Voll-Draw mitten im Stream reisst die Vorschau ab. Merken, zeichnen beim naechsten Draw.
+    void this.deps.listModels().then((m) => { this.models = m; if (this.phase === "streaming") return; this.draw(); });
     return Promise.resolve();
   }
 
@@ -89,7 +91,7 @@ export class LingoTunerView extends ItemView {
 
   /** Vom Plugin gerufen, wenn sich Markierung/Notiz geaendert haben. Nie waehrend eines Streams. */
   refresh(): void {
-    if (this.phase === "streaming" || this.phase === "probing") return;
+    if (this.phase === "streaming") return;
     this.draw();
   }
 
@@ -137,7 +139,7 @@ export class LingoTunerView extends ItemView {
         this.draw();
       },
       onModel: (m) => { this.deps.setModel(m); this.draw(); },
-      onRefreshModels: () => { void this.deps.listModels().then((m) => { this.models = m; this.draw(); }); },
+      onRefreshModels: () => { void this.deps.listModels().then((m) => { this.models = m; if (this.phase === "streaming") return; this.draw(); }); },
       onToggleThinking: () => { this.deps.setSuppress(!this.deps.getSuppress()); this.draw(); },
       onToggleReasoning: (open) => { this.reasoningOpen = open; },
       onReplaceSelection: () => {
@@ -173,7 +175,7 @@ export class LingoTunerView extends ItemView {
         row.querySelector(".lt-dial-level")?.setText(t(levelKey(dim, m.dials[dim])));
       });
     };
-    if (m.phase === "streaming" || m.phase === "probing") { updateLevels(); return; }
+    if (m.phase === "streaming") { updateLevels(); return; }
     const noop = isNoop(m.dials, m.note);
     const run = this.contentEl.querySelector<HTMLButtonElement>(".lt-run");
     const refine = this.contentEl.querySelector<HTMLButtonElement>(".lt-refine");

@@ -80,12 +80,10 @@ export const STRINGS = {
     "run.noEndpoint": "No reachable endpoint. Check the connection in the settings.",
 
     "status.idle": "Ready",
-    "status.probing": "Checking the endpoint…",
     "status.streaming": "Tuning…",
     "status.done": "Done",
     "status.aborted": "Cancelled — partial result kept",
     "status.truncated": "The answer was cut off by the token limit — the result may be incomplete.",
-    "status.error": "Failed",
 
     "preview.empty": "The tuned text appears here.",
     "preview.thinking": "Model reasoning",
@@ -95,6 +93,7 @@ export const STRINGS = {
     "history.refined": "refined from round {0}",
     "history.fromSource": "from source",
     "history.noteless": "no note",
+    "history.aborted": "cancelled",
 
     "out.replaceSelection": "Replace selection",
     "out.replaceNote": "Replace note",
@@ -129,7 +128,6 @@ export const STRINGS = {
     "set.modelFetch": "Load models",
     "set.modelFetching": "Loading…",
     "set.modelNotLoaded": "Model list not loaded yet.",
-    "set.modelSaved": "{0} (saved)",
     "set.modelHint.unreachable": "Endpoint unreachable — type the model name.",
     "set.modelHint.no-list": "The endpoint returns no model list — type the name.",
     "set.suppress": "Skip model reasoning",
@@ -278,12 +276,10 @@ export const STRINGS = {
     "run.noEndpoint": "Kein erreichbarer Endpunkt. Verbindung in den Einstellungen prüfen.",
 
     "status.idle": "Bereit",
-    "status.probing": "Endpunkt wird geprüft…",
     "status.streaming": "Tunt…",
     "status.done": "Fertig",
     "status.aborted": "Abgebrochen — Teilergebnis bleibt",
     "status.truncated": "Die Antwort wurde vom Token-Limit abgeschnitten — das Ergebnis kann unvollständig sein.",
-    "status.error": "Fehlgeschlagen",
 
     "preview.empty": "Hier erscheint der getunte Text.",
     "preview.thinking": "Gedankengang des Modells",
@@ -293,6 +289,7 @@ export const STRINGS = {
     "history.refined": "nachgeschärft aus Runde {0}",
     "history.fromSource": "aus der Quelle",
     "history.noteless": "ohne Anmerkung",
+    "history.aborted": "abgebrochen",
 
     "out.replaceSelection": "Markierung ersetzen",
     "out.replaceNote": "Notiz ersetzen",
@@ -327,7 +324,6 @@ export const STRINGS = {
     "set.modelFetch": "Modelle laden",
     "set.modelFetching": "Lädt…",
     "set.modelNotLoaded": "Modell-Liste noch nicht geladen.",
-    "set.modelSaved": "{0} (gespeichert)",
     "set.modelHint.unreachable": "Endpunkt nicht erreichbar — Modellnamen eintippen.",
     "set.modelHint.no-list": "Der Endpunkt gibt keine Modell-Liste heraus — Namen eintippen.",
     "set.suppress": "Denkschritt des Modells überspringen",

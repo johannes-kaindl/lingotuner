@@ -119,7 +119,7 @@ describe("renderPanel", () => {
   });
 
   it("paintStatus setzt Klasse, Icon-Form und aria-label je Phase", () => {
-    const cases: Array<["probing" | "streaming" | "done" | "error" | "aborted", string]> = [
+    const cases: Array<["streaming" | "done" | "error" | "aborted", string]> = [
       ["streaming", "is-checking"],
       ["done", "is-ok"],
       ["error", "is-error"],
@@ -134,5 +134,24 @@ describe("renderPanel", () => {
       for (const other of all) if (other !== cls) expect(statusEl.className).not.toContain(other);
       expect((statusEl as unknown as { getAttribute(k: string): string | null }).getAttribute("aria-label")).toBe(`text-${phase}`);
     }
+  });
+
+  it("Phase idle ist neutral: keine is-*-Klasse, aria-label bleibt", () => {
+    const root = makeFakeEl();
+    const parts = renderPanel(root, model({ phase: "idle", statusText: "Ready" }), handlers());
+    const statusEl = parts.statusEl as unknown as El;
+    for (const cls of ["is-checking", "is-ok", "is-error", "is-warning"]) {
+      expect(statusEl.className, cls).not.toContain(cls);
+    }
+    expect((statusEl as unknown as { getAttribute(k: string): string | null }).getAttribute("aria-label")).toBe("Ready");
+  });
+
+  it("abgebrochene Runden sind im Verlauf als solche markiert", () => {
+    const r = { dials: NEUTRAL, note: "", input: "a", output: "b", model: "m", at: 1, basedOn: null, sourceName: "Mail", aborted: false, truncated: false };
+    const root = makeFakeEl();
+    renderPanel(root, model({ session: { rounds: [r, { ...r, basedOn: 0, aborted: true }], active: 1 }, phase: "aborted", preview: "b" }), handlers());
+    const rows = findAllByClass<El>(root, "lt-history-row");
+    expect(rows[0].textContent).not.toContain("cancelled");
+    expect(rows[1].textContent).toContain("cancelled");
   });
 });

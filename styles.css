@@ -91,7 +91,12 @@
 .lt-dial-input { flex: 1 1 auto; min-width: 0; }
 
 .lt-run-row { display: flex; flex-wrap: wrap; gap: var(--size-2-2); align-items: center; }
-.lt-run:disabled, .lt-refine:disabled, .lt-out:disabled { opacity: 0.4; cursor: not-allowed; }
+/* Gesperrter Zustand fuer JEDES Bedienelement, das renderPanel waehrend eines Streams auf
+   disabled setzt — sonst sieht ein gesperrter Chip aus wie ein anklickbarer. */
+.lt-run:disabled, .lt-refine:disabled, .lt-out:disabled,
+.lt-source-chip:disabled, .lt-preset-chip:disabled, .lt-preset-save:disabled,
+.lt-history-row:disabled, .lt-model:disabled, .lt-model-refresh:disabled,
+.lt-think:disabled { opacity: 0.4; cursor: not-allowed; }
 .lt-model { flex: 1 1 8em; min-width: 0; font-size: var(--font-ui-small); }
 .lt-think { display: inline-flex; gap: var(--size-2-1); align-items: center; font-size: var(--font-ui-small); }
 .lt-think.is-off { color: var(--text-muted); }
@@ -110,7 +115,8 @@
 .lt-preview { border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); padding: var(--size-4-2) var(--size-4-3); min-height: 6em; }
 .lt-preview-tail { white-space: pre-wrap; color: var(--text-muted); }
 .lt-empty { color: var(--text-faint); font-size: var(--font-ui-small); }
-.lt-warning { color: var(--text-error); font-size: var(--font-ui-small); }
+/* Abschneiden am Token-Limit ist eine Warnung, kein Fehler — das Ergebnis ist da, nur unvollstaendig. */
+.lt-warning { color: var(--text-warning); font-size: var(--font-ui-small); }
 .lt-reasoning summary { font-size: var(--font-ui-small); color: var(--text-muted); cursor: pointer; }
 .lt-reasoning pre { font-size: var(--font-ui-smaller); white-space: pre-wrap; }
 
@@ -119,3 +125,14 @@
 .lt-history-row.is-active { background: var(--background-modifier-hover); color: var(--text-normal); font-weight: var(--font-semibold); }
 
 .lt-outputs { display: flex; flex-wrap: wrap; gap: var(--size-2-2); }
+
+/* Klassen OHNE Regel in dieser Datei, absichtlich: sie sind Verhaltens-Haken, keine Optik.
+   Wer hier aufraeumt und sie im TypeScript mitnimmt, bricht Bedienung oder Tests —
+   Obsidians Theme deckt ihr Aussehen bereits ab.
+     .lt-dial          — drawSoft() sucht die Reglerzeilen per querySelectorAll, um nur die
+                         Stufennamen nachzuziehen statt einen Voll-Draw zu fahren.
+     .lt-out-*         — die vier Ausgangsknoepfe werden einzeln adressiert (GUI-Smoke, Tests).
+     .lt-stream-block  — je stabil gewordener Markdown-Block waehrend des Streams; die Grenze
+                         zwischen fertig gerendert und rohem Schwanz (.lt-preview-tail).
+     .lt-note-row      — Traeger der Anmerkungszeile, Layout kommt von .lt-label/.lt-note.
+     .lt-status-label  — Textknoten des Status-Indikators, den paintStatus beschriftet. */
