@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-09-07
+
 ### Added
 
 - A "Reset" button in the run row clears session, preview, reasoning, note and text field and cancels a running stream. It appears as soon as there is something to reset, and asks before discarding a session that already has rounds. The dials stay as they are.

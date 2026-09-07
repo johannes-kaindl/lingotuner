@@ -1,7 +1,7 @@
 {
   "id": "lingotuner",
   "name": "LingoTuner",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minAppVersion": "1.8.7",
   "description": "Retune the communication style of a text with four dials and a local LLM — direct or diplomatic, explicit or implicit, factual or social, literal or figurative.",
   "author": "Johannes Kaindl",
