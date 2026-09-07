@@ -172,6 +172,11 @@ erlaubt, stillschweigend abzuweichen nicht.
   mit Freitext trägt der Settings-Tab über den Kit-Picker.
   `gilt-solange:` `src/obsidian/settings-tab.ts` ruft `renderModelPicker` aus
   `src/vendor/kit-obsidian/model-picker.ts`.
+- **Status-Indikator kennt einen fuenften Zustand „bereit" mit Icon `circle` und ohne `is-*`-Klasse**
+  (§8 nennt vier Zustaende/Icons). Grund: vor dem ersten Lauf ist weder Erfolg noch Fehler wahr —
+  ein gruener Haken neben „Bereit" behauptete einen Erfolg, den es nicht gab (Final-Review 2026-09-07).
+  `gilt-solange:` `paintStatus` in `src/obsidian/view-render.ts` setzt fuer `phase === "idle"` das Icon
+  `circle` und keine Zustandsklasse; `aria-label` bleibt gesetzt.
 
 ## Gotchas
 
