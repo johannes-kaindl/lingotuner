@@ -34,9 +34,16 @@
 
 ### Reasoning-Herkunft
 
-Bei allen 48 erfolgreichen Aufrufen (32 DE + 16 EN) meldete das Skript
+Bei allen 48 ausgewerteten Aufrufen meldete das Skript
 `reasoning: none` — kein `reasoning_content`-Feld, kein `<think>`-Tag im
-Content. `suppressParams(true)` (Reasoning aus) hat also gegriffen, obwohl
+Content.
+
+Die 48 sind 32 DE + 16 EN, aber nicht 48 Aufrufe ohne Fehlversuch: die 32
+DE-Werte stammen je Fall aus dem **jeweils erfolgreichen Durchgang**. Sechs
+Erstaufrufe scheiterten mit HTTP 400 (Modell entladen) und wurden gezielt
+nachgefahren; gezählt ist der Nachlauf, nicht der Fehlschlag.
+
+`suppressParams(true)` (Reasoning aus) hat also gegriffen, obwohl
 ein manueller Warm-up-Aufruf ohne Suppress-Parameter (`curl` direkt gegen den
 Endpunkt, außerhalb des Skripts) sichtbares `reasoning_content` mit
 Klartext-Denkschritten lieferte. Für die eigentliche Messung ist das
