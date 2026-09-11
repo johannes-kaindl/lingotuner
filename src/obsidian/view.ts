@@ -323,8 +323,9 @@ export class LingoTunerView extends ItemView {
       // den Markdown-Schnitt, `this.preview` bleibt die Wahrheit fuer Ausgaenge und
       // `structureKey`.
       this.preview += tk;
+      // Kein `folge()` hier: `push` ruft `followTail` selbst (stable-writer.ts). Ein zweiter
+      // Aufruf waere folgenlos, aber er liesse das Folgen wie eine Consumer-Pflicht aussehen.
       w.push(tk);
-      folge();
     };
     const onReasoning = (tk: string): void => {
       if (this.controller !== ctrl) return;
@@ -335,6 +336,8 @@ export class LingoTunerView extends ItemView {
       // Zeichen; bei 40 k spuerbar) und kann ausserdem divergieren. Das Kit haengt an.
       this.reasoning += tk;
       area.appendReasoning(tk);
+      // Hier SCHON: anders als `push` folgt `appendReasoning` nicht von selbst — ein Modell,
+      // das lange denkt, schoebe den Strom sonst unter die Kante, ohne dass etwas nachzieht.
       folge();
     };
 

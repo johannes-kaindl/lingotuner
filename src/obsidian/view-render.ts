@@ -364,8 +364,23 @@ export function renderPanel(root: El, m: PanelModel, h: PanelHandlers): PanelPar
     // ueber die Wurzelklasse `okit-stream--host-scroll` den eigenen Scroll des Bodys ab.
     scrollEl: root,
   });
+  // Obsidian stylt gerenderten Markdown ueber Nachfahren-Selektoren an `.markdown-rendered`
+  // (Ueberschriften-Abstaende, Listen-Einzug, blockquote, Tabellen, Code-Bloecke, Callouts).
+  // Ohne die Klasse faellt eine formatierte Antwort auf Browser-Defaults zurueck. Das Kit
+  // setzt sie nicht — es weiss nicht, dass hier Markdown hineingerendert wird —, also setzt
+  // sie der Consumer. Beim Umstieg auf `buildStreamArea` ist sie am 2026-09-11 zunaechst
+  // verlorengegangen: der Smoke-Lauf jenes Tages lieferte 49 Zeichen Fliesstext, und daran
+  // ist der Verlust nicht zu sehen (Review I1).
+  area.bodyEl.addClass("markdown-rendered");
   if (m.reasoning !== "") area.setReasoning(m.reasoning);
-  if (m.preview === "" && m.phase === "idle") area.bodyEl.createDiv({ cls: "lt-empty", text: t("preview.empty") });
+  // VOR den laufenden Absatz: `buildStreamArea` legt `tailEl` als erstes Kind des Bodys an,
+  // ein `createDiv` haengte den Leerzustand also darunter. Der Tail wandert dahinter, statt
+  // den Leerzustand per `insertBefore` einzuschieben — derselbe Handgriff, den der Voll-Draw
+  // fuer den Preview-Block schon macht, und der Obsidian-Mock der Tests kennt nur ihn.
+  if (m.preview === "" && m.phase === "idle") {
+    area.bodyEl.createDiv({ cls: "lt-empty", text: t("preview.empty") });
+    area.bodyEl.appendChild(area.tailEl);
+  }
   if (m.truncated) root.createDiv({ cls: "lt-warning", text: t("status.truncated") });
   historyList(root, m, h, busy);
   outputRow(root, m, h);
