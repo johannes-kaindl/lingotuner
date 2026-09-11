@@ -309,7 +309,16 @@ interface FolgeMessung {
   nachStoerung: number[];
 }
 
-async function laufeMitFolgeMessung(cdp: Cdp, maxMs: number, stoereBei = 3): Promise<FolgeMessung> {
+/** Messtakt von C11/C11b. 300 ms waren zu grob: die Antwort auf die Fixture-Notiz ist unter
+ *  einer Sekunde fertig, C11b fiel deshalb zweimal als „nicht messbar" aus. Der Takt bestimmt
+ *  die Aufloesung, nicht die Aussage. */
+const TAKT_MS = 150;
+
+/** `stoereBei` ist die Zahl der Messungen VOR dem kuenstlichen Hochscrollen. Sie stand auf 3,
+ *  und am 2026-09-11 fiel C11b deshalb aus: die Antwort war nach drei Messungen fertig, die
+ *  Stoerung kam nie. 2 misst frueher, nicht anders — mehr Spielraum gibt ein Lauf von unter
+ *  zwei Sekunden nicht her. */
+async function laufeMitFolgeMessung(cdp: Cdp, maxMs: number, stoereBei = 2): Promise<FolgeMessung> {
   const werte: number[] = [];
   const nachStoerung: number[] = [];
   let sichtbar = 0;
@@ -357,7 +366,7 @@ async function laufeMitFolgeMessung(cdp: Cdp, maxMs: number, stoereBei = 3): Pro
       await cdp.evaluate(`const p = document.querySelector(".lt-panel"); if (p) p.scrollTop = 0; return { ok: true };`);
       gestoert = true;
     }
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, TAKT_MS));
   }
 }
 
@@ -435,6 +444,7 @@ const C_AUSGAENGE = [
   "C9 jedes Bedienelement ist erreichbar (natuerliche Hoehe)",
   "C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)",
   "C9c Gegenprobe: ohne Rollbalken wird etwas unerreichbar",
+  "C9d Quell-Textfeld und Regler erreichbar (Quelle Textfeld)",
   "C10 Zuruecksetzen fragt nach und raeumt",
 ];
 // B11 haengt am ERSTEN Lauf, nicht an dessen Ergebnis: er wird gemessen, sobald der Lauf
@@ -537,11 +547,22 @@ async function pruefeUeberdeckung(cdp: Cdp): Promise<void> {
 
 /** Der Renderer-Ausdruck der Erreichbarkeitsprobe — einmal geschrieben, dreimal gebraucht
  *  (natuerliche Hoehe, kurzes Panel, Gegenprobe). Zwei Fassungen liefen beim naechsten neuen
- *  Bedienelement auseinander, und die Gegenprobe pruefte dann etwas anderes als der Punkt. */
-const ERREICHBAR_AUSDRUCK = `
-  const ziele = [".lt-run", ".lt-refine", ".lt-reset", ".lt-out", ".lt-freetext", ".lt-dial-input"];
+ *  Bedienelement auseinander, und die Gegenprobe maesse dann eine andere Menge als der Punkt,
+ *  den sie absichern soll — genau das war am 2026-09-11 der Fall (Review M2).
+ *
+ *  `scrollen` ist der EINZIGE Unterschied zwischen Punkt und Gegenprobe: ohne Rollbereich
+ *  gibt es nichts hinzuscrollen, und `scrollIntoView` bei `overflow: hidden` hat den Lauf
+ *  einmal mit „Zeitueberschreitung: Runtime.evaluate" gerissen.
+ *
+ *  `gesamt` zaehlt VOR der Flaechenpruefung: ein Element, das gleich darauf in `schlecht`
+ *  landet, wuerde sonst doppelt gezaehlt, und der Nenner im Protokoll waere zu gross
+ *  („6 von 17" statt „6 von 11", Review I3). */
+function erreichbarAusdruck(ziele: string[], scrollen: boolean): string {
+  return `
+  const ziele = ${JSON.stringify(ziele)};
   const schlecht = [];
   const fehlend = [];
+  let gesamt = 0;
   let geprueft = 0;
   for (const sel of ziele) {
     const treffer = Array.from(document.querySelectorAll(sel));
@@ -550,10 +571,13 @@ const ERREICHBAR_AUSDRUCK = `
     const menge = sel === ".lt-dial-input" ? treffer.slice(0, 1) : treffer;
     if (menge.length === 0) { fehlend.push(sel); continue; }
     for (const b of menge) {
+      gesamt += 1;
       // Hinscrollen ist Teil der Frage: im Ein-Rollbereich-Panel ist „steht ausserhalb des
       // Sichtfensters" kein Fehler, „laesst sich auch nach dem Rollen nicht treffen" schon.
-      b.scrollIntoView({ block: "center" });
-      await new Promise((r) => setTimeout(r, 60));
+      if (${String(scrollen)}) {
+        b.scrollIntoView({ block: "center" });
+        await new Promise((r) => setTimeout(r, 60));
+      }
       const box = b.getBoundingClientRect();
       if (box.width === 0 || box.height === 0) { schlecht.push({ cls: b.className, deckt: "(keine Flaeche)" }); continue; }
       geprueft += 1;
@@ -561,10 +585,15 @@ const ERREICHBAR_AUSDRUCK = `
       if (!(b === hit || b.contains(hit))) schlecht.push({ cls: b.className, deckt: hit ? String(hit.className || hit.tagName) : "(nichts)" });
     }
   }
-  return { geprueft, schlecht, fehlend };
+  return { gesamt, geprueft, schlecht, fehlend };
 `;
+}
 
-interface Erreichbarkeit { geprueft: number; schlecht: Array<{ cls: string; deckt: string }>; fehlend: string[] }
+/** Die Bedienelemente des Panels — eine Liste, drei Verwendungen (C9, C9b, C9c). */
+const BEDIENELEMENTE = [".lt-run", ".lt-refine", ".lt-reset", ".lt-out", ".lt-freetext", ".lt-dial-input"];
+const ERREICHBAR_AUSDRUCK = erreichbarAusdruck(BEDIENELEMENTE, true);
+
+interface Erreichbarkeit { gesamt: number; geprueft: number; schlecht: Array<{ cls: string; deckt: string }>; fehlend: string[] }
 
 /** Die eigentliche Messung, zweimal gebraucht (natuerliche und kurze Panelhoehe). */
 async function messeErreichbarkeit(cdp: Cdp, name: string, masse: { scrollH: number; clientH: number }, zusatz = ""): Promise<void> {
@@ -574,7 +603,7 @@ async function messeErreichbarkeit(cdp: Cdp, name: string, masse: { scrollH: num
   // gemessen, der es nicht war (CORE-TEST-19).
   const nicht = r.fehlend.length === 0 ? "" : ` · nicht im Panel: ${r.fehlend.join(", ")}`;
   const detail = r.schlecht.length === 0
-    ? `${r.geprueft} Bedienelemente treffen sich selbst nach scrollIntoView (Panel ${masse.scrollH} px in ${masse.clientH} px)${zusatz}${nicht}`
+    ? `${r.geprueft} von ${r.gesamt} Bedienelementen treffen sich selbst nach scrollIntoView (Panel ${masse.scrollH} px in ${masse.clientH} px)${zusatz}${nicht}`
     : `${r.schlecht.map((x) => `${x.cls} → ${x.deckt}`).join(" · ")}${zusatz}${nicht}`;
   record(name, r.schlecht.length === 0 && r.geprueft > 0, detail);
 }
@@ -608,26 +637,21 @@ async function gegenprobeErreichbarkeit(cdp: Cdp): Promise<void> {
     `)).ok;
     if (!gesetzt) { skipped(name, "kein .lt-panel im DOM"); return; }
     await new Promise((r) => setTimeout(r, 300));
-    const nachher = await cdp.evaluate<{ h: number; scrollH: number; scrollTop: number; schlecht: number; namen: string[]; geprueft: number }>(`
+    // DIESELBE Menge wie C9/C9b, nur ohne Scrollen — sonst sichert die Gegenprobe einen
+    // Punkt ab, den sie gar nicht misst.
+    const r = await cdp.evaluate<Erreichbarkeit>(erreichbarAusdruck(BEDIENELEMENTE, false));
+    const masse = await cdp.evaluate<{ h: number; scrollH: number }>(`
       const p = document.querySelector(".lt-panel");
-      const schlecht = [];
-      let geprueft = 0;
-      for (const b of document.querySelectorAll(".lt-run, .lt-refine, .lt-reset, .lt-out, .lt-dial-input")) {
-        const box = b.getBoundingClientRect();
-        if (box.width === 0 || box.height === 0) { schlecht.push(String(b.className).split(" ")[0]); continue; }
-        geprueft += 1;
-        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-        if (!(b === hit || b.contains(hit))) schlecht.push(String(b.className).split(" ")[0]);
-      }
-      return { h: Math.round(p.getBoundingClientRect().height), scrollH: p.scrollHeight, scrollTop: Math.round(p.scrollTop), schlecht: schlecht.length, namen: schlecht.slice(0, 4), geprueft };
+      return { h: Math.round(p.getBoundingClientRect().height), scrollH: p.scrollHeight };
     `);
-    const wirksam = nachher.scrollH > nachher.h + 8;
-    record(name, wirksam && nachher.schlecht > 0,
+    const wirksam = masse.scrollH > masse.h + 8;
+    const namen = r.schlecht.slice(0, 4).map((x) => x.cls.split(" ")[0]);
+    record(name, wirksam && r.schlecht.length > 0,
       !wirksam
-        ? `die Manipulation hat nichts veraendert (${nachher.scrollH} px in ${nachher.h} px, vorher ${vorher.scrollH}/${vorher.h}) — ohne Wirkung ist die Gegenprobe wertlos`
-        : nachher.schlecht > 0
-          ? `overflow:hidden → ${nachher.schlecht} von ${nachher.schlecht + nachher.geprueft} Elementen unerreichbar (${nachher.namen.join(", ")}), Panel ${nachher.scrollH} px in ${nachher.h} px`
-          : `overflow:hidden, aber alle ${nachher.geprueft} Elemente weiter erreichbar — die Probe misst nichts`);
+        ? `die Manipulation hat nichts veraendert (${masse.scrollH} px in ${masse.h} px, vorher ${vorher.scrollH}/${vorher.h}) — ohne Wirkung ist die Gegenprobe wertlos`
+        : r.schlecht.length > 0
+          ? `overflow:hidden → ${r.schlecht.length} von ${r.gesamt} Elementen unerreichbar (${namen.join(", ")}), Panel ${masse.scrollH} px in ${masse.h} px`
+          : `overflow:hidden, aber alle ${r.gesamt} Elemente weiter erreichbar — die Probe misst nichts`);
   } catch (e) {
     record(name, false, `Messung abgebrochen: ${(e as Error).message}`);
   } finally {
@@ -685,6 +709,55 @@ async function messeB11(cdp: Cdp): Promise<void> {
     if (el) { el.value = ""; el.dispatchEvent(new Event("input", { bubbles: true })); el.blur(); }
     return { ok: true };
   `);
+}
+
+/** C9d — das Quell-Textfeld, und zwar wirklich gemessen.
+ *
+ *  C9/C9b laufen mitten in Teil C, wo die Quelle auf „Aktive Notiz" steht; `.lt-freetext`
+ *  existiert dann gar nicht und wird dort nur als „nicht im Panel" protokolliert. Ausgerechnet
+ *  dieses Feld war am 2026-09-07 der erste gemeldete Schaden (mit `rows="6"` angefordert, auf
+ *  eine halbe Zeile eingedampft) — ein Pruefpunkt, der es nie beruehrt, deckt den Anlassfall
+ *  nicht ab (Review M9).
+ *
+ *  Deshalb ein EIGENER kleiner Punkt am Ende von Teil C: Quelle auf „Textfeld", fuellen,
+ *  Textfeld und ersten Regler messen, Quelle im `finally` zurueck. Am Ende, weil der
+ *  Quellenwechsel C3/C7 die Vorbedingung naehme. */
+async function pruefeTextfeldErreichbar(cdp: Cdp): Promise<void> {
+  const name = "C9d Quell-Textfeld und Regler erreichbar (Quelle Textfeld)";
+  let gewechselt = false;
+  try {
+    const klick = await waehleQuelle(cdp, 2);
+    const ta = await pollUntil<{ ok: boolean }>(cdp, `return document.querySelector(".lt-freetext") ? { ok: true } : null;`, 3000, 200);
+    if (ta === null) { skipped(name, `Quelle „Textfeld" liess sich nicht waehlen${klick}`); return; }
+    gewechselt = true;
+    const masse = await cdp.evaluate<{ scrollH: number; clientH: number }>(`
+      const p = document.querySelector(".lt-panel");
+      const body = document.querySelector(".okit-stream-body");
+      if (body) {
+        const f = body.createDiv({ cls: "lt-smoke-fueller" });
+        for (let i = 0; i < 150; i += 1) f.createDiv({ text: "Fuellzeile " + i + " fuer die Erreichbarkeitsprobe." });
+      }
+      await new Promise((r) => setTimeout(r, 200));
+      return { scrollH: p.scrollHeight, clientH: p.clientHeight };
+    `);
+    if (masse.scrollH <= masse.clientH + 8) {
+      skipped(name, `Vorbedingung fehlt: das Panel laeuft nicht ueber (${masse.scrollH} <= ${masse.clientH} + 8)`);
+      return;
+    }
+    const r = await cdp.evaluate<Erreichbarkeit>(erreichbarAusdruck([".lt-freetext", ".lt-dial-input"], true));
+    const detail = r.schlecht.length === 0
+      ? `${r.geprueft} von ${r.gesamt} (Textfeld + erster Regler) treffen sich selbst nach scrollIntoView, Panel ${masse.scrollH} px in ${masse.clientH} px`
+      : r.schlecht.map((x) => `${x.cls} → ${x.deckt}`).join(" · ");
+    record(name, r.schlecht.length === 0 && r.geprueft === 2, detail);
+  } finally {
+    await cdp.evaluate(`
+      for (const f of document.querySelectorAll(".lt-smoke-fueller")) f.remove();
+      return { ok: true };
+    `).catch(() => null);
+    // Die Quelle ist Zustand des Wirts, nicht des Pruefpunkts: sie geht auch dann zurueck,
+    // wenn die Messung wirft.
+    if (gewechselt) await waehleQuelle(cdp, 1).catch(() => "");
+  }
 }
 
 /** C10 — Zuruecksetzen fragt nach, wenn Runden existieren, und raeumt danach wirklich. */
@@ -794,10 +867,10 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
     } else {
       const anteil = folge.sichtbar / folge.werte.length;
       record("C11 Panel folgt dem Strom", anteil >= 0.8,
-        `Tail sichtbar in ${folge.sichtbar}/${folge.werte.length} Messungen (${Math.round(anteil * 100)} %) · rest median ${median(folge.werte)} px, min ${Math.min(...folge.werte)}, max ${Math.max(...folge.werte)} · unter dem Stream-Bereich ${folge.unten} px`);
+        `Tail sichtbar in ${folge.sichtbar}/${folge.werte.length} Messungen à ${TAKT_MS} ms (${Math.round(anteil * 100)} %) · rest median ${median(folge.werte)} px, min ${Math.min(...folge.werte)}, max ${Math.max(...folge.werte)} · unter dem Stream-Bereich ${folge.unten} px`);
       // Die andere Haelfte derselben Schwelle: wer hochscrollt, will lesen, nicht folgen.
       if (folge.nachStoerung.length === 0) {
-        skipped("C11b Hochscrollen im Strom wird respektiert", `der Lauf endete vor der Stoerung (nur ${folge.werte.length} Messungen à 300 ms) — nicht messbar`);
+        skipped("C11b Hochscrollen im Strom wird respektiert", `der Lauf endete vor der Stoerung (nur ${folge.werte.length} Messungen à ${TAKT_MS} ms) — nicht messbar`);
       } else {
         const max = Math.max(...folge.nachStoerung);
         record("C11b Hochscrollen im Strom wird respektiert", max < 40,
@@ -875,6 +948,9 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
     // --- C8: der Lauf wird abgebrochen und hinterlaesst eine Teilrunde -----------
     denkenAn = true;
     await pruefeGedanken(cdp);
+
+    // --- C9d vor C10: er wechselt die Quelle und braucht ein Panel mit Inhalt ---
+    await pruefeTextfeldErreichbar(cdp);
 
     // --- C10 ganz zuletzt: er raeumt die Sitzung, alles danach saehe eine leere ---
     await pruefeZuruecksetzen(cdp);

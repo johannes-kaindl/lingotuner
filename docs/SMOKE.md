@@ -76,7 +76,7 @@ C deshalb rot bleibt, ist das ein protokollierter roter Punkt mit Grund, keine R
 
 ## Prüfpunkte
 
-Stand des letzten Laufs: **2026-09-11, 09:2x CEST**, Obsidian **1.14.0**, Zweitinstanz auf
+Stand des letzten Laufs: **2026-09-11, 10:1x CEST** (Fix-Runde 1 nach der Review), Obsidian **1.14.0**, Zweitinstanz auf
 `:9341`, Vault `$STAGING_VAULTS_DIR/lingotuner`, Endpunkt LM Studio `127.0.0.1:1234`
 (`qwen/qwen3.6-27b`, vom Treiber aus der Modellliste des Servers gewählt — siehe
 „Modellwahl" unten). An dem Tag ist der Antwortbereich auf `obsidian-kit` 0.34.0
@@ -107,15 +107,22 @@ Rollbereich geworden; C9/C9b tragen seitdem eine andere Frage, C11/C11b/C9c sind
 | C6 | Logbuch anlegen und anhängen | nach zwei Läufen: `LingoTuner/LingoTuner YYYY-MM.md` mit `type: lingotuner-log` und zwei `## `-Einträgen | grün (2 Einträge) | 2026-09-07 |
 | C7 | Ersetzen-Ziel sperrt bei geänderter Quelle | Editor-Inhalt ändern → `.lt-out-replace-note` disabled (Guard „Quelle geändert") | grün | 2026-09-07 |
 | C8 | Gedanken-Block während des Streams | eigener, absichtlich abgebrochener Lauf mit eingeschaltetem Denken: `.okit-stream-reasoning` steht im DOM, **während** `.lt-status` auf `is-checking` steht | grün (8 Zeichen) | 2026-09-11 |
-| C9 | jedes Bedienelement ist erreichbar (natürliche Höhe) | Panel künstlich gefüllt, dann je `.lt-run`/`.lt-refine`/`.lt-reset`/`.lt-out`/`.lt-freetext`/erster `.lt-dial-input`: `scrollIntoView`, danach trifft `elementFromPoint` auf die Mitte noch das Element? Ohne Fläche = unerreichbar | grün (8 Elemente, Panel 6590 px in 760 px) | 2026-09-11 |
-| C9b | dasselbe auf einem **kurzen Panel** | Leaf-Höhe auf 420 px gedrückt, danach zurückgesetzt — deckt den geteilten rechten Seitenbereich ab | grün (8 Elemente, Panel 6590 px in 420 px) | 2026-09-11 |
-| C9c | Gegenprobe zu C9/C9b | `.lt-panel` bekommt `overflow: hidden` — dann **muss** mindestens ein Element unerreichbar werden, sonst misst die Probe nichts | grün (6 von 17 unerreichbar) | 2026-09-11 |
+| C9 | jedes Bedienelement ist erreichbar (natürliche Höhe) | Panel künstlich gefüllt, dann je `.lt-run`/`.lt-refine`/`.lt-reset`/`.lt-out`/`.lt-freetext`/erster `.lt-dial-input`: `scrollIntoView`, danach trifft `elementFromPoint` auf die Mitte noch das Element? Ohne Fläche = unerreichbar | grün (8 von 8, Panel 6629 px in 760 px) | 2026-09-11 |
+| C9b | dasselbe auf einem **kurzen Panel** | Leaf-Höhe auf 420 px gedrückt, danach zurückgesetzt — deckt den geteilten rechten Seitenbereich ab | grün (8 von 8, Panel 6629 px in 420 px) | 2026-09-11 |
+| C9c | Gegenprobe zu C9/C9b | `.lt-panel` bekommt `overflow: hidden` — dann **muss** mindestens ein Element unerreichbar werden, sonst misst die Probe nichts; **dieselbe Menge** wie C9, nur ohne Scrollen | grün (6 von 8 unerreichbar) | 2026-09-11 |
+| C9d | Quell-Textfeld und Regler erreichbar | eigener Punkt am Ende von Teil C: Quelle auf „Textfeld", füllen, `.lt-freetext` + erster `.lt-dial-input` messen, Quelle im `finally` zurück — C9/C9b laufen bei Quelle „Notiz" und berühren das Feld nie | grün (2 von 2, Panel 6803 px in 760 px) | 2026-09-11 |
 | C10 | Zurücksetzen fragt nach und räumt | mit Runden: Klick auf `.lt-reset` öffnet den Bestätigungsdialog; nach dem Bestätigen 0 Runden, kein `.lt-reset`, Leerzustand da | grün (vorher 2 Runden) | 2026-09-11 |
-| C11 | Panel folgt dem Strom | alle 300 ms während des Laufs: steht der untere Rand von `.okit-stream-tail` noch im Sichtfenster des Panels, und wie groß ist `rest` (`scrollHeight − scrollTop − clientHeight`)? | grün (3/3 sichtbar, rest 0 px) | 2026-09-11 |
-| C11b | Hochscrollen im Strom wird respektiert | mitten im Strom künstlich `scrollTop = 0`; danach darf das Kit **nicht** mehr nachziehen | grün (7 Messungen, größter Stand 0 px) | 2026-09-11 |
+| C11 | Panel folgt dem Strom | alle 150 ms während des Laufs: steht der untere Rand von `.okit-stream-tail` noch im Sichtfenster des Panels, und wie groß ist `rest` (`scrollHeight − scrollTop − clientHeight`)? | grün (2/2 sichtbar, rest 0 px) | 2026-09-11 |
+| C11b | Hochscrollen im Strom wird respektiert | mitten im Strom künstlich `scrollTop = 0`; danach darf das Kit **nicht** mehr nachziehen | grün (3 Messungen, größter Stand 0 px) | 2026-09-11 |
 
-**Bilanz des letzten Laufs: 28 grün · 0 rot · 1 übersprungen — von 29 Prüfpunkten.**
+**Bilanz des letzten Laufs: 29 grün · 0 rot · 1 übersprungen — von 30 Prüfpunkten.**
 (Vorlauf 2026-09-08, vor dem Kit-Umbau: 25 grün · 0 rot · 1 übersprungen von 26.)
+
+⚠️ **Der Messtakt von C11/C11b stand auf 300 ms und war damit zu grob.** Die Antwort auf die
+Fixture-Notiz ist nach etwa einer halben Sekunde fertig; C11b fiel deshalb in zwei Läufen
+hintereinander als „nicht messbar" aus — ein Punkt, der bei kurzen Antworten regelmäßig
+verschwindet, misst im Alltag nichts. 150 ms und Störung nach der zweiten Messung: grün. Der
+Takt bestimmt die Auflösung, nicht die Aussage.
 
 ### C9 hat seit dem 2026-09-11 eine andere Frage
 
@@ -129,6 +136,12 @@ und der erste Regler: die waren es, die in der alten Aufteilung bei 420 px unerr
 
 `.lt-freetext` gibt es nur bei der Quelle „Textfeld"; steht die Quelle anders, meldet der
 Detailtext das ausdrücklich mit (`nicht im Panel: .lt-freetext`) statt es zu verschweigen.
+
+**C9c misst seit der Fix-Runde vom 2026-09-11 dieselbe MENGE wie C9** (`erreichbarAusdruck`
+mit einem Parameter `scrollen`, eine Liste `BEDIENELEMENTE` für beide). Vorher fuhr die
+Gegenprobe einen eigenen, inline duplizierten Loop, der `.lt-freetext` nicht kannte und alle
+vier Regler nahm — also genau der Drift, den sie verhindern sollte; und ihr Nenner zählte jedes
+Element mit Fläche doppelt („6 von 17" statt „6 von 8").
 
 ⚠️ **C9c benutzt bewusst KEIN `scrollIntoView`**, anders als C9/C9b. Sachlich: ohne
 Rollbereich gibt es nichts hinzuscrollen. Gemessen: mit `scrollIntoView` bei `overflow: hidden`
@@ -406,6 +419,9 @@ Design-Frage, nicht als Defekt.
 | 21 | 01:2x | Repo-Stand zurück | **25 grün · 0 rot · 1 übersprungen** | maßgeblicher Lauf |
 | 22 | 2026-09-11 09:1x | Kit-Umbau, erster Lauf | 21 grün · 0 rot · 0 übersprungen, dann **ABBRUCH** | C9c riss den Lauf: `scrollIntoView` bei `overflow: hidden` → „Zeitüberschreitung: Runtime.evaluate"; alles ab C7 ungemessen |
 | 23 | 2026-09-11 09:2x | C9c ohne `scrollIntoView`, mit eigenem try/catch | **28 grün · 0 rot · 1 übersprungen** | maßgeblicher Lauf nach dem Kit-Umbau; C11/C11b neu und grün |
+| 24 | 2026-09-11 09:5x | Fix-Runde 1 (I1, I3, M2, M9), C9d neu | 28 grün · 0 rot · **2 übersprungen** von 30 | C11b fiel aus: Antwort nach 3 Messungen à 300 ms fertig, die Störung kam nie |
+| 25 | 2026-09-11 10:0x | Störung schon nach 2 Messungen | 28 grün · 0 rot · 2 übersprungen | reichte nicht — der Lauf war nach 2 Messungen vorbei |
+| 26 | 2026-09-11 10:1x | Messtakt 300 → 150 ms | **29 grün · 0 rot · 1 übersprungen** von 30 | maßgeblicher Lauf der Fix-Runde; C11b grün |
 
 ### Was Lauf 1 gelehrt hat
 
