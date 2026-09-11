@@ -76,10 +76,12 @@ C deshalb rot bleibt, ist das ein protokollierter roter Punkt mit Grund, keine R
 
 ## Prüfpunkte
 
-Stand des letzten Laufs: **2026-09-07, 23:5x CEST**, Obsidian **1.14.0**, Zweitinstanz auf
+Stand des letzten Laufs: **2026-09-11, 09:2x CEST**, Obsidian **1.14.0**, Zweitinstanz auf
 `:9341`, Vault `$STAGING_VAULTS_DIR/lingotuner`, Endpunkt LM Studio `127.0.0.1:1234`
-(`qwen/qwen3.8-27b`, vom Treiber aus der Modellliste des Servers gewählt — siehe
-„Modellwahl" unten).
+(`qwen/qwen3.6-27b`, vom Treiber aus der Modellliste des Servers gewählt — siehe
+„Modellwahl" unten). An dem Tag ist der Antwortbereich auf `obsidian-kit` 0.34.0
+(`buildStreamArea`/`createStableWriter`) umgestellt worden und das Panel zu **einem**
+Rollbereich geworden; C9/C9b tragen seitdem eine andere Frage, C11/C11b/C9c sind neu.
 
 | Id | Name | misst | Zustand | Datum |
 |---|---|---|---|---|
@@ -97,19 +99,57 @@ Stand des letzten Laufs: **2026-09-07, 23:5x CEST**, Obsidian **1.14.0**, Zweiti
 | B9 | Lesemodus blockiert die Quelle | Notiz auf `mode: preview` → `.lt-source-line.is-blocked` | grün | 2026-09-07 |
 | B10 | Tippen ins Textfeld behält den Fokus | `execCommand("insertText")` in `.lt-freetext`, dann `selectionchange` gefeuert; der Fokus darf **1200 ms lang nicht wegfallen** (Poll auf den negativen Zustand), danach trägt die Textarea `abc` | grün | 2026-09-08 |
 | B11 | Tippen überlebt das Ende eines Laufs | **während** des Streams in `.lt-note` tippen; nach dem Schluss-`draw()` liegt der Fokus noch dort und der Text steht | grün | 2026-09-08 |
-| C1 | Stream liefert Ergebnis | `.lt-status.is-ok` und nichtleere `.lt-preview` nach einem echten Lauf | grün (2415 Zeichen) | 2026-09-08 |
+| C1 | Stream liefert Ergebnis | `.lt-status.is-ok` und nichtleere `.lt-preview` nach einem echten Lauf | grün (49 Zeichen) | 2026-09-11 |
 | C2 | Kopieren freigegeben | `.lt-out-copy` nicht mehr disabled, sobald ein Ergebnis steht | grün | 2026-09-07 |
 | C3 | Notiz ersetzen schreibt Body | Datei ändert sich, `---\ntype: draft\n---` steht weiter oben — Frontmatter überlebt | grün | 2026-09-07 |
 | C4 | Neue Notiz entsteht | eine Datei mit `(tuned)`/`(getunt)` im Namen taucht auf | grün (`Mail-Entwurf (getunt).md`) | 2026-09-07 |
 | C5 | `is-checking` animiert | `getComputedStyle(".lt-status-icon svg").animationName === "lt-spin"` **während** des Streams | grün | 2026-09-07 |
 | C6 | Logbuch anlegen und anhängen | nach zwei Läufen: `LingoTuner/LingoTuner YYYY-MM.md` mit `type: lingotuner-log` und zwei `## `-Einträgen | grün (2 Einträge) | 2026-09-07 |
 | C7 | Ersetzen-Ziel sperrt bei geänderter Quelle | Editor-Inhalt ändern → `.lt-out-replace-note` disabled (Guard „Quelle geändert") | grün | 2026-09-07 |
-| C8 | Gedanken-Block während des Streams | eigener, absichtlich abgebrochener Lauf mit eingeschaltetem Denken: `.lt-reasoning` steht im DOM, **während** `.lt-status` auf `is-checking` steht | grün (9 Zeichen) | 2026-09-07 |
-| C9 | kein Bedienelement wird verdeckt (natürliche Höhe) | Ausgabebereich künstlich gefüllt, dann je `.lt-run`/`.lt-refine`/`.lt-reset`/`.lt-out`: trifft `elementFromPoint` auf die Knopfmitte noch den Knopf? Ein Knopf ohne Fläche zählt als verdeckt | grün (7 von 7, 8267 px in 208 px) | 2026-09-08 |
-| C9b | dasselbe auf einem **kurzen Panel** | Leaf-Höhe auf 420 px gedrückt, danach zurückgesetzt — deckt den geteilten rechten Seitenbereich ab | grün (7 von 7, Vorschau 148 px) | 2026-09-08 |
-| C10 | Zurücksetzen fragt nach und räumt | mit Runden: Klick auf `.lt-reset` öffnet den Bestätigungsdialog; nach dem Bestätigen 0 Runden, kein `.lt-reset`, Leerzustand da | grün (vorher 2 Runden) | 2026-09-08 |
+| C8 | Gedanken-Block während des Streams | eigener, absichtlich abgebrochener Lauf mit eingeschaltetem Denken: `.okit-stream-reasoning` steht im DOM, **während** `.lt-status` auf `is-checking` steht | grün (8 Zeichen) | 2026-09-11 |
+| C9 | jedes Bedienelement ist erreichbar (natürliche Höhe) | Panel künstlich gefüllt, dann je `.lt-run`/`.lt-refine`/`.lt-reset`/`.lt-out`/`.lt-freetext`/erster `.lt-dial-input`: `scrollIntoView`, danach trifft `elementFromPoint` auf die Mitte noch das Element? Ohne Fläche = unerreichbar | grün (8 Elemente, Panel 6590 px in 760 px) | 2026-09-11 |
+| C9b | dasselbe auf einem **kurzen Panel** | Leaf-Höhe auf 420 px gedrückt, danach zurückgesetzt — deckt den geteilten rechten Seitenbereich ab | grün (8 Elemente, Panel 6590 px in 420 px) | 2026-09-11 |
+| C9c | Gegenprobe zu C9/C9b | `.lt-panel` bekommt `overflow: hidden` — dann **muss** mindestens ein Element unerreichbar werden, sonst misst die Probe nichts | grün (6 von 17 unerreichbar) | 2026-09-11 |
+| C10 | Zurücksetzen fragt nach und räumt | mit Runden: Klick auf `.lt-reset` öffnet den Bestätigungsdialog; nach dem Bestätigen 0 Runden, kein `.lt-reset`, Leerzustand da | grün (vorher 2 Runden) | 2026-09-11 |
+| C11 | Panel folgt dem Strom | alle 300 ms während des Laufs: steht der untere Rand von `.okit-stream-tail` noch im Sichtfenster des Panels, und wie groß ist `rest` (`scrollHeight − scrollTop − clientHeight`)? | grün (3/3 sichtbar, rest 0 px) | 2026-09-11 |
+| C11b | Hochscrollen im Strom wird respektiert | mitten im Strom künstlich `scrollTop = 0`; danach darf das Kit **nicht** mehr nachziehen | grün (7 Messungen, größter Stand 0 px) | 2026-09-11 |
 
-**Bilanz des letzten Laufs: 25 grün · 0 rot · 1 übersprungen — von 26 Prüfpunkten.**
+**Bilanz des letzten Laufs: 28 grün · 0 rot · 1 übersprungen — von 29 Prüfpunkten.**
+(Vorlauf 2026-09-08, vor dem Kit-Umbau: 25 grün · 0 rot · 1 übersprungen von 26.)
+
+### C9 hat seit dem 2026-09-11 eine andere Frage
+
+Bis dahin lautete sie **„wird etwas verdeckt?"** — das Panel teilte seine feste Höhe auf, nur
+die Vorschau rollte, und ein Knopf konnte unter einem überlaufenden Bereich verschwinden oder
+bei `overflow: hidden` ersatzlos abgeschnitten werden. Seit das Panel **ein** Rollbereich ist,
+gibt es beides nicht mehr; dafür steht regelmäßig etwas außerhalb des Sichtfensters. „Nicht
+sichtbar" ist damit kein Fehler mehr, **„nicht erreichbar"** schon. Gemessen wird deshalb mit
+`scrollIntoView` davor — und geprüft werden nicht nur Knöpfe, sondern auch das Quell-Textfeld
+und der erste Regler: die waren es, die in der alten Aufteilung bei 420 px unerreichbar wurden.
+
+`.lt-freetext` gibt es nur bei der Quelle „Textfeld"; steht die Quelle anders, meldet der
+Detailtext das ausdrücklich mit (`nicht im Panel: .lt-freetext`) statt es zu verschweigen.
+
+⚠️ **C9c benutzt bewusst KEIN `scrollIntoView`**, anders als C9/C9b. Sachlich: ohne
+Rollbereich gibt es nichts hinzuscrollen. Gemessen: mit `scrollIntoView` bei `overflow: hidden`
+sucht Chromium den nächsten rollbaren Vorfahren, Obsidian antwortet mit einem Layout-Sturm, und
+der erste Lauf am 2026-09-11 starb an „Zeitüberschreitung: Runtime.evaluate" (30 s) — **mitsamt
+allen danach ungemessenen Punkten.** Die Probe fängt ihre eigene Zeitüberschreitung jetzt ab
+und meldet sie als roten Punkt, statt den Lauf zu reißen.
+
+### C11/C11b — die Folge-Schwelle, seit das Panel rollt
+
+Das Kit scrollt dem Strom nach (`followTail`), aber nur, wenn der Leser ohnehin unten steht
+(Schwelle `followThreshold`, Default 40 px). Diese Schwelle misst den Abstand zur **Scroll-Kante**
+— und unter dem Antwortbereich stehen jetzt noch Verlauf und Ausgangsknöpfe. Der Verdacht war,
+dass deren Höhe die Schwelle überschreitet und das Folgen deshalb ausbleibt.
+
+**Gemessen ist er widerlegt:** unter dem Stream-Bereich lagen 188 px, `rest` war in jeder
+Messung **0 px**, der laufende Absatz in 3 von 3 Messungen sichtbar. Der Grund ist die Bauart
+von `followTail`: es scrollt bis `scrollTop = scrollHeight` — die 188 px sind danach mit im
+Sichtfenster, `rest` fällt auf 0 und bleibt dort. Die 40-px-Schwelle wird nie zum Thema,
+solange der Nutzer nicht eingreift. **C11b** misst die andere Hälfte: nach künstlichem
+`scrollTop = 0` blieb der Stand in 7 Folgemessungen bei 0 px — die Hand des Nutzers gewinnt.
 
 ### B10, C8 und C9 — die Punkte aus den UI-Fehlern vom 2026-09-07
 
@@ -138,6 +178,8 @@ dem Fix war das Zeichen da und der Fokus weg, ein einzelner der beiden Werte hä
 Fehler verfehlt.
 
 **C9** misst die zweite Hälfte von Fehler 2 — nicht „läuft Text über die Leiste", sondern
+*(die folgende Beschreibung gilt für den Stand bis 2026-09-11; seit dem Ein-Rollbereich-Panel
+lautet die Frage „ist es erreichbar?" — siehe „C9 hat seit dem 2026-09-11 eine andere Frage")*
 **„ist der Knopf noch klickbar"**. Geometrie taugt dafür nicht: ein Kind eines Containers mit
 `overflow: auto` behält seine Box unterhalb der Kante und wird dort trotzdem abgeschnitten.
 An genau dieser Stelle gemessen: die Boxen meldeten 2554 px Überstand, gemalt war nichts
@@ -362,6 +404,8 @@ Design-Frage, nicht als Defekt.
 | 19 | 01:0x | `min-height: min(14em, 40%)` | 25 grün · 0 rot · 1 übersprungen | beide Lagen grün |
 | 20 | 01:1x | **Wiederherstellung + Rückfrage gebrochen** | 23 grün · 2 rot (B11, C10) · 1 übersprungen | Gegenprobe |
 | 21 | 01:2x | Repo-Stand zurück | **25 grün · 0 rot · 1 übersprungen** | maßgeblicher Lauf |
+| 22 | 2026-09-11 09:1x | Kit-Umbau, erster Lauf | 21 grün · 0 rot · 0 übersprungen, dann **ABBRUCH** | C9c riss den Lauf: `scrollIntoView` bei `overflow: hidden` → „Zeitüberschreitung: Runtime.evaluate"; alles ab C7 ungemessen |
+| 23 | 2026-09-11 09:2x | C9c ohne `scrollIntoView`, mit eigenem try/catch | **28 grün · 0 rot · 1 übersprungen** | maßgeblicher Lauf nach dem Kit-Umbau; C11/C11b neu und grün |
 
 ### Was Lauf 1 gelehrt hat
 

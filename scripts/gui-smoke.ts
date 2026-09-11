@@ -290,6 +290,83 @@ async function pruefePanel(cdp: Cdp): Promise<void> {
   await cdp.evaluate(`const v = app.workspace.getLeavesOfType("markdown")[0].view; await v.setState({ ...v.getState(), mode: "source" }, { history: false }); app.workspace.trigger("active-leaf-change"); return { ok: true };`);
 }
 
+/** C11 — folgt das PANEL dem Strom?
+ *
+ *  Seit 2026-09-11 rollt nicht mehr der Antwort-Body, sondern das Panel als Ganzes; das Kit
+ *  scrollt ueber `scrollEl` nach, aber nur, wenn der Leser ohnehin unten steht (Schwelle
+ *  `followThreshold`, Default 40 px). Die Schwelle misst den Abstand der SCROLL-KANTE, und
+ *  unter dem Stream-Bereich stehen jetzt noch Verlauf und Ausgangsknoepfe — der Verdacht war,
+ *  dass ihre Hoehe die Schwelle regelmaessig ueberschreitet und das Folgen deshalb ausbleibt.
+ *
+ *  Gemessen wird waehrend eines echten Laufs, alle 300 ms: steht der untere Rand des
+ *  laufenden Absatzes noch im Sichtfenster des Panels, und wie gross ist dabei `rest`
+ *  (`scrollHeight - scrollTop - clientHeight`)? Die Zahlen gehen in den Bericht; die
+ *  Kit-Session leitet daraus ab, ob `followTail` kuenftig gegen `rootEl` messen soll. */
+interface FolgeMessung {
+  fertig: boolean; werte: number[]; sichtbar: number; gesamt: number; unten: number;
+  /** Scroll-Stand NACH einem kuenstlichen Hochscrollen mitten im Strom (C11b). Leer, wenn
+   *  der Lauf vorher endete — dann ist die zweite Haelfte schlicht nicht gemessen. */
+  nachStoerung: number[];
+}
+
+async function laufeMitFolgeMessung(cdp: Cdp, maxMs: number, stoereBei = 3): Promise<FolgeMessung> {
+  const werte: number[] = [];
+  const nachStoerung: number[] = [];
+  let sichtbar = 0;
+  let gesamt = 0;
+  let unten = 0;
+  let gestoert = false;
+  const bis = Date.now() + maxMs;
+  for (;;) {
+    const m = await cdp.evaluate<{ fertig: boolean; hat: boolean; rest: number; tailSichtbar: boolean; unten: number; scrollTop: number }>(`
+      const s = document.querySelector(".lt-status");
+      const p = document.querySelector(".lt-panel");
+      const area = document.querySelector(".okit-stream");
+      const tail = document.querySelector(".okit-stream-tail");
+      const fertig = !!s && (s.classList.contains("is-ok") || s.classList.contains("is-error"));
+      if (!p || !tail || !area) return { fertig, hat: false, rest: 0, tailSichtbar: false, unten: 0, scrollTop: 0 };
+      const pr = p.getBoundingClientRect();
+      const tr = tail.getBoundingClientRect();
+      const ar = area.getBoundingClientRect();
+      // Alles, was im Panel HINTER dem Stream-Bereich steht (Verlauf, Ausgangsknoepfe) —
+      // genau der Betrag, um den die Scroll-Kante weiter weg ist als das Textende.
+      const unten = Math.max(0, Math.round(p.scrollHeight - (ar.bottom - pr.top + p.scrollTop)));
+      return {
+        fertig,
+        hat: tr.height > 0 || tail.textContent.length > 0,
+        rest: Math.round(p.scrollHeight - p.scrollTop - p.clientHeight),
+        tailSichtbar: tr.bottom <= pr.bottom + 1,
+        unten,
+        scrollTop: Math.round(p.scrollTop),
+      };
+    `);
+    if (m.hat) {
+      gesamt += 1;
+      unten = m.unten;
+      if (gestoert) nachStoerung.push(m.scrollTop);
+      else {
+        werte.push(m.rest);
+        if (m.tailSichtbar) sichtbar += 1;
+      }
+    }
+    if (m.fertig) return { fertig: true, werte, sichtbar, gesamt, unten, nachStoerung };
+    if (Date.now() > bis) return { fertig: false, werte, sichtbar, gesamt, unten, nachStoerung };
+    // Die HAND DES NUTZERS, kuenstlich: mitten im Strom nach oben scrollen. Das Kit darf
+    // danach nicht mehr nachziehen — sonst reisst es jeden zurueck, der den Anfang liest.
+    if (!gestoert && gesamt >= stoereBei) {
+      await cdp.evaluate(`const p = document.querySelector(".lt-panel"); if (p) p.scrollTop = 0; return { ok: true };`);
+      gestoert = true;
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
+function median(xs: number[]): number {
+  if (xs.length === 0) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)] ?? 0;
+}
+
 /** Einen Tune-Lauf ausloesen und auf seinen Endzustand warten. `false` = nicht gruen geworden. */
 async function laufeTune(cdp: Cdp): Promise<boolean> {
   await clickReal(cdp, `document.querySelector(".lt-run")`);
@@ -318,7 +395,7 @@ async function pruefeGedanken(cdp: Cdp): Promise<void> {
   await clickReal(cdp, `document.querySelector(".lt-run")`);
   const beob = await pollUntil<{ block: boolean; laenge: number }>(cdp, `
     const s = document.querySelector(".lt-status");
-    const d = document.querySelector(".lt-reasoning");
+    const d = document.querySelector(".okit-stream-reasoning");
     if (d && s && s.classList.contains("is-checking")) return { block: true, laenge: (d.querySelector("pre") || { textContent: "" }).textContent.length };
     if (s && !s.classList.contains("is-checking")) return { block: false, laenge: 0 };
     return null;
@@ -328,9 +405,9 @@ async function pruefeGedanken(cdp: Cdp): Promise<void> {
     await clickReal(cdp, `document.querySelector(".lt-run")`);
     await pollUntil<{ ok: boolean }>(cdp, `const s = document.querySelector(".lt-status"); return s && !s.classList.contains("is-checking") ? { ok: true } : null;`, 20_000, 500);
   }
-  const danach = (await count(cdp, ".lt-reasoning")) > 0;
+  const danach = (await count(cdp, ".okit-stream-reasoning")) > 0;
   if (beob?.block === true) {
-    record("C8 Gedanken-Block waehrend des Streams", true, `.lt-reasoning stand mit ${beob.laenge} Zeichen da, waehrend .lt-status auf is-checking stand`);
+    record("C8 Gedanken-Block waehrend des Streams", true, `.okit-stream-reasoning stand mit ${beob.laenge} Zeichen da, waehrend .lt-status auf is-checking stand`);
   } else if (!danach) {
     // Zwei sehr verschiedene Gruende landen sonst unter derselben Ueberschrift: „das Modell
     // denkt nicht" und „der Lauf ist gescheitert, bevor ein Gedanke kommen konnte" (Netzfehler,
@@ -343,7 +420,7 @@ async function pruefeGedanken(cdp: Cdp): Promise<void> {
       skipped("C8 Gedanken-Block waehrend des Streams", "das gewaehlte Modell lieferte keinen Gedankenstrom (kein reasoning_content) — ohne einen ist der Punkt nicht messbar");
     }
   } else {
-    record("C8 Gedanken-Block waehrend des Streams", false, ".lt-reasoning erschien ERST nach dem Lauf — das ist der gemeldete Fehler 3");
+    record("C8 Gedanken-Block waehrend des Streams", false, ".okit-stream-reasoning erschien ERST nach dem Lauf — das ist der gemeldete Fehler 3");
   }
 }
 
@@ -355,26 +432,33 @@ const C_AUSGAENGE = [
   "C2 Kopieren freigegeben", "C3 Notiz ersetzen schreibt Body", "C4 Neue Notiz entsteht",
   "C6 Logbuch anlegen und anhaengen", "C7 Ersetzen-Ziel sperrt bei geaenderter Quelle",
   "C8 Gedanken-Block waehrend des Streams",
-  "C9 kein Bedienelement wird verdeckt (natuerliche Hoehe)",
-  "C9b kein Bedienelement wird verdeckt (kurzes Panel, 420 px)",
+  "C9 jedes Bedienelement ist erreichbar (natuerliche Hoehe)",
+  "C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)",
+  "C9c Gegenprobe: ohne Rollbalken wird etwas unerreichbar",
   "C10 Zuruecksetzen fragt nach und raeumt",
 ];
 // B11 haengt am ERSTEN Lauf, nicht an dessen Ergebnis: er wird gemessen, sobald der Lauf
 // endet — auch wenn er scheitert, denn der Schluss-Draw laeuft in beiden Faellen. Er gehoert
 // deshalb NICHT in C_AUSGAENGE (dort wuerde er zusaetzlich als uebersprungen gefuehrt und
 // stuende doppelt im Protokoll), wohl aber in C_NAMEN: ohne Endpunkt gibt es keinen Lauf.
-const C_NAMEN = ["C5 is-checking animiert", "C1 Stream liefert Ergebnis", "B11 Tippen ueberlebt das Ende eines Laufs", ...C_AUSGAENGE];
+const C_NAMEN = ["C5 is-checking animiert", "C11 Panel folgt dem Strom", "C11b Hochscrollen im Strom wird respektiert", "C1 Stream liefert Ergebnis", "B11 Tippen ueberlebt das Ende eines Laufs", ...C_AUSGAENGE];
 
-/** C9 — Pflicht-Punkt (b) aus dem Skill `gui-smoke-setup` § 3a: waechst der Ausgabebereich
- *  ueber die Aktionsleiste, sind die Knoepfe da, aber nicht mehr erreichbar.
+/** C9 — Pflicht-Punkt (b) aus dem Skill `gui-smoke-setup` § 3a, seit 2026-09-11 mit neuer
+ *  Frage: **ist jedes Bedienelement ERREICHBAR?**
  *
- *  Gemessen wird der EFFEKT, nicht die Ursache: trifft ein Klick auf die Mitte des Knopfes
- *  noch den Knopf? Geometrie taugt dafuer nicht — ein Kind eines Containers mit
- *  `overflow: auto` behaelt seine Box unterhalb der Kante und wird dort trotzdem
- *  abgeschnitten. Gemessen 2026-09-07 an genau dieser Stelle: die Boxen meldeten 2357 px
- *  Ueberstand, gemalt wurde nichts davon.
+ *  Bis dahin lautete sie „wird etwas verdeckt?", weil das Panel seine Hoehe aufteilte und
+ *  nur die Vorschau rollte — ein Knopf konnte unter einem ueberlaufenden Bereich
+ *  verschwinden. Das Panel ist jetzt EIN Rollbereich: nichts wird mehr verdeckt oder
+ *  abgeschnitten, dafuer steht vieles ausserhalb des Sichtfensters. „Nicht sichtbar" ist
+ *  damit kein Fehler mehr — „nicht erreichbar" schon. Gemessen wird deshalb je Element:
+ *  hinscrollen (`scrollIntoView`), dann `elementFromPoint` auf seine Mitte. Trifft es sich
+ *  selbst, ist es bedienbar.
  *
- *  ⚠️ Der Punkt ist wertlos, solange der Ausgabebereich nicht UEBERLAEUFT (CORE-TEST-01).
+ *  Geprueft werden nicht nur die Knoepfe: auch das Quell-Textfeld (`.lt-freetext`, nur bei
+ *  Quelle „Textfeld" im DOM) und der erste Regler — die waren es, die in der alten
+ *  Aufteilung bei 420 px Panelhoehe unerreichbar wurden.
+ *
+ *  ⚠️ Der Punkt ist wertlos, solange das Panel nicht UEBERLAEUFT (CORE-TEST-01).
  *  Das Ergebnis eines Smoke-Laufs ist dafuer zu kurz — deshalb wird der Bereich vorher
  *  aufgefuellt und die Vorbedingung im Detailtext mitgemeldet, damit sichtbar bleibt, ob
  *  der Punkt ueberhaupt haette rot werden koennen.
@@ -382,8 +466,7 @@ const C_NAMEN = ["C5 is-checking animiert", "C1 Stream liefert Ergebnis", "B11 T
  *  Gemessen wird in ZWEI Lagen: natuerliche Panelhoehe (C9) und kuenstlich auf 420 px
  *  gedrueckte Leaf-Hoehe (C9b). Eine einzelne Hoehe misst nur den Rechner, auf dem sie
  *  lief; die zweite Lage kostet vier Zeilen und deckt den geteilten Seitenbereich ab.
- *  Ein Knopf ohne Flaeche zaehlt dabei als verdeckt — bei `overflow: hidden` wird ein
- *  Ueberstand ersatzlos abgeschnitten, der Knopf hat dann gar keine Box mehr.
+ *  Ein Element ohne Flaeche zaehlt als unerreichbar.
  *
  *  ⚠️ Zwei Fallen im Renderer-Ausdruck, beide hier hineingelaufen: `cdp.evaluate` schickt
  *  ihn als STRING, und er steht im Treiber in einem Template-Literal. Ein echtes Newline
@@ -395,29 +478,26 @@ const C_NAMEN = ["C5 is-checking animiert", "C1 Stream liefert Ergebnis", "B11 T
 async function pruefeUeberdeckung(cdp: Cdp): Promise<void> {
   // Fuellen: einmal fuer beide Lagen.
   const gefuellt = await cdp.evaluate<{ scrollH: number; clientH: number }>(`
-    const p = document.querySelector(".lt-preview");
-    const body = document.querySelector(".lt-preview-body");
+    const p = document.querySelector(".lt-panel");
+    const body = document.querySelector(".okit-stream-body");
     if (!p || !body) return { scrollH: 0, clientH: 0 };
     // Je Zeile ein eigenes div, nicht ein Textblock mit Zeilenumbruechen: siehe den
     // Kommentar am Kopf dieser Funktion.
     const f = body.createDiv({ cls: "lt-smoke-fueller" });
-    for (let i = 0; i < 150; i += 1) f.createDiv({ text: "Fuellzeile " + i + " fuer die Ueberdeckungsprobe." });
+    for (let i = 0; i < 150; i += 1) f.createDiv({ text: "Fuellzeile " + i + " fuer die Erreichbarkeitsprobe." });
     return { scrollH: p.scrollHeight, clientH: p.clientHeight };
   `);
   if (gefuellt.scrollH <= gefuellt.clientH + 8) {
-    skipped("C9 kein Bedienelement wird verdeckt (natuerliche Hoehe)", `Vorbedingung fehlt: der Ausgabebereich laeuft nicht ueber (scrollHeight ${gefuellt.scrollH} <= clientHeight ${gefuellt.clientH})`);
-    skipped("C9b kein Bedienelement wird verdeckt (kurzes Panel, 420 px)", "ohne ueberlaufenden Ausgabebereich gegenstandslos");
+    skipped("C9 jedes Bedienelement ist erreichbar (natuerliche Hoehe)", `Vorbedingung fehlt: das Panel laeuft nicht ueber (scrollHeight ${gefuellt.scrollH} <= clientHeight ${gefuellt.clientH})`);
+    skipped("C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)", "ohne ueberlaufendes Panel gegenstandslos");
   } else {
-    await messeUeberdeckung(cdp, "C9 kein Bedienelement wird verdeckt (natuerliche Hoehe)", gefuellt);
+    await messeErreichbarkeit(cdp, "C9 jedes Bedienelement ist erreichbar (natuerliche Hoehe)", gefuellt);
 
     // --- Zweite Lage: kurzes Panel ------------------------------------------------
-    // Ein Boden (`min-height`) auf der Vorschau ist fuer Flexbox eine HARTE Untergrenze;
-    // alles andere ausser `.lt-controls` schrumpft ebenfalls nicht. Unterschreitet die
-    // Panelhoehe die Summe der Untergrenzen, laeuft das Panel ueber — und weil es
-    // `overflow: hidden` traegt, wird der Ueberstand ERSATZLOS abgeschnitten, ohne
-    // Rollbalken irgendwo. Abgeschnitten wird, was zuletzt kommt: die Ausgangsknoepfe.
     // Ein geteilter rechter Seitenbereich (zwei gestapelte Panels) ist der Normalfall,
-    // nicht die Verrenkung — deshalb ist das eine Pflichtlage und keine Kuer.
+    // nicht die Verrenkung — deshalb ist das eine Pflichtlage und keine Kuer. In der alten
+    // Aufteilung war genau hier der Schaden: bei 420 px blieben dem Bedienblock null Pixel,
+    // die Regler waren unerreichbar, und der Ueberstand wurde ersatzlos abgeschnitten.
     const kurz = await cdp.evaluate<{ ok: boolean; vorher: string; hoehe: number }>(`
       const leaf = document.querySelector(".lt-panel").closest(".workspace-leaf");
       if (!leaf) return { ok: false, vorher: "", hoehe: 0 };
@@ -427,14 +507,15 @@ async function pruefeUeberdeckung(cdp: Cdp): Promise<void> {
       return { ok: true, vorher, hoehe: Math.round(document.querySelector(".lt-panel").getBoundingClientRect().height) };
     `);
     if (!kurz.ok) {
-      skipped("C9b kein Bedienelement wird verdeckt (kurzes Panel, 420 px)", "kein .workspace-leaf ueber dem Panel gefunden");
+      skipped("C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)", "kein .workspace-leaf ueber dem Panel gefunden");
     } else {
       const masse = await cdp.evaluate<{ scrollH: number; clientH: number }>(`
-        const p = document.querySelector(".lt-preview");
+        const p = document.querySelector(".lt-panel");
         return { scrollH: p.scrollHeight, clientH: p.clientHeight };
       `);
       try {
-        await messeUeberdeckung(cdp, "C9b kein Bedienelement wird verdeckt (kurzes Panel, 420 px)", masse, ` · Panel ${kurz.hoehe} px`);
+        await messeErreichbarkeit(cdp, "C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)", masse, ` · Panel ${kurz.hoehe} px`);
+        await gegenprobeErreichbarkeit(cdp);
       } finally {
         // Die Leaf-Hoehe ist Zustand der Zweitinstanz, nicht des Pruefpunkts: sie wird auch
         // dann zurueckgesetzt, wenn die Messung wirft — sonst misst jeder folgende Punkt
@@ -454,24 +535,110 @@ async function pruefeUeberdeckung(cdp: Cdp): Promise<void> {
   `);
 }
 
-/** Die eigentliche Messung, zweimal gebraucht (natuerliche und kurze Panelhoehe). */
-async function messeUeberdeckung(cdp: Cdp, name: string, masse: { scrollH: number; clientH: number }, zusatz = ""): Promise<void> {
-  const r = await cdp.evaluate<{ geprueft: number; schlecht: Array<{ cls: string; deckt: string }> }>(`
-    const schlecht = [];
-    let geprueft = 0;
-    for (const b of document.querySelectorAll(".lt-run, .lt-refine, .lt-reset, .lt-out")) {
+/** Der Renderer-Ausdruck der Erreichbarkeitsprobe — einmal geschrieben, dreimal gebraucht
+ *  (natuerliche Hoehe, kurzes Panel, Gegenprobe). Zwei Fassungen liefen beim naechsten neuen
+ *  Bedienelement auseinander, und die Gegenprobe pruefte dann etwas anderes als der Punkt. */
+const ERREICHBAR_AUSDRUCK = `
+  const ziele = [".lt-run", ".lt-refine", ".lt-reset", ".lt-out", ".lt-freetext", ".lt-dial-input"];
+  const schlecht = [];
+  const fehlend = [];
+  let geprueft = 0;
+  for (const sel of ziele) {
+    const treffer = Array.from(document.querySelectorAll(sel));
+    // Vom Regler nur der erste: vier Reglerzeilen stehen unmittelbar untereinander, und was
+    // fuer die erste gilt, gilt fuer die anderen.
+    const menge = sel === ".lt-dial-input" ? treffer.slice(0, 1) : treffer;
+    if (menge.length === 0) { fehlend.push(sel); continue; }
+    for (const b of menge) {
+      // Hinscrollen ist Teil der Frage: im Ein-Rollbereich-Panel ist „steht ausserhalb des
+      // Sichtfensters" kein Fehler, „laesst sich auch nach dem Rollen nicht treffen" schon.
+      b.scrollIntoView({ block: "center" });
+      await new Promise((r) => setTimeout(r, 60));
       const box = b.getBoundingClientRect();
-      if (box.width === 0 || box.height === 0) { schlecht.push({ cls: b.className, deckt: "(keine Flaeche — abgeschnitten)" }); continue; }
+      if (box.width === 0 || box.height === 0) { schlecht.push({ cls: b.className, deckt: "(keine Flaeche)" }); continue; }
       geprueft += 1;
       const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
       if (!(b === hit || b.contains(hit))) schlecht.push({ cls: b.className, deckt: hit ? String(hit.className || hit.tagName) : "(nichts)" });
     }
-    return { geprueft, schlecht };
-  `);
+  }
+  return { geprueft, schlecht, fehlend };
+`;
+
+interface Erreichbarkeit { geprueft: number; schlecht: Array<{ cls: string; deckt: string }>; fehlend: string[] }
+
+/** Die eigentliche Messung, zweimal gebraucht (natuerliche und kurze Panelhoehe). */
+async function messeErreichbarkeit(cdp: Cdp, name: string, masse: { scrollH: number; clientH: number }, zusatz = ""): Promise<void> {
+  const r = await cdp.evaluate<Erreichbarkeit>(ERREICHBAR_AUSDRUCK);
+  // Nicht vorhandene Selektoren sind kein Befund, aber auch keine Fussnote: `.lt-freetext`
+  // gibt es nur bei der Quelle „Textfeld", und wer das nicht mitliest, haelt einen Punkt fuer
+  // gemessen, der es nicht war (CORE-TEST-19).
+  const nicht = r.fehlend.length === 0 ? "" : ` · nicht im Panel: ${r.fehlend.join(", ")}`;
   const detail = r.schlecht.length === 0
-    ? `${r.geprueft} Bedienelemente treffen sich selbst (Ausgabebereich ${masse.scrollH} px in ${masse.clientH} px)${zusatz}`
-    : `${r.schlecht.map((x) => `${x.cls} → ${x.deckt}`).join(" · ")}${zusatz}`;
+    ? `${r.geprueft} Bedienelemente treffen sich selbst nach scrollIntoView (Panel ${masse.scrollH} px in ${masse.clientH} px)${zusatz}${nicht}`
+    : `${r.schlecht.map((x) => `${x.cls} → ${x.deckt}`).join(" · ")}${zusatz}${nicht}`;
   record(name, r.schlecht.length === 0 && r.geprueft > 0, detail);
+}
+
+/** Gegenprobe zu C9/C9b: nimmt man dem Panel seinen Rollbalken, MUSS mindestens ein Element
+ *  unerreichbar werden. Ohne sie waere ein gruener Punkt auch dann gruen, wenn die Messung
+ *  gar nichts sehen kann — das ist die Gattung Fehler, an der ein Pruefpunkt still stirbt.
+ *  Gemessen wird zuerst, ob die Manipulation die Geometrie ueberhaupt veraendert hat.
+ *
+ *  ⚠️ Hier wird NICHT `scrollIntoView` benutzt, anders als in C9/C9b — und das ist kein
+ *  Versehen, sondern zweimal begruendet. Sachlich: ohne Rollbereich gibt es nichts
+ *  hinzuscrollen; die Frage der Gegenprobe ist genau, was dann passiert. Gemessen: mit
+ *  `scrollIntoView` bei `overflow: hidden` sucht Chromium den naechsten rollbaren Vorfahren
+ *  und Obsidian antwortet mit einem Layout-Sturm — der erste Lauf am 2026-09-11 starb mit
+ *  „Zeitueberschreitung: Runtime.evaluate" (30 s) und riss den restlichen Lauf mit. */
+async function gegenprobeErreichbarkeit(cdp: Cdp): Promise<void> {
+  const name = "C9c Gegenprobe: ohne Rollbalken wird etwas unerreichbar";
+  let gesetzt = false;
+  try {
+    const vorher = await cdp.evaluate<{ h: number; scrollH: number; scrollTop: number }>(`
+      const p = document.querySelector(".lt-panel");
+      if (!p) return { h: 0, scrollH: 0, scrollTop: 0 };
+      return { h: Math.round(p.getBoundingClientRect().height), scrollH: p.scrollHeight, scrollTop: Math.round(p.scrollTop) };
+    `);
+    gesetzt = (await cdp.evaluate<{ ok: boolean }>(`
+      const p = document.querySelector(".lt-panel");
+      if (!p) return { ok: false };
+      p.scrollTop = 0;
+      p.style.overflow = "hidden";
+      return { ok: true };
+    `)).ok;
+    if (!gesetzt) { skipped(name, "kein .lt-panel im DOM"); return; }
+    await new Promise((r) => setTimeout(r, 300));
+    const nachher = await cdp.evaluate<{ h: number; scrollH: number; scrollTop: number; schlecht: number; namen: string[]; geprueft: number }>(`
+      const p = document.querySelector(".lt-panel");
+      const schlecht = [];
+      let geprueft = 0;
+      for (const b of document.querySelectorAll(".lt-run, .lt-refine, .lt-reset, .lt-out, .lt-dial-input")) {
+        const box = b.getBoundingClientRect();
+        if (box.width === 0 || box.height === 0) { schlecht.push(String(b.className).split(" ")[0]); continue; }
+        geprueft += 1;
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        if (!(b === hit || b.contains(hit))) schlecht.push(String(b.className).split(" ")[0]);
+      }
+      return { h: Math.round(p.getBoundingClientRect().height), scrollH: p.scrollHeight, scrollTop: Math.round(p.scrollTop), schlecht: schlecht.length, namen: schlecht.slice(0, 4), geprueft };
+    `);
+    const wirksam = nachher.scrollH > nachher.h + 8;
+    record(name, wirksam && nachher.schlecht > 0,
+      !wirksam
+        ? `die Manipulation hat nichts veraendert (${nachher.scrollH} px in ${nachher.h} px, vorher ${vorher.scrollH}/${vorher.h}) — ohne Wirkung ist die Gegenprobe wertlos`
+        : nachher.schlecht > 0
+          ? `overflow:hidden → ${nachher.schlecht} von ${nachher.schlecht + nachher.geprueft} Elementen unerreichbar (${nachher.namen.join(", ")}), Panel ${nachher.scrollH} px in ${nachher.h} px`
+          : `overflow:hidden, aber alle ${nachher.geprueft} Elemente weiter erreichbar — die Probe misst nichts`);
+  } catch (e) {
+    record(name, false, `Messung abgebrochen: ${(e as Error).message}`);
+  } finally {
+    if (gesetzt) {
+      await cdp.evaluate(`
+        const p = document.querySelector(".lt-panel");
+        if (p) p.style.overflow = "";
+        return { ok: true };
+      `).catch(() => null);
+    }
+  }
 }
 
 /** B11 — Fehler 1 in seinem schmaleren Fenster: der Voll-Draw am ENDE eines Laufs.
@@ -617,7 +784,26 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
     // B11: WAEHREND des Streams in die Anmerkung tippen — gemessen wird nach dem Schluss-Draw.
     const getippt = await tippeWaehrendDesLaufs(cdp);
 
-    const done = await pollUntil<{ ok: boolean }>(cdp, `const s = document.querySelector(".lt-status"); return s && (s.classList.contains("is-ok") || s.classList.contains("is-error")) ? { ok: true } : null;`, 120_000, 1000);
+    // Der Endzustands-Poll misst zugleich C11 — ein zweiter Lauf nur fuers Scrollverhalten
+    // kostete Minuten und saehe dasselbe.
+    const folge = await laufeMitFolgeMessung(cdp, 120_000);
+    const done = folge.fertig ? { ok: true } : null;
+    if (folge.werte.length === 0) {
+      skipped("C11 Panel folgt dem Strom", "waehrend des Laufs stand nie ein laufender Absatz im DOM — ohne Tail ist die Frage nicht messbar");
+      skipped("C11b Hochscrollen im Strom wird respektiert", "ohne messbaren Strom gegenstandslos");
+    } else {
+      const anteil = folge.sichtbar / folge.werte.length;
+      record("C11 Panel folgt dem Strom", anteil >= 0.8,
+        `Tail sichtbar in ${folge.sichtbar}/${folge.werte.length} Messungen (${Math.round(anteil * 100)} %) · rest median ${median(folge.werte)} px, min ${Math.min(...folge.werte)}, max ${Math.max(...folge.werte)} · unter dem Stream-Bereich ${folge.unten} px`);
+      // Die andere Haelfte derselben Schwelle: wer hochscrollt, will lesen, nicht folgen.
+      if (folge.nachStoerung.length === 0) {
+        skipped("C11b Hochscrollen im Strom wird respektiert", `der Lauf endete vor der Stoerung (nur ${folge.werte.length} Messungen à 300 ms) — nicht messbar`);
+      } else {
+        const max = Math.max(...folge.nachStoerung);
+        record("C11b Hochscrollen im Strom wird respektiert", max < 40,
+          `nach kuenstlichem scrollTop=0: ${folge.nachStoerung.length} Messungen, groesster Stand ${max} px`);
+      }
+    }
     if (getippt) await messeB11(cdp);
     else skipped("B11 Tippen ueberlebt das Ende eines Laufs", "keine .lt-note im Panel — ohne Eingabefeld ist der Punkt gegenstandslos");
     const ok = done !== null && (await hasClass(cdp, ".lt-status", "is-ok"));
