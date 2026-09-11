@@ -1,4 +1,4 @@
-// vendored from code-kit@0.5.0, src/ts/pure/reasoning.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from code-kit@0.6.0, src/ts/pure/reasoning.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 export type ThinkingSupport = "none" | "hybrid" | "always";
 
 /** Union-Params zum Abschalten von Reasoning über viele lokale Server hinweg.

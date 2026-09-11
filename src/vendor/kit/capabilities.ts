@@ -1,4 +1,4 @@
-// vendored from code-kit@0.5.0, src/ts/pure/capabilities.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from code-kit@0.6.0, src/ts/pure/capabilities.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { ThinkingSupport } from "./reasoning";
 
 export type Confidence = "no" | "likely" | "confirmed";

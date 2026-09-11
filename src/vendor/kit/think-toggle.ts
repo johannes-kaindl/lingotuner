@@ -1,4 +1,4 @@
-// vendored from code-kit@0.5.0, src/ts/pure/think-toggle.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from code-kit@0.6.0, src/ts/pure/think-toggle.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /** The two halves of a "think" switch for local LLM chat UIs: what the toggle should show,
  *  and what the request should actually do. They belong in one module because they answer
  *  the same question — a switch that promises something the request does not deliver is a lie.

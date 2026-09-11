@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { splitStable } from "../src/core/stream-blocks";
+import { splitStable } from "../src/vendor/kit/stream-blocks";
 
-describe("splitStable", () => {
+/** Rauchprobe des VENDORINGS, nicht des Algorithmus: `splitStable` wird seit 0.33.1 nicht mehr
+ *  hier gepflegt, sondern aus code-kit vendored (`tools/sync-kit.sh`). Die drei Faelle bleiben
+ *  stehen, weil ein leeres oder halb kopiertes Vendor-Modul sonst erst im Stream auffiele —
+ *  und dort als Plugin-Fehler aussaehe. */
+describe("splitStable (vendored)", () => {
   it("schneidet an der letzten Absatzgrenze", () => {
     expect(splitStable("A\n\nB\n\nC lae")).toEqual({ stable: "A\n\nB\n\n", tail: "C lae" });
   });
