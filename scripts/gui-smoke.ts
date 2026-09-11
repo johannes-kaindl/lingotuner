@@ -738,6 +738,9 @@ async function pruefeTextfeldErreichbar(cdp: Cdp): Promise<void> {
         for (let i = 0; i < 150; i += 1) f.createDiv({ text: "Fuellzeile " + i + " fuer die Erreichbarkeitsprobe." });
       }
       await new Promise((r) => setTimeout(r, 200));
+      // Ohne Panel kein Wurf, sondern 0/0 — die Vorbedingung unten meldet das dann als
+      // uebersprungen, statt dass ein Wurf hier den ganzen Lauf reisst (Muster aus C9c).
+      if (!p) return { scrollH: 0, clientH: 0 };
       return { scrollH: p.scrollHeight, clientH: p.clientHeight };
     `);
     if (masse.scrollH <= masse.clientH + 8) {
