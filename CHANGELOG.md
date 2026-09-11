@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-09-11
+
 ### Changed
 
 - The streaming answer area now comes from obsidian-kit 0.34.0 (`buildStreamArea`, `createStableWriter`) instead of being built here; LingoTuner is its first consumer. Same behaviour, one shared building block.
