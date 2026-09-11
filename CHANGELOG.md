@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The streaming answer area now comes from obsidian-kit 0.34.0 (`buildStreamArea`, `createStableWriter`) instead of being built here; LingoTuner is its first consumer. Same behaviour, one shared building block.
+- The panel is one single scrolling area. Nothing inside it shrinks or gets cut off any more — with a long result the output buttons sit below the answer and take a scroll to reach.
+
+### Fixed
+
+- On a short panel the dials, the text field and the output buttons all stay reachable: instead of dividing a fixed height between the controls and the preview, the whole panel scrolls.
+
 ## [0.1.1] — 2026-09-07
 
 ### Added
