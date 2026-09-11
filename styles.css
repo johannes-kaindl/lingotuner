@@ -112,7 +112,12 @@
      unerreichbar, ohne verdeckt zu sein.
    Jede dieser drei Messungen ist eine Folge des Aufteilens: wo verteilt wird, verliert
    irgendwer. Ein einziger Rollbereich hat diese Klasse von Fehlern nicht — er kann nur zu
-   lang werden, und dagegen hilft Rollen. */
+   lang werden, und dagegen hilft Rollen.
+
+   EINE benannte Ausnahme: `.lt-history` behaelt `max-height: 20vh` und rollt in sich. Sie ist
+   keine AUSGABE, sondern eine Liste von Runden — bei zwanzig Runden schoebe sie das Ergebnis
+   aus dem Blick, und anders als bei einer Antwort will niemand sie am Stueck lesen. Wer die
+   Regel „ein Rollbereich" streng liest, findet sie hier deklariert statt als Befund. */
 .lt-panel { display: flex; flex-direction: column; gap: var(--size-4-2); padding: var(--size-4-3) var(--size-4-4) var(--size-4-6); height: 100%; overflow-y: auto; }
 /* Kein Block scrollt mehr in sich, und keiner schrumpft: `flex: 0 0 auto` ueberall. Ein
    Flex-Kind mit dem Default `shrink: 1` gaebe seine Hoehe her, sobald die Summe die
@@ -168,7 +173,11 @@
 /* Der Design-Scope des Streaming-Antwortbereichs (Kit-Wurzel `.okit-stream`): Rahmen und
    Innenabstand kommen von hier, alles darin vom Kit-Block oben. `flex: 0 0 auto`, weil im
    Ein-Rollbereich-Panel nichts schrumpfen darf; `min-height`, damit der leere Bereich
-   sichtbar ein Bereich ist und nicht eine Linie. */
+   sichtbar ein Bereich ist und nicht eine Linie.
+   ⚠️ `min-height: 6em` UEBERSCHREIBT das `min-height: 0` der Kit-Regel `.okit-stream` (gleiche
+   Spezifitaet, spaetere Regel gewinnt). Das ist gewollt und folgenlos, weil hier nichts mehr
+   schrumpft — aber es ist eine Ueberschreibung und keine unabhaengige Regel, und beim naechsten
+   Kit-Update gehoert sie deshalb mitgelesen. */
 .lt-preview { border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); padding: var(--size-4-2) var(--size-4-3); flex: 0 0 auto; min-height: 6em; }
 .lt-empty { color: var(--text-faint); font-size: var(--font-ui-small); }
 /* Abschneiden am Token-Limit ist eine Warnung, kein Fehler — das Ergebnis ist da, nur unvollstaendig. */
