@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.33.1, src/obsidian/stream-area.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.34.0, src/obsidian/stream-area.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /**
  * Streaming-Antwortbereich (UI-STANDARD §8): der Bereich, in dem eine laufende
  * LLM-Antwort sichtbar wird — Gedankenblock, fertiger Text, laufender Absatz,
@@ -90,6 +90,14 @@ export interface StreamAreaOptions {
   onReasoningToggle?: (open: boolean) => void;
   /** Dem Strom nach unten folgen. Default `true`. */
   follow?: boolean;
+  /** Element, an dem `followTail` hängt. Default: der Body.
+   *  **Für Wirte, die als Ganzes rollen.** Ist es gesetzt, misst `followTail` die
+   *  `atBottom`-Schwelle dort und der Body hört auf, ein eigener Scroll-Container zu sein
+   *  (Wurzelklasse `okit-stream--host-scroll`, Regel in `STREAM_AREA_CSS`) — sonst bräuchte
+   *  so ein Wirt einen CSS-Override für etwas, das dieses Modul selbst verursacht.
+   *  Anlass: `lingotuner` rollt sein Panel als Ganzes, damit auf kurzen Panels nichts
+   *  verschwindet (Entscheidung 2026-09-11 nach einer 420→0-px-Messung). */
+  scrollEl?: HTMLElement;
   /** Ab wie vielen Pixeln Abstand zum Ende „der Nutzer hat hochgescrollt" gilt. Default 40
    *  (Wert aus `vault-rag/src/chat_view.ts:203`). */
   followThreshold?: number;
@@ -104,6 +112,8 @@ export interface StreamArea {
   readonly tailEl: HTMLElement;
   /** Statuszeile — der Consumer bestückt sie (z. B. mit dem §8-Status-Indikator). */
   readonly statusEl: HTMLElement;
+  /** Woran `followTail` hängt — der Body, oder das per `scrollEl` übergebene Element. */
+  readonly scrollEl: HTMLElement;
   /** Gedanken anhängen (Push-Konsumenten). Legt den Block beim ersten Aufruf an. */
   appendReasoning(text: string): void;
   /** Gedanken ersetzen (Snapshot-Konsumenten). Legt den Block beim ersten Aufruf an. */
@@ -135,6 +145,8 @@ export function buildStreamArea(parent: HTMLElement, opts: StreamAreaOptions): S
   // ihn per `empty()`, statt sich auf den Elternbezug eines Einzelknotens zu verlassen.
   const reasonSlot = rootEl.createDiv({ cls: "okit-stream-reasoning-slot" });
   const bodyEl = rootEl.createDiv({ cls: "okit-stream-body" });
+  const scrollEl = opts.scrollEl ?? bodyEl;
+  if (scrollEl !== bodyEl) rootEl.addClass("okit-stream--host-scroll");
   const tailEl = bodyEl.createDiv({ cls: "okit-stream-tail" });
   const statusEl = rootEl.createDiv({ cls: "okit-stream-status" });
 
@@ -157,14 +169,14 @@ export function buildStreamArea(parent: HTMLElement, opts: StreamAreaOptions): S
   const atBottom = (): boolean => {
     // Fehlende Maße (frisches Element, kein Layout) ergeben 0 — und 0 < threshold heißt
     // „folgen". Das ist der gewollte Ausgang: der allererste Token soll sichtbar werden.
-    const h = bodyEl.scrollHeight ?? 0;
-    const t = bodyEl.scrollTop ?? 0;
-    const c = bodyEl.clientHeight ?? 0;
+    const h = scrollEl.scrollHeight ?? 0;
+    const t = scrollEl.scrollTop ?? 0;
+    const c = scrollEl.clientHeight ?? 0;
     return h - t - c < threshold;
   };
 
   return {
-    rootEl, bodyEl, tailEl, statusEl,
+    rootEl, bodyEl, tailEl, statusEl, scrollEl,
 
     appendReasoning(text: string): void {
       const pre = ensureReasoning();
@@ -184,7 +196,7 @@ export function buildStreamArea(parent: HTMLElement, opts: StreamAreaOptions): S
     followTail(): void {
       if (!follow) return;
       if (!atBottom()) return;
-      bodyEl.scrollTop = bodyEl.scrollHeight ?? 0;
+      scrollEl.scrollTop = scrollEl.scrollHeight ?? 0;
     },
 
     reset(): void {
@@ -208,6 +220,9 @@ export const STREAM_AREA_CSS = `
   flex: 1 1 auto; min-height: 0; overflow-y: auto;
   font-size: var(--font-ui-small); line-height: var(--line-height-normal);
 }
+/* Rollt der Wirt selbst, ist der Body KEIN eigener Scroll-Container — sonst entstuende
+   ein zweiter Rollbereich im ersten. Wird per Wurzelklasse geschaltet, nicht vom Consumer. */
+.okit-stream--host-scroll .okit-stream-body { flex: 0 0 auto; min-height: auto; overflow-y: visible; }
 .okit-stream-block > :first-child { margin-top: 0; }
 .okit-stream-block > :last-child { margin-bottom: 0; }
 .okit-stream-tail { white-space: pre-wrap; color: var(--text-muted); }

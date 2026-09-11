@@ -3,6 +3,7 @@ import { DIMENSIONS, isNoop, levelKey, type Dials, type Dimension, type Level, t
 import type { Session } from "../core/session";
 import { readinessKey, type Readiness, type SourceKind } from "../core/source";
 import { thinkToggleState } from "../vendor/kit/think-toggle";
+import { buildStreamArea, type StreamArea } from "../vendor/kit-obsidian/stream-area";
 import { t } from "../vendor/kit/i18n";
 
 export type RunPhase = "idle" | "streaming" | "done" | "error" | "aborted";
@@ -55,14 +56,11 @@ export interface PanelParts {
   statusEl: HTMLElement;
   statusIconEl: HTMLElement;
   statusLabelEl: HTMLElement;
-  /** Der SCROLLENDE Bereich (Rahmen, `overflow-y: auto`). Traegt den Gedanken-Block und `bodyEl`. */
-  previewEl: HTMLElement;
-  /** Ziel fuer Markdown und Stream-Bloecke — NICHT `previewEl`: ein `empty()` auf dem
-   *  Scroll-Bereich raeumte den Gedanken-Block mit weg. */
-  bodyEl: HTMLElement;
-  tailEl: HTMLElement;
-  /** Das `<pre>` im Gedanken-Block, `null` bis zum ersten Reasoning-Token. */
-  reasoningEl: HTMLElement | null;
+  /** Der Streaming-Antwortbereich aus `obsidian-kit` (UI-STANDARD §8, `buildStreamArea`).
+   *  Gedankenblock, Antwort-Body und laufender Absatz liegen darin; die Wurzel traegt
+   *  zusaetzlich `.lt-preview` als Design-Scope dieses Plugins.
+   *  Er SCROLLT hier NICHT selbst — das tut das Panel (ein Rollbereich, s. styles.css). */
+  area: StreamArea;
 }
 
 type El = HTMLElement;
@@ -267,29 +265,6 @@ function outputRow(parent: El, m: PanelModel, h: PanelHandlers): void {
   mk("lt-out-new-note", "out.newNote", hasResult, () => h.onNewNote());
 }
 
-/** Gedanken-Block anlegen und sein `<pre>` liefern.
- *  uebernommen aus koda-agent/src/obsidian/view.ts (streamReasoning), 2026-09-07 — dort ein
- *  `<details>` mit `<summary>`, dessen `<pre>` per `setText(getText() + tk)` waechst. Hier
- *  ausgelagert, weil ihn ZWEI Wege brauchen: der erste Reasoning-Token waehrend des Streams
- *  und der Schluss-Draw aus dem Modell.
- *  `open` steht beim Anlegen offen — ein Gedanke, den man erst aufklappen muss, ist waehrend
- *  des Streams unsichtbar und damit genau der gemeldete Fehler. */
-export function createReasoningBlock(parent: El, open: boolean, text: string, onToggle: (open: boolean) => void): HTMLElement {
-  const d = parent.createEl("details", { cls: "lt-reasoning" });
-  d.open = open;
-  d.createEl("summary", { text: t("preview.thinking") });
-  const pre = d.createEl("pre", { text });
-  d.addEventListener("toggle", () => onToggle(d.open));
-  return pre;
-}
-
-/** Steht (oder entsteht) ein Ergebnis? Steuert die Platzaufteilung im Panel: erst dann
- *  bekommt die Vorschau ihren Anteil (`.lt-panel[data-output="1"]` in styles.css).
- *  Der Stream zaehlt mit — sonst bliebe die Vorschau genau waehrend des Zusehens schmal. */
-function hasOutput(m: PanelModel): boolean {
-  return m.preview !== "" || m.phase === "streaming";
-}
-
 /** Was einen VOLL-Draw erzwingt. Alles andere ist ein Patch (`patchPanel`) — ein Voll-Draw
  *  zieht jedes Eingabefeld unter dem Cursor weg und war die Ursache von Fehler 1. */
 export function structureKey(m: PanelModel): string {
@@ -319,7 +294,6 @@ export function structureKey(m: PanelModel): string {
  *  (dafuer muessten die `PanelParts` hereingereicht werden). */
 export function patchPanel(root: El, m: PanelModel): void {
   root.dataset.preset = m.presetId ?? "";
-  root.dataset.output = hasOutput(m) ? "1" : "0";
   const busy = m.phase === "streaming";
 
   const line = one(root, ".lt-source-line");
@@ -364,10 +338,9 @@ export function renderPanel(root: El, m: PanelModel, h: PanelHandlers): PanelPar
   root.empty();
   root.addClass("lt-panel");
   root.dataset.preset = m.presetId ?? "";
-  root.dataset.output = hasOutput(m) ? "1" : "0";
   const busy = m.phase === "streaming";
-  // Die Bedienelemente sitzen in einem eigenen Block: er darf schrumpfen und selbst scrollen,
-  // damit die Vorschau darunter ihren festen Anteil behaelt (Layout-Vertrag in styles.css).
+  // Die Bedienelemente sitzen in einem eigenen Block. Er scrollt seit 2026-09-11 NICHT mehr
+  // selbst — das Panel ist ein einziger Rollbereich (Layout-Vertrag in styles.css).
   const controls = root.createDiv({ cls: "lt-controls" });
   sourceRow(controls, m, h, busy);
   presetRow(controls, m, h, busy);
@@ -379,18 +352,24 @@ export function renderPanel(root: El, m: PanelModel, h: PanelHandlers): PanelPar
   // statt des Knopfes. Gefunden hat das C9 im GUI-Smoke, nicht das Auge.
   runRow(root, m, h);
   const status = statusRow(root);
-  const previewEl = root.createDiv({ cls: "lt-preview" });
-  // Gedanken zuerst, Antwort darunter — dieselbe Reihenfolge wie im Stream (koda-agent).
-  const reasoningEl = m.reasoning === ""
-    ? null
-    : createReasoningBlock(previewEl, m.reasoningOpen, m.reasoning, (open) => h.onToggleReasoning(open));
-  const bodyEl = previewEl.createDiv({ cls: "lt-preview-body markdown-rendered" });
-  const tailEl = bodyEl.createDiv({ cls: "lt-preview-tail" });
-  if (m.preview === "" && m.phase === "idle") bodyEl.createDiv({ cls: "lt-empty", text: t("preview.empty") });
+  // Streaming-Antwortbereich aus dem Kit (§8): Gedanken zuerst, Antwort darunter — dieselbe
+  // Reihenfolge wie im Stream. Der Gedankenblock entsteht erst beim ersten Gedanken.
+  const area = buildStreamArea(root, {
+    strings: { reasoning: t("preview.thinking") },
+    cls: "lt-preview",
+    reasoningOpen: m.reasoningOpen,
+    onReasoningToggle: (open) => h.onToggleReasoning(open),
+    // Der Body ist hier KEIN Scroll-Container: das Panel rollt als Ganzes (Entscheidung
+    // 2026-09-11). `scrollEl` sagt dem Kit, woran `followTail` haengt — und schaltet dabei
+    // ueber die Wurzelklasse `okit-stream--host-scroll` den eigenen Scroll des Bodys ab.
+    scrollEl: root,
+  });
+  if (m.reasoning !== "") area.setReasoning(m.reasoning);
+  if (m.preview === "" && m.phase === "idle") area.bodyEl.createDiv({ cls: "lt-empty", text: t("preview.empty") });
   if (m.truncated) root.createDiv({ cls: "lt-warning", text: t("status.truncated") });
   historyList(root, m, h, busy);
   outputRow(root, m, h);
-  const parts: PanelParts = { ...status, previewEl, bodyEl, tailEl, reasoningEl };
+  const parts: PanelParts = { ...status, area };
   paintStatus(parts, m.phase, m.statusText);
   return parts;
 }

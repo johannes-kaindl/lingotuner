@@ -2,27 +2,13 @@ import { Component, ItemView, MarkdownRenderer, Modal, Setting, type App, type W
 import { isNoop, presetFor, type Dials, type Dimension, type Level, type Preset } from "../core/dials";
 import { EMPTY_SESSION, activeRound, addRound, rootInput, rootSourceName, selectRound, type Session } from "../core/session";
 import { type Readiness, type SourceKind } from "../core/source";
-import { splitStable } from "../core/stream-blocks";
 import { errorMessageKey } from "../core/llm/errors";
 import type { TuneResult } from "../core/llm/client";
-import { createReasoningBlock, patchPanel, renderPanel, structureKey, type PanelHandlers, type PanelModel, type PanelParts, type RunPhase } from "./view-render";
+import { patchPanel, renderPanel, structureKey, type PanelHandlers, type PanelModel, type PanelParts, type RunPhase } from "./view-render";
+import { createStableWriter, type StableMarkdownWriter } from "../vendor/kit-obsidian/stable-writer";
 import { t } from "../vendor/kit/i18n";
 
 export const VIEW_TYPE_LINGOTUNER = "lingotuner-panel";
-
-/** Abstand zum unteren Rand, bis zu dem ein Bereich noch als „am Ende" gilt (px). */
-const FOLGE_SCHWELLE = 40;
-
-/** Ans Ende scrollen — aber NUR, wenn der Leser ohnehin dort steht.
- *
- *  Ein bedingungsloses `scrollTo` bei jedem Token reisst jeden zurueck, der waehrend des
- *  Streams hochgescrollt hat, um den Anfang zu lesen; bei einem Reasoning-Modell mehrmals
- *  pro Sekunde. Die Schwelle stammt aus `obsidian-kit` (`followTail`, dort aus vault-rag).
- *  Fehlende Masse ergeben 0 und damit „folgen" — der allererste Token bleibt sichtbar. */
-function folgeAmEnde(el: HTMLElement): void {
-  const rest = (el.scrollHeight || 0) - (el.scrollTop || 0) - (el.clientHeight || 0);
-  if (rest < FOLGE_SCHWELLE) el.scrollTop = el.scrollHeight;
-}
 
 export interface RunRequest {
   text: string;
@@ -88,7 +74,9 @@ export class LingoTunerView extends ItemView {
   private parts: PanelParts | null = null;
   private controller: AbortController | null = null;
   private mdComp: Component | null = null;
-  private streamStableLen = 0;
+  /** Der inkrementelle Markdown-Schreiber auf dem Stream-Bereich (Kit `createStableWriter`).
+   *  Er haelt Rohstrom und Schnitt-Zeiger selbst — je Voll-Draw neu, weil die Area neu ist. */
+  private writer: StableMarkdownWriter | null = null;
   /** Strukturschluessel des zuletzt VOLL gezeichneten Stands (`structureKey`). */
   private struct = "";
 
@@ -256,10 +244,20 @@ export class LingoTunerView extends ItemView {
     if (this.mdComp !== null) this.removeChild(this.mdComp);
     this.mdComp = this.addChild(new Component());
     const m = this.model();
-    this.parts = renderPanel(this.contentEl, m, this.handlers());
+    const parts = renderPanel(this.contentEl, m, this.handlers());
+    this.parts = parts;
     this.struct = structureKey(m);
-    this.streamStableLen = 0;
-    if (this.preview !== "") void this.renderInto(this.parts.bodyEl, this.preview, true);
+    // Je Draw eine neue Area — also auch ein neuer Schreiber. Der alte haelt Zeiger auf DOM,
+    // das es nicht mehr gibt.
+    this.writer = createStableWriter({ area: parts.area, render: (el, md) => this.renderMd(el, md) });
+    if (this.preview !== "") {
+      // In einen EIGENEN Block rendern statt den Body zu leeren: der laufende Absatz
+      // (`area.tailEl`) liegt im Body, und ein `empty()` haengte ihn aus — der naechste
+      // Stream schriebe dann in ein Element ausserhalb des Dokuments.
+      const block = parts.area.bodyEl.createDiv({ cls: "okit-stream-block" });
+      void this.renderMd(block, this.preview);
+      parts.area.bodyEl.appendChild(parts.area.tailEl);
+    }
     this.stelleCursorHer(merk);
   }
 
@@ -275,8 +273,10 @@ export class LingoTunerView extends ItemView {
     patchPanel(this.contentEl, m);
   }
 
-  private renderInto(el: HTMLElement, md: string, clear: boolean): Promise<void> {
-    if (clear) el.empty();
+  /** Markdown in ein Element rendern. Fehler kosten die Formatierung, nicht den Text.
+   *  Zugleich der `render`-Callback des Kit-Schreibers: `MarkdownRenderer` braucht `App` und
+   *  eine `Component` als Lebensdauer-Anker, und beides gehoert dem Consumer. */
+  private renderMd(el: HTMLElement, md: string): Promise<void> {
     const comp = this.mdComp;
     if (comp === null) return Promise.resolve();
     return MarkdownRenderer.render(this.app, md, el, "", comp).catch(() => { el.setText(md); });
@@ -302,51 +302,40 @@ export class LingoTunerView extends ItemView {
     this.truncated = false;
     this.preview = "";
     this.reasoning = "";
+    // Der Gedankenblock gehoert bei einem NEUEN Lauf offen — ein Gedanke, den man erst
+    // aufklappen muss, ist waehrend des Streams unsichtbar (gemeldeter Fehler 3). Die Wahl
+    // des Nutzers gilt fuer den laufenden Strom, nicht fuer den naechsten; das Kit nimmt
+    // `reasoningOpen` beim BAU entgegen, deshalb steht das hier vor dem Draw.
+    this.reasoningOpen = true;
     this.draw();
-    const initial = this.parts;
-    if (initial === null) return;
-    // Nur den Antwort-Bereich leeren, nicht den Scroll-Bereich: der Gedanken-Block sitzt
-    // daneben und darf nicht mit weggeraeumt werden.
-    initial.bodyEl.empty();
-    initial.tailEl = initial.bodyEl.createDiv({ cls: "lt-preview-tail" });
+    // Pflicht laut Kit-Rezept (0.32.0): ohne `reset()` schriebe der zweite Lauf unter den
+    // ersten. Er leert Body und Tail und wirft den Gedankenblock weg.
+    this.writer?.reset();
 
-    // uebernommen aus koda-agent/src/obsidian/view.ts (streamToken), 2026-09-07
+    // Dem Strom folgen macht das Kit: `followTail` misst an `scrollEl` — hier das Panel,
+    // weil es als Ganzes rollt — und scrollt nur, wenn der Leser ohnehin unten steht.
+    const folge = (): void => { this.parts?.area.followTail(); };
     const onToken = (tk: string): void => {
       if (this.controller !== ctrl) return;
-      const parts = this.parts;
-      if (parts === null) return;
+      const w = this.writer;
+      if (w === null) return;
+      // Zwei Kopien desselben Stroms, mit Absicht: der Schreiber haelt seinen Rohstrom fuer
+      // den Markdown-Schnitt, `this.preview` bleibt die Wahrheit fuer Ausgaenge und
+      // `structureKey`.
       this.preview += tk;
-      const { stable, tail: rest } = splitStable(this.preview);
-      if (stable.length > this.streamStableLen) {
-        const fresh = stable.slice(this.streamStableLen);
-        this.streamStableLen = stable.length;
-        const block = parts.bodyEl.createDiv({ cls: "lt-stream-block" });
-        void this.renderInto(block, fresh, false);
-        // Der laufende Absatz gehoert immer ans Ende.
-        parts.bodyEl.appendChild(parts.tailEl);
-      }
-      parts.tailEl.setText(rest);
-      folgeAmEnde(parts.previewEl);
+      w.push(tk);
+      folge();
     };
-    // uebernommen aus koda-agent/src/obsidian/view.ts (streamReasoning), 2026-09-07 —
-    // der Block entsteht beim ERSTEN Gedanken-Token und waechst per setText, statt erst
-    // beim Schluss-Draw aufzutauchen (Fehler 3).
     const onReasoning = (tk: string): void => {
       if (this.controller !== ctrl) return;
-      this.reasoning += tk;
-      const parts = this.parts;
-      if (parts === null) return;
-      if (parts.reasoningEl === null) {
-        this.reasoningOpen = true;
-        parts.reasoningEl = createReasoningBlock(parts.previewEl, true, "", (open) => { this.reasoningOpen = open; });
-        // Der Block gehoert VOR die Antwort — `createEl` haengt hinten an.
-        parts.previewEl.insertBefore(parts.reasoningEl.parentElement ?? parts.reasoningEl, parts.bodyEl);
-      }
+      const area = this.parts?.area;
+      if (area === undefined) return;
       // Der Rohtext liegt schon in `this.reasoning` — ihn aus dem DOM zurueckzulesen und
       // neu zusammenzusetzen ist O(n²) ueber den ganzen Gedankenstrom (gemessen 12 184
-      // Zeichen; bei 40 k spuerbar) und kann ausserdem divergieren.
-      parts.reasoningEl.setText(this.reasoning);
-      folgeAmEnde(parts.previewEl);
+      // Zeichen; bei 40 k spuerbar) und kann ausserdem divergieren. Das Kit haengt an.
+      this.reasoning += tk;
+      area.appendReasoning(tk);
+      folge();
     };
 
     let result: TuneResult;
@@ -357,11 +346,15 @@ export class LingoTunerView extends ItemView {
       this.controller = null;
       this.phase = "error";
       this.statusText = e instanceof Error ? e.message : String(e);
+      // Erst die laufenden Renderings zu Ende, dann neu zeichnen: der Schluss-Draw ersetzt
+      // die Area, und ein noch laufendes `render` schriebe danach in totes DOM.
+      await this.writer?.settled();
       this.draw();
       return;
     }
     if (this.controller !== ctrl) return;
     this.controller = null;
+    await this.writer?.settled();
 
     if (result.ok) {
       this.preview = result.text;

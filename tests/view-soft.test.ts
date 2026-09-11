@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { makeFakeEl } from "./__mocks__/obsidian";
 import { findAllByClass, findByClass, findByTag } from "./helpers/dom";
-import { createReasoningBlock, patchPanel, renderPanel, structureKey, type PanelHandlers, type PanelModel } from "../src/obsidian/view-render";
+import { patchPanel, renderPanel, structureKey, type PanelHandlers, type PanelModel } from "../src/obsidian/view-render";
 import { BUILTIN_PRESETS, NEUTRAL } from "../src/core/dials";
 import { EMPTY_SESSION } from "../src/core/session";
 import "../src/i18n/strings";
@@ -113,27 +113,6 @@ describe("patchPanel — aktualisiert ohne Neuaufbau", () => {
   });
 });
 
-describe("Platzaufteilung", () => {
-  it("data-output steuert den Deckel der Bedienelemente: leer 0, mit Vorschau und im Stream 1", () => {
-    const leer = makeFakeEl();
-    renderPanel(leer, model(), handlers());
-    expect(leer.dataset.output).toBe("0");
-
-    const mitVorschau = makeFakeEl();
-    renderPanel(mitVorschau, model({ phase: "done", preview: "res" }), handlers());
-    expect(mitVorschau.dataset.output).toBe("1");
-
-    // Waehrend des Streams ist die Vorschau noch leer und braucht den Platz trotzdem.
-    const imStream = makeFakeEl();
-    renderPanel(imStream, model({ phase: "streaming", preview: "" }), handlers());
-    expect(imStream.dataset.output).toBe("1");
-
-    // Auch der Patch zieht ihn nach — sonst bliebe der Deckel beim Zuruecksetzen stehen.
-    patchPanel(mitVorschau, model());
-    expect(mitVorschau.dataset.output).toBe("0");
-  });
-});
-
 describe("Zuruecksetzen", () => {
   it("fehlt im Ausgangszustand und erscheint, sobald es etwas zurueckzusetzen gibt", () => {
     const leer = makeFakeEl();
@@ -159,33 +138,33 @@ describe("Zuruecksetzen", () => {
   });
 });
 
-describe("Gedanken-Block", () => {
-  it("createReasoningBlock legt details/summary/pre an und meldet das Aufklappen", () => {
-    const parent = makeFakeEl();
-    const onToggle = vi.fn();
-    const pre = createReasoningBlock(parent, true, "denk", onToggle);
-    const d = findByClass<El>(parent, "lt-reasoning");
+describe("Gedanken-Block (Kit-Bereich)", () => {
+  it("renderPanel setzt vorhandene Gedanken in den Block — Text, Aufklapp-Stand, Ueberschrift", () => {
+    const root = makeFakeEl();
+    renderPanel(root, model({ reasoning: "denk", reasoningOpen: true, phase: "done", preview: "res" }), handlers());
+    const d = findByClass<El>(root, "okit-stream-reasoning");
     expect(d).not.toBeNull();
     expect(d?.open).toBe(true);
-    expect(findByTag<El>(parent, "summary")?.textContent).toBe("Model reasoning");
-    expect((pre as unknown as { textContent: string }).textContent).toBe("denk");
+    expect(findByTag<El>(root, "summary")?.textContent).toBe("Model reasoning");
+    expect(findByTag<El>(root, "pre")?.textContent).toBe("denk");
   });
 
-  it("renderPanel haengt den Block IN den Scroll-Bereich, vor die Antwort", () => {
+  it("haengt den Block IN den Stream-Bereich, vor die Antwort", () => {
     const root = makeFakeEl();
     const parts = renderPanel(root, model({ reasoning: "denk", phase: "done", preview: "res" }), handlers());
-    const preview = parts.previewEl as unknown as El;
-    expect(preview.children[0].className).toContain("lt-reasoning");
-    expect(preview.children[1].className).toContain("lt-preview-body");
-    expect(parts.reasoningEl).not.toBeNull();
+    const area = parts.area.rootEl as unknown as El;
+    // Bauform des Kits: Gedanken-Slot, Antwort-Body, Statuszeile — in dieser Reihenfolge.
+    expect(area.children[0].className).toContain("okit-stream-reasoning-slot");
+    expect(area.children[1].className).toContain("okit-stream-body");
+    expect(findByClass(area, "okit-stream-reasoning")).not.toBeNull();
     // Der Antwort-Bereich ist ein eigenes Element: sein empty() darf den Block nicht mitnehmen.
-    expect(parts.bodyEl).not.toBe(parts.previewEl);
+    expect(parts.area.bodyEl).not.toBe(parts.area.rootEl);
   });
 
-  it("ohne Gedanken gibt es keinen Block und reasoningEl ist null", () => {
+  it("ohne Gedanken gibt es keinen Block, nur den leeren Platz dafuer", () => {
     const root = makeFakeEl();
-    const parts = renderPanel(root, model(), handlers());
-    expect(findByClass(root, "lt-reasoning")).toBeNull();
-    expect(parts.reasoningEl).toBeNull();
+    renderPanel(root, model(), handlers());
+    expect(findByClass(root, "okit-stream-reasoning")).toBeNull();
+    expect(findByClass(root, "okit-stream-reasoning-slot")).not.toBeNull();
   });
 });

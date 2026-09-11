@@ -56,7 +56,6 @@ src/core/                pure, obsidian-frei, Vitest
   prompt.ts / prompt-text.ts  buildMessages + der ausgelieferte Systemteil
   session.ts             Round/Session, selectRound, refineFrom
   source.ts              SourceState, Readiness, Staleness (pure Haelfte)
-  stream-blocks.ts       splitStable (stabile vs. wachsende Vorschau)
   llm/client.ts          streamTune(transport, ...) -> TuneResult
   llm/errors.ts          TuneError + classifyNetworkFailure
   llm/resolver.ts        Endpunkt-Wahl aus der Liste
@@ -64,7 +63,7 @@ src/core/                pure, obsidian-frei, Vitest
   logbook.ts             Abschnitt der Logbuch-Notiz rendern
 src/obsidian/            view · view-render · editor-io · http · settings-tab ·
                          lab · logbook-io · overrides-io
-src/vendor/kit/          obsidian-kit 0.31.0 + code-kit 0.5.0, pure — nie von Hand aendern
+src/vendor/kit/          obsidian-kit 0.34.0 + code-kit 0.6.0, pure — nie von Hand aendern
 src/vendor/kit-obsidian/ Kit-Module, die `obsidian` importieren — nie von Hand aendern
 src/i18n/strings.ts      EN kanonisch + DE, beide vollstaendig
 src/main.ts
@@ -88,10 +87,11 @@ daran ist in `obsidian-transmute` die Anzeige von der Ausführung abgedriftet.
 
 | Baustein | Quelle | Form |
 |---|---|---|
-| `clipboard`, `sse`, `endpoint`, `endpoint_config`, `endpoint_diagnostics`, `model-choice`, `model-list-cache`, `reasoning`, `capabilities`, `think-splitter`, `think-toggle`, `timeout`, `error_body`, `i18n`, `settings` | `obsidian-kit` 0.31.0 / `code-kit` 0.5.0 | vendored `src/vendor/kit/` |
-| `buildEndpointList`, `renderModelPicker`, `confirm`, `settings_walker`, `folder-suggest`, `clipboard` | `obsidian-kit/src/obsidian/` | vendored `src/vendor/kit-obsidian/` |
+| `clipboard`, `sse`, `endpoint`, `endpoint_config`, `endpoint_diagnostics`, `model-choice`, `model-list-cache`, `reasoning`, `capabilities`, `think-splitter`, `think-toggle`, `timeout`, `error_body`, `i18n`, `settings`, `stream-blocks` | `obsidian-kit` 0.34.0 / `code-kit` 0.6.0 | vendored `src/vendor/kit/` |
+| `buildEndpointList`, `renderModelPicker`, `confirm`, `settings_walker`, `folder-suggest`, `clipboard`, `buildStreamArea`, `createStableWriter` | `obsidian-kit/src/obsidian/` | vendored `src/vendor/kit-obsidian/` |
 | XHR-Stream-Transport | `vault-rag/src/sse.ts` | Übernahme mit Herkunftsstempel |
-| `splitStable` (stabile Vorschau-Blöcke) | `koda-agent/src/core/chat/stream-blocks.ts` | Übernahme |
+| `splitStable` (stabile Vorschau-Blöcke) | erst Übernahme aus `koda-agent`, seit 2026-09-11 vendored aus `code-kit` 0.6.0 | vendored `src/vendor/kit/stream-blocks.ts` |
+| Streaming-Antwortbereich + inkrementeller Markdown-Schreiber | `obsidian-kit` 0.34.0 (`buildStreamArea`, `createStableWriter`) | vendored — LingoTuner ist der erste Konsument |
 | CORS-Fall „Probe grün, Chat rot" | `koda-agent/src/core/llm/failover.ts` (`onRefusedDespiteProbe`) | Muster → `classifyNetworkFailure` |
 | Runden-Verlauf | `obsidian-transmute/src/core/{types,session}.ts` | Übernahme (3. Exemplar → Kit-Kandidat) |
 | Selektion mitschreiben + Guards | `vault-rag/src/main.ts`, `reformat_selection_state.ts` | Übernahme (2. Exemplar) |
@@ -177,18 +177,6 @@ erlaubt, stillschweigend abzuweichen nicht.
   ein gruener Haken neben „Bereit" behauptete einen Erfolg, den es nicht gab (Final-Review 2026-09-07).
   `gilt-solange:` `paintStatus` in `src/obsidian/view-render.ts` setzt fuer `phase === "idle"` das Icon
   `circle` und keine Zustandsklasse; `aria-label` bleibt gesetzt.
-- **Der Streaming-Antwortbereich ist eigen gebaut statt aus `buildStreamArea`** (§8 fuehrt den
-  Baustein seit `obsidian-kit` 0.32.0 als verbindlich). Grund ist die Zeitrechnung, nicht eine
-  Bewertung: `buildStreamArea` entstand am 2026-09-07 um **23:37**, der hiesige Fix war um
-  **23:50** committet — 13 Minuten, und der Kopf von `obsidian-kit/src/obsidian/stream-area.ts`
-  nennt `lingotuner/src/obsidian/view-render.ts` ausdruecklich als **Quelle** der reicheren
-  Haelfte (Gedankenblock offen, Toggle persistierbar). Dieses Repo ist Spender, nicht
-  Nachzuegler. Uebernommen wird beim naechsten Anfassen dieser Datei; die eigentliche Arbeit ist
-  dabei nicht der Funktionsaufruf, sondern die Frage, ob `STREAM_AREA_CSS` mit dem hiesigen
-  Layout-Vertrag (`.lt-controls`/`.lt-preview`, Panel scrollt nicht als Ganzes) vertraeglich ist.
-  `gilt-solange:` `src/obsidian/view-render.ts` importiert nichts aus
-  `src/vendor/kit-obsidian/stream-area.ts` — aufzuloesen mit der Task
-  „0.1.1 taggen und Nachlese der Fix-Welle".
 
 ## Gotchas
 
