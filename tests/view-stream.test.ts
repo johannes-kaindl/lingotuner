@@ -89,6 +89,27 @@ describe("Stream in den Kit-Bereich", () => {
     expect(m?.tailZuletzt).toBe(true);
   });
 
+  it("ein zweiter Lauf schreibt nicht unter den ersten", async () => {
+    // `reset()` ist laut Kit-Rezept (MIGRATION § 0.32.0, Verhaltensaenderung 3) Pflicht
+    // zwischen zwei Laeufen — und der Fehler, den es verhindert, ist der am 2026-09-07 in
+    // DIESEM Repo gemeldete. Gemessen wird deshalb kumulativ: nach dem zweiten Lauf darf im
+    // Body genau EIN stabiler Block stehen, nicht zwei.
+    //
+    // ⚠️ Was dieser Test NICHT misst, dreimal gegengeprobt am 2026-09-11: er ist gegen das
+    // Fehlen von `writer.reset()` ALLEIN unempfindlich (gruen), und gegen das Fehlen des
+    // Voll-Draws in `run()` ALLEIN ebenfalls (gruen) — erst ohne beides wird er rot
+    // („expected 2 to be 1"). Zwei unabhaengige Mechanismen decken dieselbe Zusage. Gemessen
+    // wird hier die ZUSAGE an den Nutzer, nicht einer der beiden Mechanismen; wer `reset()`
+    // wegkuerzt, weil „der Test bleibt ja gruen", nimmt dem Plugin die zweite Sicherung.
+    const a = baue((req) => { req.onToken("Absatz.\n\n"); });
+    (a.view as unknown as { note: string }).note = "duzen";
+    const lauf = (a.view as unknown as { run(b: number | null): Promise<void> });
+    await lauf.run(null);
+    expect(a.messung?.bloecke).toBe(1);
+    await lauf.run(null);
+    expect(a.messung?.bloecke).toBe(1);
+  });
+
   it("Gedanken landen im Block, und er steht beim neuen Lauf offen", async () => {
     const a = baue((req) => { req.onReasoning("denkt nach"); req.onToken("Text.\n\n"); });
     (a.view as unknown as { note: string }).note = "duzen";

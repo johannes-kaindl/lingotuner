@@ -168,3 +168,27 @@ describe("Gedanken-Block (Kit-Bereich)", () => {
     expect(findByClass(root, "okit-stream-reasoning-slot")).not.toBeNull();
   });
 });
+
+describe("Antwort-Body", () => {
+  // Obsidian stylt gerenderten Markdown ueber Nachfahren-Selektoren an `.markdown-rendered`.
+  // Die Klasse sass frueher am eigenen `.lt-preview-body` und ist beim Umstieg auf das Kit
+  // verlorengegangen — unbemerkt, weil weder Gate noch GUI-Smoke sie sehen und die Antwort im
+  // Messlauf reiner Fliesstext war (Review I1). Ein Test ist hier billiger als ein Auge.
+  it("traegt markdown-rendered, sonst faellt formatierter Text auf Browser-Defaults zurueck", () => {
+    const root = makeFakeEl();
+    const parts = renderPanel(root, model(), handlers());
+    expect(parts.area.bodyEl.className.split(" ")).toContain("markdown-rendered");
+  });
+
+  it("der Leerzustand steht VOR dem laufenden Absatz", () => {
+    const root = makeFakeEl();
+    const parts = renderPanel(root, model(), handlers());
+    const kinder = (parts.area.bodyEl as unknown as El).children.map((c) => c.className.split(" ")[0]);
+    // ⚠️ Der Obsidian-Mock HAENGT bei `appendChild` an, statt zu verschieben (dort ausdruecklich
+    // dokumentiert). Der Tail steht hier deshalb zweimal, im echten DOM einmal. Gemessen wird
+    // die Aussage, die in beiden Faellen gilt: der Leerzustand kommt vor dem LETZTEN Tail.
+    expect(kinder[kinder.length - 1]).toBe("okit-stream-tail");
+    expect(kinder.indexOf("lt-empty")).toBeGreaterThanOrEqual(0);
+    expect(kinder.indexOf("lt-empty")).toBeLessThan(kinder.length - 1);
+  });
+});
