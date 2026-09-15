@@ -59,6 +59,12 @@ const LOGBOOK_FOLDER = "LingoTuner";
 // obsidian-kit/src/pure/endpoint-source.ts (LlmEndpointManagerApi-Form).
 const MANAGER_PLUGIN_ID = "llm-endpoint-manager";
 const MANAGER_DEFAULT_MODEL = "smoke-manager-model";
+// M3-Nacharbeit (Fix-Runde, 2026-09-15): der lokale Fallback-Teil von M3 braucht einen ZWEITEN
+// Fake-Server, unabhaengig vom Manager-Fake — sonst haengt M3 an einem echten LM-Studio-Server
+// auf :1234 (Umgebungssache, siehe C1) und ist bei fehlendem Modell dort "uebersprungen" statt
+// tatsaechlich geprueft. Eigener Modellname, damit ein Log eindeutig zeigt, welcher der beiden
+// Fake-Server eine Anfrage sah.
+const LOCAL_FALLBACK_MODEL = "smoke-local-model";
 
 type Zustand = "gruen" | "rot" | "uebersprungen";
 interface Check { name: string; zustand: Zustand; detail: string }
@@ -986,8 +992,13 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
  *  main.ts + settings-tab.ts), nicht den Manager selbst — der hat sein eigenes GUI-Smoke
  *  in llm-endpoint-manager/scripts/gui-smoke.ts (`startFakeEndpoint`, dort B1-B3). Diese
  *  Fassung beantwortet zusaetzlich POST /v1/chat/completions mit einem minimalen SSE-Strom,
- *  weil M2 einen echten Lauf braucht, nicht nur eine Erreichbarkeits-Probe. */
-async function startFakeManagerEndpoint(): Promise<{ url: string; close: () => Promise<void>; chatCalls: () => number }> {
+ *  weil M2 einen echten Lauf braucht, nicht nur eine Erreichbarkeits-Probe.
+ *
+ *  Zweimal gebraucht (Fix-Runde M3-Nacharbeit, 2026-09-15): einmal als Manager-Endpunkt
+ *  (M1/M2), einmal als lokaler Fallback-Endpunkt (M3) — deshalb `modelId` als Parameter statt
+ *  fest verdrahtet, sonst waere ein Log-Eintrag nicht zuzuordnen, WELCHER Fake-Server eine
+ *  Anfrage sah. */
+async function startFakeChatEndpoint(modelId: string): Promise<{ url: string; close: () => Promise<void>; chatCalls: () => number }> {
   let chatCalls = 0;
   const server: Server = createServer((req, res) => {
     // Der Renderer laeuft unter der Origin app://obsidian.md — ohne CORS-Header blockt der
@@ -999,14 +1010,14 @@ async function startFakeManagerEndpoint(): Promise<{ url: string; close: () => P
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
     if (req.url?.includes("/v1/models") === true) {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ data: [{ id: MANAGER_DEFAULT_MODEL, object: "model" }] }));
+      res.end(JSON.stringify({ data: [{ id: modelId, object: "model" }] }));
       return;
     }
     if (req.method === "POST" && req.url?.includes("/v1/chat/completions") === true) {
       chatCalls += 1;
       res.writeHead(200, { "Content-Type": "text/event-stream" });
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "ok" }, finish_reason: null }], model: MANAGER_DEFAULT_MODEL })}\n\n`);
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }], model: MANAGER_DEFAULT_MODEL })}\n\n`);
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "ok" }, finish_reason: null }], model: modelId })}\n\n`);
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }], model: modelId })}\n\n`);
       res.write("data: [DONE]\n\n");
       res.end();
       return;
@@ -1158,13 +1169,21 @@ const MANAGED_TEXT = ["Endpunkte kommen vom LLM Endpoint Manager", "Endpoints co
  *  (`.lt-run` klicken, auf `.lt-status` is-ok/is-error warten), nur mit anderer Quelle
  *  darunter. Kein eigener try/finally je Punkt: alles haengt an DERSELBEN Fake-Instanz
  *  (Server + injizierte API), ein einziger auesserer try/finally raeumt beides auf. */
+type FakeChatEndpoint = { url: string; close: () => Promise<void>; chatCalls: () => number };
+
 async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
   console.log("\nM · LLM Endpoint Manager (optionale Fremd-Quelle)");
-  let fake: { url: string; close: () => Promise<void>; chatCalls: () => number } | null = null;
+  let fake: FakeChatEndpoint | null = null;
+  let localFake: FakeChatEndpoint | null = null;
   let stelle: SettingsStelle | null = null;
+  // Muss zurueckgeschrieben werden, falls M3 die lokale Liste testweise umbiegt — main()
+  // fuehrt nach pruefeManager() nur noch einen Skip-Marker und das Aufraeumen aus (Stand
+  // 2026-09-15 in main() geprueft), aber ein Treiber, der die Vault-Settings anders verlaesst
+  // als er sie vorfand, ist ein Rueckstand fuer den naechsten Lauf.
+  let vorherEndpoints: unknown = null;
   const REST = ["M1 Settings zeigen den Manager statt der lokalen Liste", "M2 Lauf nutzt den Manager-Endpunkt und das Default-Modell", "M3 Manager aus → lokale Liste in Settings und im Lauf"];
   try {
-    fake = await startFakeManagerEndpoint();
+    fake = await startFakeChatEndpoint(MANAGER_DEFAULT_MODEL);
     console.log(`  Fake-Manager-Endpunkt: ${fake.url}`);
     await installFakeManager(cdp, fake.url);
 
@@ -1187,9 +1206,15 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
            : `Lauf lieferte kein Ergebnis (Status: ${(await text(cdp, ".lt-status")) ?? "?"}), Fake-Server-Aufrufe: ${calls}`);
 
     // M3 — Manager "deaktivieren" (Analog zu disablePlugin, s. removeFakeManager) → Settings
-    // fallen auf die lokale Liste zurueck, ein Lauf nutzt wieder den lokalen Endpunkt. Der
-    // lokale Lauf braucht einen ECHTEN Server auf ENDPOINT — ohne ihn "nichts gemessen"
-    // (CORE-TEST-19), nicht still gruen.
+    // fallen auf die lokale Liste zurueck, ein Lauf nutzt wieder den lokalen Endpunkt.
+    //
+    // Der lokale Lauf haengt NICHT am echten LM-Studio-Server auf ENDPOINT (:1234) — das ist
+    // dieselbe Umgebungssache, die C1 rot macht (Modelle gelistet, Chat-Aufruf trotzdem
+    // abgelehnt), und ein M3 mit dieser Abhaengigkeit ist "nichts gemessen", nicht "geprueft"
+    // (Review-Fund, Fix-Runde M3-Nacharbeit 2026-09-15). Stattdessen ein ZWEITER Fake-Server
+    // (dieselbe Bauart wie fuer M1/M2, eigener Modellname) — die lokale Endpunkt-Liste zeigt
+    // waehrend der Messung testweise auf ihn und wird danach zurueckgeschrieben, statt die
+    // Vault-Fixture dauerhaft zu aendern.
     await removeFakeManager(cdp);
     stelle = await openSettings(cdp, port);
     const bodyNach = await stelleText(stelle);
@@ -1198,12 +1223,26 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
     closeSettings(cdp, stelle);
     stelle = null;
     const settingsZurueck = !managedNach && localRowsNach > 0;
-    if (!(await endpointReachable())) {
-      skipped(REST[2]!, `Settings ${settingsZurueck ? "zeigen wieder die lokale Liste" : "NICHT zurueckgestellt (managed-Text " + (managedNach ? "noch da" : "weg") + ", " + localRowsNach + " lokale Zeilen)"}; lokaler Lauf nicht messbar: kein Endpunkt auf ${ENDPOINT}`);
-    } else {
-      const okLokal = await laufeTune(cdp);
-      record(REST[2]!, settingsZurueck && okLokal, `managed-Text ${managedNach ? "noch da" : "weg"}, ${localRowsNach} lokale Zeilen, lokaler Lauf ${okLokal ? "ok" : "fehlgeschlagen"}`);
-    }
+
+    localFake = await startFakeChatEndpoint(LOCAL_FALLBACK_MODEL);
+    console.log(`  Fake-Lokal-Endpunkt: ${localFake.url}`);
+    vorherEndpoints = (await cdp.evaluate<{ eps: unknown }>(`return { eps: app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints };`)).eps;
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.settings.endpoints = [{ url: ${q(localFake.url)} }];
+      await p.saveSettings();
+      // invalidateEndpointCache(): resolveEndpoint() cacht den lokalen Pfad (Ersatz fuer den
+      // entfernten EndpointResolver) — ohne die Invalidierung wuerde der naechste Lauf den
+      // laengst gecachten ECHTEN :1234-Endpunkt aus dem allerersten onload() weiterverwenden,
+      // die neue Liste bliebe wirkungslos.
+      p.invalidateEndpointCache();
+      await p.resolveEndpoint();
+      return { ok: true };
+    `);
+    const okLokal = await laufeTune(cdp);
+    const lokaleCalls = localFake.chatCalls();
+    record(REST[2]!, settingsZurueck && okLokal && lokaleCalls > 0,
+      `managed-Text ${managedNach ? "noch da" : "weg"}, ${localRowsNach} lokale Zeilen, lokaler Lauf gegen Fake-Server ${okLokal ? "ok" : "fehlgeschlagen"} (${lokaleCalls} POST /v1/chat/completions, Modell ${LOCAL_FALLBACK_MODEL})`);
   } catch (e) {
     for (const n of REST) {
       if (!checks.some((c) => c.name === n)) skipped(n, `Messung abgebrochen: ${(e as Error).message}`);
@@ -1211,7 +1250,19 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
   } finally {
     if (stelle) closeSettings(cdp, stelle);
     await removeFakeManager(cdp).catch(() => null);
+    if (vorherEndpoints !== null) {
+      await cdp.evaluate(`
+        const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+        if (!p) return { ok: false };
+        p.settings.endpoints = ${JSON.stringify(vorherEndpoints)};
+        await p.saveSettings();
+        p.invalidateEndpointCache();
+        await p.resolveEndpoint();
+        return { ok: true };
+      `).catch(() => null);
+    }
     if (fake) await fake.close().catch(() => undefined);
+    if (localFake) await localFake.close().catch(() => undefined);
   }
 }
 
