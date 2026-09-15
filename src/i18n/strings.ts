@@ -81,6 +81,7 @@ export const STRINGS = {
     "run.modelAuto": "Server picks the model",
     "run.noop": "All dials are in the middle and the note is empty — nothing to change.",
     "run.noEndpoint": "No reachable endpoint. Check the connection in the settings.",
+    "run.noEndpointSecretMissing": "The endpoint chosen in the LLM Endpoint Manager needs an API key that isn't stored yet. Check it there, not in this plugin's local list.",
 
     "status.idle": "Ready",
     "status.streaming": "Tuning…",
@@ -290,6 +291,7 @@ export const STRINGS = {
     "run.modelAuto": "Server wählt das Modell",
     "run.noop": "Alle Regler stehen in der Mitte und die Anmerkung ist leer — nichts zu ändern.",
     "run.noEndpoint": "Kein erreichbarer Endpunkt. Verbindung in den Einstellungen prüfen.",
+    "run.noEndpointSecretMissing": "Der im LLM Endpoint Manager gewählte Endpunkt braucht einen API-Schlüssel, der noch nicht hinterlegt ist. Dort prüfen, nicht in der lokalen Liste dieses Plugins.",
 
     "status.idle": "Bereit",
     "status.streaming": "Tunt…",

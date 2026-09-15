@@ -997,9 +997,17 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
  *  Zweimal gebraucht (Fix-Runde M3-Nacharbeit, 2026-09-15): einmal als Manager-Endpunkt
  *  (M1/M2), einmal als lokaler Fallback-Endpunkt (M3) — deshalb `modelId` als Parameter statt
  *  fest verdrahtet, sonst waere ein Log-Eintrag nicht zuzuordnen, WELCHER Fake-Server eine
- *  Anfrage sah. */
-async function startFakeChatEndpoint(modelId: string): Promise<{ url: string; close: () => Promise<void>; chatCalls: () => number }> {
+ *  Anfrage sah.
+ *
+ *  `lastModel()` (Review-Fund I5, Fix-Runde 3): bis dahin prueften M2/M3 nur `chatCalls() > 0`
+ *  und DRUCKTEN einen erwarteten Modellnamen, ohne ihn wirklich zu pruefen — der Server hatte
+ *  den Request-Body in der Hand und warf ihn weg. Der Body wird jetzt VOLLSTAENDIG eingesammelt
+ *  (`req.on("data"/"end")`), BEVOR geantwortet wird — nicht nebenlaeufig dazu, sonst waere
+ *  `lastModel()` ein Race gegen die eigene Antwort. */
+interface FakeChatEndpoint { url: string; close: () => Promise<void>; chatCalls: () => number; lastModel: () => string | null }
+async function startFakeChatEndpoint(modelId: string): Promise<FakeChatEndpoint> {
   let chatCalls = 0;
+  let lastModel: string | null = null;
   const server: Server = createServer((req, res) => {
     // Der Renderer laeuft unter der Origin app://obsidian.md — ohne CORS-Header blockt der
     // Browser den Preflight (OPTIONS) und die eigentliche Anfrage sieht der Server nie.
@@ -1014,12 +1022,17 @@ async function startFakeChatEndpoint(modelId: string): Promise<{ url: string; cl
       return;
     }
     if (req.method === "POST" && req.url?.includes("/v1/chat/completions") === true) {
-      chatCalls += 1;
-      res.writeHead(200, { "Content-Type": "text/event-stream" });
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "ok" }, finish_reason: null }], model: modelId })}\n\n`);
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }], model: modelId })}\n\n`);
-      res.write("data: [DONE]\n\n");
-      res.end();
+      let body = "";
+      req.on("data", (chunk: Buffer) => { body += chunk.toString("utf8"); });
+      req.on("end", () => {
+        chatCalls += 1;
+        try { lastModel = (JSON.parse(body) as { model?: unknown }).model as string ?? null; } catch { lastModel = null; }
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "ok" }, finish_reason: null }], model: modelId })}\n\n`);
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }], model: modelId })}\n\n`);
+        res.write("data: [DONE]\n\n");
+        res.end();
+      });
       return;
     }
     res.writeHead(404);
@@ -1031,22 +1044,44 @@ async function startFakeChatEndpoint(modelId: string): Promise<{ url: string; cl
     url: `http://127.0.0.1:${port}`,
     close: () => new Promise<void>((resolve) => { server.close(() => { resolve(); }); }),
     chatCalls: () => chatCalls,
+    lastModel: () => lastModel,
   };
 }
 
 /** Injiziert eine FAKE `llm-endpoint-manager`-API in den Renderer — der Brief erlaubt
  *  ausdruecklich „Fake-API oder echtes Manager-Plugin" fuer M1. `findEndpointManager()`
  *  prueft nur die FORM (version===1 + alle Methoden als Funktion), keine Herkunft; ein
- *  echtes Manager-Plugin-Repo muesste dafuer nicht gebaut und deployt werden. */
+ *  echtes Manager-Plugin-Repo muesste dafuer nicht gebaut und deployt werden.
+ *
+ *  `config.model` (Review-Fund I5/C1, Fix-Runde 3): der ECHTE Manager setzt in
+ *  `ResolvedEndpoint.config.model` zusaetzlich zu `defaultModel` denselben Wert
+ *  (`llm-endpoint-manager/src/core/reachability.ts:39-40`) — das war genau das Feld, das
+ *  `main.ts:220` vor dem C1-Fix eine vom Nutzer getroffene Modellwahl ueberschreiben liess.
+ *  Ohne dieses Feld haette der Fake den Fehler nicht reproduziert und M2b waere ohne Wirkung
+ *  gruen gewesen.
+ *
+ *  Vorherigen Registry-Eintrag sichern statt loeschen (Review-Fund I6): ein `app.plugins.
+ *  plugins[MANAGER_PLUGIN_ID]`-Objekt kann Methoden/Klasseninstanzen tragen, die eine
+ *  CDP-Rundreise ueber Node nicht ueberlebt (JSON.stringify wirft Funktionen weg) — deshalb
+ *  wird NICHT nach Node zurueckgereicht, sondern im Renderer selbst auf `window` geparkt und
+ *  von `removeFakeManager()` dort wieder eingesetzt. Heute (Staging-Vault ohne echten
+ *  Manager) folgenlos; sobald der echte Manager in diesem Vault deployt wird, verhindert das
+ *  einen Smoke-Lauf, der dessen Registrierung fuer den Rest der Sitzung zerstoert. */
 async function installFakeManager(cdp: Cdp, url: string): Promise<void> {
   await cdp.evaluate(`
+    // Nur EINMAL sichern: ein zweiter installFakeManager()-Aufruf ohne removeFakeManager()
+    // dazwischen (kommt hier nicht vor, aber die Invariante soll nicht stillschweigend
+    // brechen) wuerde sonst die eigene Fake-Instanz als "vorher" ueberschreiben.
+    if (!("__smokeVorherManager" in window)) {
+      window.__smokeVorherManager = app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}] ?? null;
+    }
     const ep = { id: "fake-mgr-ep", label: "Fake Manager Endpoint", url: ${q(url)}, provider: "openai", capabilities: ["chat"], defaultModel: ${q(MANAGER_DEFAULT_MODEL)}, enabled: true, hasSecret: false };
     const api = {
       version: 1,
       list: (filter) => [ep],
       get: (id) => (id === ep.id ? ep : null),
-      resolve: async (capability, opts) => ({ id: ep.id, label: ep.label, config: { url: ${q(url)} }, defaultModel: ${q(MANAGER_DEFAULT_MODEL)} }),
-      materialize: async (id, opts) => (id === ep.id ? { id: ep.id, label: ep.label, config: { url: ${q(url)} }, defaultModel: ${q(MANAGER_DEFAULT_MODEL)} } : { error: "not-found" }),
+      resolve: async (capability, opts) => ({ id: ep.id, label: ep.label, config: { url: ${q(url)}, model: ${q(MANAGER_DEFAULT_MODEL)} }, defaultModel: ${q(MANAGER_DEFAULT_MODEL)} }),
+      materialize: async (id, opts) => (id === ep.id ? { id: ep.id, label: ep.label, config: { url: ${q(url)}, model: ${q(MANAGER_DEFAULT_MODEL)} }, defaultModel: ${q(MANAGER_DEFAULT_MODEL)} } : { error: "not-found" }),
       models: async (id) => (id === ep.id ? [${q(MANAGER_DEFAULT_MODEL)}] : { error: "not-found" }),
       importEndpoints: async (eps, capability) => ({ added: [], merged: [], skipped: eps.map((e) => e.url) }),
       on: (event, cb) => (() => {}),
@@ -1059,9 +1094,24 @@ async function installFakeManager(cdp: Cdp, url: string): Promise<void> {
 /** Entfernt die Fake-API — Analog zu `app.plugins.disablePlugin()` (der Brief nennt beides
  *  als gleichwertig fuer M3). `findEndpointManager()` liest bei JEDEM Aufruf frisch aus
  *  `app.plugins.plugins`, ein `changed`-Ereignis ist fuer die Abwesenheit nicht noetig — der
- *  naechste `resolveEndpoint()`/Settings-Rebuild sieht sie ohnehin sofort. */
+ *  naechste `resolveEndpoint()`/Settings-Rebuild sieht sie ohnehin sofort.
+ *
+ *  Stellt den VOR `installFakeManager()` vorgefundenen Eintrag wieder her (Review-Fund I6),
+ *  statt ihn zu loeschen — s. Kommentar dort. Idempotent: ein Aufruf ohne vorheriges
+ *  `installFakeManager()` (z. B. im `finally`-Pfad nach einem fruehen Abbruch) findet
+ *  `"__smokeVorherManager" in window` als `false` und loescht dann einfach, wie zuvor. */
 async function removeFakeManager(cdp: Cdp): Promise<void> {
-  await cdp.evaluate(`delete app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}]; return { ok: true };`);
+  await cdp.evaluate(`
+    if ("__smokeVorherManager" in window) {
+      const vorher = window.__smokeVorherManager;
+      if (vorher === null) delete app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}];
+      else app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}] = vorher;
+      delete window.__smokeVorherManager;
+    } else {
+      delete app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}];
+    }
+    return { ok: true };
+  `);
 }
 
 /** Settings-Stelle: Modal (< 1.13) oder eigenes Fenster (>= 1.13) — uebernommen aus
@@ -1169,8 +1219,6 @@ const MANAGED_TEXT = ["Endpunkte kommen vom LLM Endpoint Manager", "Endpoints co
  *  (`.lt-run` klicken, auf `.lt-status` is-ok/is-error warten), nur mit anderer Quelle
  *  darunter. Kein eigener try/finally je Punkt: alles haengt an DERSELBEN Fake-Instanz
  *  (Server + injizierte API), ein einziger auesserer try/finally raeumt beides auf. */
-type FakeChatEndpoint = { url: string; close: () => Promise<void>; chatCalls: () => number };
-
 async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
   console.log("\nM · LLM Endpoint Manager (optionale Fremd-Quelle)");
   let fake: FakeChatEndpoint | null = null;
@@ -1181,7 +1229,12 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
   // 2026-09-15 in main() geprueft), aber ein Treiber, der die Vault-Settings anders verlaesst
   // als er sie vorfand, ist ein Rueckstand fuer den naechsten Lauf.
   let vorherEndpoints: unknown = null;
-  const REST = ["M1 Settings zeigen den Manager statt der lokalen Liste", "M2 Lauf nutzt den Manager-Endpunkt und das Default-Modell", "M3 Manager aus → lokale Liste in Settings und im Lauf"];
+  const REST = [
+    "M1 Settings zeigen den Manager statt der lokalen Liste",
+    "M2 Lauf nutzt den Manager-Endpunkt und das Default-Modell",
+    "M2b Manager-Lauf nutzt gewaehltes Modell, nicht den Endpunkt-Default (C1)",
+    "M3 Manager aus → lokale Liste in Settings und im Lauf",
+  ];
   try {
     fake = await startFakeChatEndpoint(MANAGER_DEFAULT_MODEL);
     console.log(`  Fake-Manager-Endpunkt: ${fake.url}`);
@@ -1199,11 +1252,43 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
 
     // M2 — ein Lauf nutzt den Manager-Endpunkt (Fake-Server sieht POST /v1/chat/completions)
     // und das Default-Modell (kein choice.model gesetzt → modelOf() faellt auf defaultModel).
+    // Review-Fund I5: geprueft wird jetzt das TATSAECHLICH empfangene Modell (`lastModel()`),
+    // nicht nur die Aufrufzahl — vorher haette C1 (ep.model ueberschreibt activeModel) hier
+    // still durchgehen koennen, weil der Fake den Body warf.
     const okM2 = await laufeTune(cdp);
     const calls = fake.chatCalls();
-    record(REST[1]!, okM2 && calls > 0,
-      okM2 ? `Fake-Server sah ${calls} POST /v1/chat/completions, Default-Modell ${MANAGER_DEFAULT_MODEL}`
+    const modellM2 = fake.lastModel();
+    record(REST[1]!, okM2 && calls > 0 && modellM2 === MANAGER_DEFAULT_MODEL,
+      okM2 ? `Fake-Server sah ${calls} POST /v1/chat/completions, Modell ${JSON.stringify(modellM2)} (erwartet ${JSON.stringify(MANAGER_DEFAULT_MODEL)})`
            : `Lauf lieferte kein Ergebnis (Status: ${(await text(cdp, ".lt-status")) ?? "?"}), Fake-Server-Aufrufe: ${calls}`);
+
+    // M2b — Review-Fund C1: `ep.model` (im echten Manager == `defaultModel`, s.
+    // `installFakeManager`-Kommentar) darf eine vom Nutzer im `choice.model` getroffene Wahl
+    // NICHT ueberschreiben. Setzt `choice.model` auf einen Wert, der sich vom Default
+    // unterscheidet, und prueft, dass GENAU DIESER beim Fake-Server ankommt — das ist der
+    // eigentliche Beweis fuer den Fix, nicht nur "ein Lauf war gruen".
+    const gewaehltesModell = `${MANAGER_DEFAULT_MODEL}-CHOICE`;
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.settings.choice = { ...p.settings.choice, model: ${q(gewaehltesModell)} };
+      await p.saveSettings();
+      await p.resolveEndpoint();
+      return { ok: true };
+    `);
+    const okM2b = await laufeTune(cdp);
+    const modellM2b = fake.lastModel();
+    record(REST[2]!, okM2b && modellM2b === gewaehltesModell,
+      okM2b ? `Fake-Server sah Modell ${JSON.stringify(modellM2b)}, erwartet ${JSON.stringify(gewaehltesModell)}`
+            : `Lauf lieferte kein Ergebnis (Status: ${(await text(cdp, ".lt-status")) ?? "?"})`);
+    // choice zuruecksetzen: sonst liest M3s LOKALER Lauf denselben choice.model (modelOf()
+    // prueft choice VOR localModel, unabhaengig vom Manager) und sein lastModel()-Check faellt
+    // auf ein falsches "erwartet" herein, das gar nicht der Grund waere.
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.settings.choice = {};
+      await p.saveSettings();
+      return { ok: true };
+    `);
 
     // M3 — Manager "deaktivieren" (Analog zu disablePlugin, s. removeFakeManager) → Settings
     // fallen auf die lokale Liste zurueck, ein Lauf nutzt wieder den lokalen Endpunkt.
@@ -1227,9 +1312,14 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
     localFake = await startFakeChatEndpoint(LOCAL_FALLBACK_MODEL);
     console.log(`  Fake-Lokal-Endpunkt: ${localFake.url}`);
     vorherEndpoints = (await cdp.evaluate<{ eps: unknown }>(`return { eps: app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints };`)).eps;
+    // model auf dem Endpunkt-Eintrag selbst (nicht settings.model): das ist die lokale
+    // Pro-Endpunkt-Ueberschreibung, die C1s Fix fuer den lokalen Pfad ausdruecklich WEITER
+    // gewinnen laesst (\`this.endpointSource === "local" && ep.model ? ep.model : ...\`) —
+    // ohne sie waere settings.model ("" im Fixture, "Server waehlt") das einzig Erwartbare,
+    // und der Modell-Check unten haette nichts Sinnvolles zu pruefen.
     await cdp.evaluate(`
       const p = app.plugins.plugins[${q(PLUGIN_ID)}];
-      p.settings.endpoints = [{ url: ${q(localFake.url)} }];
+      p.settings.endpoints = [{ url: ${q(localFake.url)}, model: ${q(LOCAL_FALLBACK_MODEL)} }];
       await p.saveSettings();
       // invalidateEndpointCache(): resolveEndpoint() cacht den lokalen Pfad (Ersatz fuer den
       // entfernten EndpointResolver) — ohne die Invalidierung wuerde der naechste Lauf den
@@ -1241,8 +1331,9 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
     `);
     const okLokal = await laufeTune(cdp);
     const lokaleCalls = localFake.chatCalls();
-    record(REST[2]!, settingsZurueck && okLokal && lokaleCalls > 0,
-      `managed-Text ${managedNach ? "noch da" : "weg"}, ${localRowsNach} lokale Zeilen, lokaler Lauf gegen Fake-Server ${okLokal ? "ok" : "fehlgeschlagen"} (${lokaleCalls} POST /v1/chat/completions, Modell ${LOCAL_FALLBACK_MODEL})`);
+    const modellLokal = localFake.lastModel();
+    record(REST[3]!, settingsZurueck && okLokal && lokaleCalls > 0 && modellLokal === LOCAL_FALLBACK_MODEL,
+      `managed-Text ${managedNach ? "noch da" : "weg"}, ${localRowsNach} lokale Zeilen, lokaler Lauf gegen Fake-Server ${okLokal ? "ok" : "fehlgeschlagen"} (${lokaleCalls} POST /v1/chat/completions, Modell ${JSON.stringify(modellLokal)}, erwartet ${JSON.stringify(LOCAL_FALLBACK_MODEL)})`);
   } catch (e) {
     for (const n of REST) {
       if (!checks.some((c) => c.name === n)) skipped(n, `Messung abgebrochen: ${(e as Error).message}`);

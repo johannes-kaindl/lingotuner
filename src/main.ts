@@ -2,7 +2,7 @@ import { Notice, Plugin, getLanguage, type WorkspaceLeaf } from "obsidian";
 import "./i18n/strings";
 import { getLang, pickLang, setLang, t } from "./vendor/kit/i18n";
 import type { EndpointConfig } from "./vendor/kit/endpoint_config";
-import { resolveEndpointSource, type SourceKind as EndpointSourceKind } from "./vendor/kit/endpoint-source";
+import { resolveEndpointSource, type ApiErrorCode, type SourceKind as EndpointSourceKind } from "./vendor/kit/endpoint-source";
 import { findEndpointManager, onEndpointManagerChanged } from "./vendor/kit-obsidian/endpoint-source";
 import { copyToClipboard } from "./vendor/kit-obsidian/clipboard";
 import { confirmAction } from "./vendor/kit-obsidian/confirm";
@@ -45,6 +45,10 @@ export default class LingoTunerPlugin extends Plugin {
    *  Manager-Default → lokales Modell). NIE settings.model direkt fuer den Aufruf nehmen. */
   private activeModel = "";
   private endpointSource: EndpointSourceKind = "local";
+  /** Grund, warum `resolveEndpoint()` keinen Endpunkt fand (nur im Manager-Fall gesetzt) —
+   *  Review-Fund I3: `tune()` warf das bisher weg und zeigte bei JEDEM Fehlschlag denselben
+   *  Text, auch wenn z. B. ein API-Schluessel im Manager fehlt (`secret-missing`). */
+  private lastEndpointReason: ApiErrorCode | undefined;
   private unsubscribeManager: () => void = () => {};
   /** Gemerktes Ergebnis fuer den LOKALEN Pfad — resolveEndpointSource pingt bei jedem Aufruf
    *  frisch, das war vorher ueber EndpointResolver gecacht. Der Manager-Fall wird nie gecacht:
@@ -84,8 +88,20 @@ export default class LingoTunerPlugin extends Plugin {
       getDials: () => this.settings.lastDials,
       setDials: (d) => { this.settings.lastDials = { ...d }; void this.saveSettings(); },
       listModels: async () => { const ep = (await this.resolveEndpoint()) ?? this.settings.endpoints[0]; return ep ? listModels(ep, PROBE_TIMEOUT_MS) : []; },
-      getModel: () => this.settings.model,
-      setModel: (m) => { this.settings.model = m; void this.saveSettings(); },
+      // Review-Fund I2: im Manager-Fall ist `settings.model` nur der `localModel`-Fallback,
+      // den `resolveEndpointSource` im Manager-Zweig NIE konsultiert — ein Panel-Modellfeld,
+      // das weiterhin dorthin schreibt, aendert dann kommentarlos nichts. Lesen/Schreiben
+      // routen deshalb ueber `endpointSource`, genau wie der Settings-Tab-Baustein (`choice`).
+      getModel: () => (this.endpointSource === "manager" ? (this.settings.choice.model ?? "") : this.settings.model),
+      setModel: (m) => {
+        if (this.endpointSource === "manager") this.settings.choice = { ...this.settings.choice, model: m || undefined };
+        else this.settings.model = m;
+        void this.saveSettings();
+        // activeModel neu ziehen: ohne Invalidierung wuerde ein gecachter lokaler Pfad
+        // (cachedLocal) das neue settings.model ignorieren, s. resolveEndpoint().
+        this.invalidateEndpointCache();
+        void this.resolveEndpoint();
+      },
       getSuppress: () => this.settings.suppressThinking,
       setSuppress: (v) => { this.settings.suppressThinking = v; void this.saveSettings(); },
       savePreset: (name, dials) => {
@@ -168,6 +184,7 @@ export default class LingoTunerPlugin extends Plugin {
         this.activeEndpoint = r.config;
         this.activeModel = r.model;
         this.endpointSource = r.kind;
+        this.lastEndpointReason = r.reason;
         if (r.kind === "local") this.cachedLocal = r.config;
         return r.config;
       })
@@ -202,7 +219,14 @@ export default class LingoTunerPlugin extends Plugin {
   /** EIN Ausfuehrungspfad fuer Panel und API: Endpunkt aufloesen → Overrides → Prompt → Stream → Lab → Logbuch. */
   private async tune(p: { text: string; dials: Dials; note: string; signal?: AbortSignal; quiet?: boolean; onToken?: (t: string) => void; onReasoning?: (t: string) => void }): Promise<TuneResult> {
     const ep = await this.resolveEndpoint();
-    if (ep === null) { new Notice(t("run.noEndpoint")); return { ok: false, error: { kind: "network" }, partial: "" }; }
+    if (ep === null) {
+      // Review-Fund I3: `resolveEndpointSource` liefert im Manager-Fall einen `reason`-Code
+      // mit (`no-endpoint` | `not-found` | `disabled` | `secret-missing` | `unreachable`).
+      // `secret-missing` ist der Fall, der aktiv in die Irre fuehrt: die generische Meldung
+      // schickt an die lokale Liste, obwohl der fehlende Schluessel im Manager-Plugin liegt.
+      new Notice(this.lastEndpointReason === "secret-missing" ? t("run.noEndpointSecretMissing") : t("run.noEndpoint"));
+      return { ok: false, error: { kind: "network" }, partial: "" };
+    }
 
     const { overrides, problems } = await loadOverrides(vaultOverrideReader(this.app), this.settings.overrideFolder);
     // Nur melden, wenn sich die Problemmenge geaendert hat — und ueber die API (quiet) gar nicht
@@ -217,7 +241,13 @@ export default class LingoTunerPlugin extends Plugin {
     this.lastOverrideProblems = key;
     const opts = { note: p.note, lang: getLang(), overrides };
     const messages = buildMessages(p.text, p.dials, opts);
-    const model = ep.model && ep.model !== "" ? ep.model : this.activeModel;
+    // Review-Fund C1: `ep.model` traegt im MANAGER-Fall haeufig bereits den Default des
+    // gewaehlten Endpunkts (der echte Manager setzt ihn in `ResolvedEndpoint.config.model`,
+    // s. llm-endpoint-manager/src/core/reachability.ts) — eine vom Nutzer im Settings-/Panel-
+    // Baustein getroffene Modellwahl (`choice.model`, bereits in `activeModel` verrechnet)
+    // wuerde sonst hier verworfen. `ep.model` gewinnt deshalb NUR noch im lokalen Fall (dort
+    // ist es die Pro-Endpunkt-Ueberschreibung der lokalen Liste, s. `set.model`/`ep.ariaModel`).
+    const model = this.endpointSource === "local" && ep.model ? ep.model : this.activeModel;
 
     const started = Date.now();
     let first: number | undefined;
