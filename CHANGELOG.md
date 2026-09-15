@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-09-15
+
 ### Added
 
 - Bezieht Endpunkte vom LLM Endpoint Manager, wenn installiert (Kit `endpoint-source` 0.37.0);
