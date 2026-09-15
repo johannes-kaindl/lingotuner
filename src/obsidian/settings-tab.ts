@@ -4,6 +4,7 @@ import { t } from "../vendor/kit/i18n";
 import { renderSettingDefinitions, settingBodyHost, refreshSettingsTab } from "../vendor/kit-obsidian/settings_walker";
 import { buildEndpointList, type EndpointListStrings } from "../vendor/kit-obsidian/endpoint-list";
 import { renderModelPicker } from "../vendor/kit-obsidian/model-picker";
+import { buildEndpointSourceSection, findEndpointManager } from "../vendor/kit-obsidian/endpoint-source";
 import { resolveModelChoice } from "../vendor/kit/model-choice";
 import { createModelListCache, type ModelListCache } from "../vendor/kit/model-list-cache";
 import { ENDPOINT_PRESETS, type EndpointStatusKind } from "../vendor/kit/endpoint_diagnostics";
@@ -108,8 +109,26 @@ export class LingoTunerSettingTab extends PluginSettingTab {
   }
 
   private renderEndpoints(setting: Setting): void {
+    const host = settingBodyHost(setting);
+    buildEndpointSourceSection({
+      app: this.app, containerEl: host, capability: "chat", caller: "lingotuner",
+      choice: () => this.plugin.settings.choice,
+      setChoice: async (c) => { this.plugin.settings.choice = c; await this.plugin.saveSettings(); await this.plugin.resolveEndpoint(); },
+      local: () => this.plugin.settings.endpoints,
+      strings: {
+        managed: t("src.managed"), managedDesc: t("src.managedDesc"), openManager: t("src.openManager"),
+        pickEndpoint: t("src.pickEndpoint"), automatic: t("src.automatic"), model: t("set.model"),
+        importLocal: t("src.importLocal"), imported: (r) => t("src.imported", String(r.added.length), String(r.merged.length)), importFailed: t("src.importFailed"),
+        modelHint: (key) => (key === "" ? "" : t(`set.modelHint.${key}`)), savedSuffix: t("ep.saved"), refreshModels: t("ep.refreshModels"),
+      },
+      renderLocalList: () => { this.renderLocalEndpointList(host); },
+      rerender: () => { this.refreshUi(); },
+    });
+  }
+
+  private renderLocalEndpointList(host: HTMLElement): void {
     buildEndpointList({
-      containerEl: settingBodyHost(setting),
+      containerEl: host,
       label: t("set.endpoints"),
       desc: t("set.endpointsDesc"),
       placeholder: "http://127.0.0.1:1234",
@@ -121,13 +140,14 @@ export class LingoTunerSettingTab extends PluginSettingTab {
       clientFor: (cfg) => clientFor(cfg, PROBE_TIMEOUT_MS),
       globalModel: () => this.plugin.settings.model,
       save: () => this.plugin.saveSettings(),
-      reconnect: async () => { this.plugin.resolver.invalidate(); await this.plugin.resolveEndpoint(); },
+      reconnect: async () => { this.plugin.invalidateEndpointCache(); await this.plugin.resolveEndpoint(); },
       rerender: () => { this.refreshUi(); },
       presets: ENDPOINT_PRESETS,
     });
   }
 
   private renderModel(setting: Setting): void {
+    if (findEndpointManager(this.app)) { setting.setDesc(t("src.modelManaged")); return; }
     const host = settingBodyHost(setting);
     const row = new Setting(host).setName(t("set.model")).setDesc(t("set.modelDesc"));
     const ep = this.plugin.settings.endpoints[0];

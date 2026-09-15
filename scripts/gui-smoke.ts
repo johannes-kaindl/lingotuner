@@ -37,6 +37,8 @@
  * Typen: `tsconfig.scripts.json` (im `gate` ueber `npm run typecheck:scripts`).
  */
 import { copyFileSync, existsSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { cwd } from "node:process";
 
@@ -51,6 +53,12 @@ const FIXTURE_DIR = join(REPO_ROOT, "fixtures/vault");
 const NOTE = "Mail-Entwurf.md";
 const ENDPOINT = "http://127.0.0.1:1234";
 const LOGBOOK_FOLDER = "LingoTuner";
+// Task 5 (Pilot LLM Endpoint Manager): der Manager-Abschnitt (M1-M3) ist optional und
+// braucht weder das echte Manager-Plugin noch einen echten LLM-Server — Muster aus
+// llm-endpoint-manager/scripts/gui-smoke.ts (Fake-HTTP-Server, koda-agent-Herkunft) und
+// obsidian-kit/src/pure/endpoint-source.ts (LlmEndpointManagerApi-Form).
+const MANAGER_PLUGIN_ID = "llm-endpoint-manager";
+const MANAGER_DEFAULT_MODEL = "smoke-manager-model";
 
 type Zustand = "gruen" | "rot" | "uebersprungen";
 interface Check { name: string; zustand: Zustand; detail: string }
@@ -971,6 +979,242 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
   }
 }
 
+// --- M · LLM Endpoint Manager (optionale Fremd-Quelle, Task 5 Pilot) -------------------
+
+/** Eigener Mini-HTTP-Server statt eines echten LLM-Servers oder des echten Manager-Plugins:
+ *  M1-M3 pruefen die KONSUMENTEN-Seite (resolveEndpointSource/findEndpointManager in
+ *  main.ts + settings-tab.ts), nicht den Manager selbst — der hat sein eigenes GUI-Smoke
+ *  in llm-endpoint-manager/scripts/gui-smoke.ts (`startFakeEndpoint`, dort B1-B3). Diese
+ *  Fassung beantwortet zusaetzlich POST /v1/chat/completions mit einem minimalen SSE-Strom,
+ *  weil M2 einen echten Lauf braucht, nicht nur eine Erreichbarkeits-Probe. */
+async function startFakeManagerEndpoint(): Promise<{ url: string; close: () => Promise<void>; chatCalls: () => number }> {
+  let chatCalls = 0;
+  const server: Server = createServer((req, res) => {
+    // Der Renderer laeuft unter der Origin app://obsidian.md — ohne CORS-Header blockt der
+    // Browser den Preflight (OPTIONS) und die eigentliche Anfrage sieht der Server nie.
+    // Gemessen 2026-09-15: ohne diesen Block blieb chatCalls() bei 0, obwohl der Server lief.
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+    if (req.url?.includes("/v1/models") === true) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ data: [{ id: MANAGER_DEFAULT_MODEL, object: "model" }] }));
+      return;
+    }
+    if (req.method === "POST" && req.url?.includes("/v1/chat/completions") === true) {
+      chatCalls += 1;
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "ok" }, finish_reason: null }], model: MANAGER_DEFAULT_MODEL })}\n\n`);
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }], model: MANAGER_DEFAULT_MODEL })}\n\n`);
+      res.write("data: [DONE]\n\n");
+      res.end();
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    close: () => new Promise<void>((resolve) => { server.close(() => { resolve(); }); }),
+    chatCalls: () => chatCalls,
+  };
+}
+
+/** Injiziert eine FAKE `llm-endpoint-manager`-API in den Renderer — der Brief erlaubt
+ *  ausdruecklich „Fake-API oder echtes Manager-Plugin" fuer M1. `findEndpointManager()`
+ *  prueft nur die FORM (version===1 + alle Methoden als Funktion), keine Herkunft; ein
+ *  echtes Manager-Plugin-Repo muesste dafuer nicht gebaut und deployt werden. */
+async function installFakeManager(cdp: Cdp, url: string): Promise<void> {
+  await cdp.evaluate(`
+    const ep = { id: "fake-mgr-ep", label: "Fake Manager Endpoint", url: ${q(url)}, provider: "openai", capabilities: ["chat"], defaultModel: ${q(MANAGER_DEFAULT_MODEL)}, enabled: true, hasSecret: false };
+    const api = {
+      version: 1,
+      list: (filter) => [ep],
+      get: (id) => (id === ep.id ? ep : null),
+      resolve: async (capability, opts) => ({ id: ep.id, label: ep.label, config: { url: ${q(url)} }, defaultModel: ${q(MANAGER_DEFAULT_MODEL)} }),
+      materialize: async (id, opts) => (id === ep.id ? { id: ep.id, label: ep.label, config: { url: ${q(url)} }, defaultModel: ${q(MANAGER_DEFAULT_MODEL)} } : { error: "not-found" }),
+      models: async (id) => (id === ep.id ? [${q(MANAGER_DEFAULT_MODEL)}] : { error: "not-found" }),
+      importEndpoints: async (eps, capability) => ({ added: [], merged: [], skipped: eps.map((e) => e.url) }),
+      on: (event, cb) => (() => {}),
+    };
+    app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}] = { api };
+    return { ok: true };
+  `);
+}
+
+/** Entfernt die Fake-API — Analog zu `app.plugins.disablePlugin()` (der Brief nennt beides
+ *  als gleichwertig fuer M3). `findEndpointManager()` liest bei JEDEM Aufruf frisch aus
+ *  `app.plugins.plugins`, ein `changed`-Ereignis ist fuer die Abwesenheit nicht noetig — der
+ *  naechste `resolveEndpoint()`/Settings-Rebuild sieht sie ohnehin sofort. */
+async function removeFakeManager(cdp: Cdp): Promise<void> {
+  await cdp.evaluate(`delete app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}]; return { ok: true };`);
+}
+
+/** Settings-Stelle: Modal (< 1.13) oder eigenes Fenster (>= 1.13) — uebernommen aus
+ *  llm-endpoint-manager/scripts/gui-smoke.ts (dortige Herkunft: anysource-sideloader,
+ *  2026-09-15). Obsidian 1.13 macht aus den Einstellungen ein eigenes Fenster ohne
+ *  `window.app`; DOM-Pruefungen laufen deshalb ueber `stelle`, Zustands-Pruefungen (Plugin-
+ *  Settings) immer ueber die Workspace-Verbindung `cdp`. */
+interface SettingsStelle { cdp: Cdp; eigenesFenster: boolean; el: (ausdruck: string) => string }
+async function settingsStelle(cdp: Cdp, port: number): Promise<SettingsStelle | null> {
+  const alsModal = await cdp.evaluate<boolean>(`return Boolean(document.querySelector(".modal.mod-settings"));`);
+  if (alsModal) {
+    return {
+      cdp,
+      eigenesFenster: false,
+      el: (ausdruck) => `(() => { const root = document.querySelector(".modal.mod-settings"); if (!root) return null; return (${ausdruck}) ?? null; })()`,
+    };
+  }
+  const fenster = await attachTo("settings", port, REPO_NAME);
+  if (!fenster) return null;
+  return {
+    cdp: fenster,
+    eigenesFenster: true,
+    // NICHT `document` als root: `Node.textContent` liefert fuer ein Document-Node per Spec
+    // IMMER `null` (nur Element-/Text-Nodes tragen es) — ein `root.textContent`-Ausdruck waere
+    // damit strukturell blind, egal wie lange gewartet wird. Gemessen 2026-09-15 an M1/M3:
+    // `document.querySelectorAll(...)` fand die echten Elemente (stelleCount stimmte), aber
+    // `document.textContent` blieb "" (bodyLen 0) selbst bei vollstaendig gerendertem Tab —
+    // der vermutete Timing-Flake war keiner. `document.body` traegt textContent wie erwartet.
+    el: (ausdruck) => `(() => { const root = document.body; return (${ausdruck}) ?? null; })()`,
+  };
+}
+
+/** Ein NOCH offenes Einstellungen-Fenster (>=1.13) aus einem vorherigen `openSettings()`
+ *  ist derselbe CDP-Ziel-Eintrag wie ein frisches — `attachTo("settings", …)` kann dann das
+ *  ALTE (schon geschlossene, inhaltslose) Fenster treffen statt des neuen. Gemessen
+ *  2026-09-15: `app.setting.close()` schliesst zwar das Fenster, aber `/json/list` fuehrt es
+ *  noch kurz weiter — deshalb wird hier auf sein Verschwinden GEWARTET, bevor neu geoeffnet
+ *  wird, statt sich auf einen festen Sleep zu verlassen. Das Ziel traegt die URL "about:blank"
+ *  (kein `app://obsidian.md/...` wie die Workspace-Seite).
+ */
+async function warteAufGeschlosseneSettings(port: number, timeoutMs = 3000): Promise<void> {
+  const bis = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      const liste = (await fetch(`http://127.0.0.1:${port}/json/list`).then((r) => r.json())) as Array<{ type: string; url: string; title: string }>;
+      const offen = liste.some((t) => t.type === "page" && t.url === "about:blank" && t.title.includes(REPO_NAME));
+      if (!offen) return;
+    } catch { return; }
+    if (Date.now() > bis) return;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+}
+
+async function openSettings(cdp: Cdp, port: number): Promise<SettingsStelle> {
+  // Defensiv IMMER erst schliessen (auch wenn nichts offen war — dann no-op): der Grund
+  // steht im Kommentar von warteAufGeschlosseneSettings.
+  await cdp.evaluate(`app.setting.close(); return { ok: true };`).catch(() => undefined);
+  await warteAufGeschlosseneSettings(port);
+  await cdp.evaluate(`
+    app.setting.open();
+    await new Promise((r) => setTimeout(r, 500));
+    app.setting.openTabById(${q(PLUGIN_ID)});
+    await new Promise((r) => setTimeout(r, 1000));
+    return { ok: true };
+  `);
+  const stelle = await settingsStelle(cdp, port);
+  if (!stelle) throw new Error("Kein Einstellungen-Fenster/Modal gefunden.");
+  if (stelle.eigenesFenster) await requireVisible(stelle.cdp).catch(() => undefined);
+  // Wartet zusaetzlich auf den Plugin-Namen im Tab-Body statt sich auf den festen Sleep oben
+  // zu verlassen — billige Absicherung, seit der eigentliche Fehler (`document.textContent`
+  // ist per Spec IMMER null, s. `settingsStelle`) behoben ist, kein Flake mehr bekannt.
+  await pollUntil<{ ok: boolean }>(
+    stelle.cdp,
+    `return ${stelle.el(`root.textContent && root.textContent.includes(${q(t_pluginName())}) ? { ok: true } : null`)};`,
+    5000,
+    200,
+  );
+  return stelle;
+}
+/** "LingoTuner" — der Ueberschriften-Text der eigenen Settings-Gruppe, ohne den i18n-Import
+ *  im Treiber zu ziehen (der laeuft im Renderer, nicht in Node). Fest verdrahtet, weil er
+ *  hier nur als Existenz-Marker dient, nicht als gepruefter String. */
+function t_pluginName(): string { return "LingoTuner"; }
+
+function closeSettings(cdp: Cdp, stelle: SettingsStelle): void {
+  if (stelle.eigenesFenster) stelle.cdp.close();
+  else void cdp.evaluate(`app.setting.close(); return { ok: true };`).catch(() => undefined);
+}
+
+async function stelleCount(stelle: SettingsStelle, selector: string): Promise<number> {
+  const r = await stelle.cdp.evaluate<{ n: number | null }>(`return { n: ${stelle.el(`root.querySelectorAll(${q(selector)}).length`)} };`);
+  return r.n ?? 0;
+}
+
+async function stelleText(stelle: SettingsStelle): Promise<string> {
+  const r = await stelle.cdp.evaluate<{ t: string | null }>(`return { t: ${stelle.el(`root.textContent || ""`)} };`);
+  return r.t ?? "";
+}
+
+const MANAGED_TEXT = ["Endpunkte kommen vom LLM Endpoint Manager", "Endpoints come from the LLM Endpoint Manager"];
+
+/** M1-M3 (Task-5-Brief): Manager an → Settings zeigen den Baustein statt der lokalen Liste,
+ *  ein Lauf geht an den Manager-Endpunkt; Manager aus → beides faellt auf lokal zurueck.
+ *  M2/M3-Laeufe nutzen `laufeTune` (bereits fuer Teil C vorhanden) — dieselbe Mutation
+ *  (`.lt-run` klicken, auf `.lt-status` is-ok/is-error warten), nur mit anderer Quelle
+ *  darunter. Kein eigener try/finally je Punkt: alles haengt an DERSELBEN Fake-Instanz
+ *  (Server + injizierte API), ein einziger auesserer try/finally raeumt beides auf. */
+async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
+  console.log("\nM · LLM Endpoint Manager (optionale Fremd-Quelle)");
+  let fake: { url: string; close: () => Promise<void>; chatCalls: () => number } | null = null;
+  let stelle: SettingsStelle | null = null;
+  const REST = ["M1 Settings zeigen den Manager statt der lokalen Liste", "M2 Lauf nutzt den Manager-Endpunkt und das Default-Modell", "M3 Manager aus → lokale Liste in Settings und im Lauf"];
+  try {
+    fake = await startFakeManagerEndpoint();
+    console.log(`  Fake-Manager-Endpunkt: ${fake.url}`);
+    await installFakeManager(cdp, fake.url);
+
+    // M1 — Settings zeigen den Manager-Baustein (Text + Import-Knopf), kein .okit-ep-row
+    // (der Marker des lokalen Listen-Editors, siehe vendor/kit-obsidian/endpoint-list.ts).
+    stelle = await openSettings(cdp, port);
+    const body = await stelleText(stelle);
+    const managed = MANAGED_TEXT.some((s) => body.includes(s));
+    const localRows = await stelleCount(stelle, ".okit-ep-row");
+    record(REST[0]!, managed && localRows === 0, `managed-Text ${managed ? "da" : "fehlt"}, ${localRows} lokale Endpunkt-Zeilen`);
+    closeSettings(cdp, stelle);
+    stelle = null;
+
+    // M2 — ein Lauf nutzt den Manager-Endpunkt (Fake-Server sieht POST /v1/chat/completions)
+    // und das Default-Modell (kein choice.model gesetzt → modelOf() faellt auf defaultModel).
+    const okM2 = await laufeTune(cdp);
+    const calls = fake.chatCalls();
+    record(REST[1]!, okM2 && calls > 0,
+      okM2 ? `Fake-Server sah ${calls} POST /v1/chat/completions, Default-Modell ${MANAGER_DEFAULT_MODEL}`
+           : `Lauf lieferte kein Ergebnis (Status: ${(await text(cdp, ".lt-status")) ?? "?"}), Fake-Server-Aufrufe: ${calls}`);
+
+    // M3 — Manager "deaktivieren" (Analog zu disablePlugin, s. removeFakeManager) → Settings
+    // fallen auf die lokale Liste zurueck, ein Lauf nutzt wieder den lokalen Endpunkt. Der
+    // lokale Lauf braucht einen ECHTEN Server auf ENDPOINT — ohne ihn "nichts gemessen"
+    // (CORE-TEST-19), nicht still gruen.
+    await removeFakeManager(cdp);
+    stelle = await openSettings(cdp, port);
+    const bodyNach = await stelleText(stelle);
+    const managedNach = MANAGED_TEXT.some((s) => bodyNach.includes(s));
+    const localRowsNach = await stelleCount(stelle, ".okit-ep-row");
+    closeSettings(cdp, stelle);
+    stelle = null;
+    const settingsZurueck = !managedNach && localRowsNach > 0;
+    if (!(await endpointReachable())) {
+      skipped(REST[2]!, `Settings ${settingsZurueck ? "zeigen wieder die lokale Liste" : "NICHT zurueckgestellt (managed-Text " + (managedNach ? "noch da" : "weg") + ", " + localRowsNach + " lokale Zeilen)"}; lokaler Lauf nicht messbar: kein Endpunkt auf ${ENDPOINT}`);
+    } else {
+      const okLokal = await laufeTune(cdp);
+      record(REST[2]!, settingsZurueck && okLokal, `managed-Text ${managedNach ? "noch da" : "weg"}, ${localRowsNach} lokale Zeilen, lokaler Lauf ${okLokal ? "ok" : "fehlgeschlagen"}`);
+    }
+  } catch (e) {
+    for (const n of REST) {
+      if (!checks.some((c) => c.name === n)) skipped(n, `Messung abgebrochen: ${(e as Error).message}`);
+    }
+  } finally {
+    if (stelle) closeSettings(cdp, stelle);
+    await removeFakeManager(cdp).catch(() => null);
+    if (fake) await fake.close().catch(() => undefined);
+  }
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (argv.includes("--setup")) { setupVault(); return; }
@@ -992,6 +1236,7 @@ async function main(): Promise<void> {
     await pruefeGrundlage(cdp, v.name);
     await pruefePanel(cdp);
     await pruefeLauf(cdp);
+    await pruefeManager(cdp, port);
     skipped("Markierung ersetzen (Rand-Whitespace)", "Editor-Selektion per CDP ist im Unit-Test abgedeckt (editor-io.test.ts); im Smoke muesste sie ueber CodeMirror gesetzt werden — Handarbeit");
   } finally {
     if (vorherigeDials !== null) {

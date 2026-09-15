@@ -225,6 +225,20 @@ erlaubt, stillschweigend abzuweichen nicht.
   beide git-ignored.
 - **Release-CI ist GitHub-only** (`.github/` wird von Forgejo ignoriert) und läuft hier
   bewusst nicht, siehe unten.
+- **Der LLM Endpoint Manager ist optional und wird bei JEDEM Aufruf frisch gelesen** —
+  `findEndpointManager(app)` (Kit `endpoint-source`) liest `app.plugins.plugins["llm-endpoint-manager"].api`
+  neu, nie aus einem gemerkten Plugin-Feld. Grund: das Nachbarplugin kann jederzeit installiert,
+  aktiviert, deaktiviert oder umkonfiguriert werden — ein gecachtes „Manager da/weg" würde nach
+  einer solchen Änderung falsch bleiben. `resolveEndpoint()` gecacht nur den LOKALEN Pfad
+  (`cachedLocal`, Ersatz für das entfernte `EndpointResolver`); der Manager-Pfad cached sich
+  laut Kit-Vertrag selbst.
+- **`document.textContent` liefert für ein Document-Node per DOM-Spec IMMER `null`** — nur
+  Element-/Text-Nodes tragen `textContent`. Gemessen 2026-09-15 beim GUI-Smoke-Ausbau (Abschnitt
+  M): ein Treiber-Helfer für das eigene Settings-Fenster (Obsidian ≥1.13) las `root.textContent`
+  mit `root = document` und bekam `""` — obwohl `document.querySelectorAll(...)` im SELBEN Skript
+  echte Elemente fand. Sah aus wie ein Timing-Flake (mehrere Sleeps/Polls draufgeworfen, halfen
+  nichts), war aber ein struktureller Fehler. Fix: `root = document.body`. Wer in einem
+  GUI-Smoke-Treiber Text aus einem eigenen Settings-Fenster liest, prüft das zuerst.
 
 ## Memory
 

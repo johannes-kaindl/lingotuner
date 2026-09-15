@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Bezieht Endpunkte vom LLM Endpoint Manager, wenn installiert (Kit `endpoint-source` 0.37.0);
+  lokale Liste bleibt Rückfall. Neues Settings-Feld `choice` (Wahl gegenüber dem Manager, leer =
+  automatisch).
+
 ## [0.1.2] — 2026-09-11
 
 ### Changed

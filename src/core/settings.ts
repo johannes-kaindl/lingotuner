@@ -1,5 +1,6 @@
 import { mergeSettings } from "../vendor/kit/settings";
 import { migrateEndpointList, type EndpointConfig } from "../vendor/kit/endpoint_config";
+import type { EndpointChoice } from "../vendor/kit/endpoint-source";
 import { BUILTIN_PRESETS, NEUTRAL, normalizeDials, userPresetId, type Dials, type Preset } from "./dials";
 
 export interface UserPreset { name: string; dials: Dials }
@@ -16,6 +17,8 @@ export interface LingoTunerSettings {
   logbookEnabled: boolean;
   logbookFolder: string;
   newNoteFolder: string;
+  /** Wahl gegenüber dem LLM Endpoint Manager (optionales Nachbar-Plugin); leer = automatisch. */
+  choice: EndpointChoice;
 }
 
 export const TIMEOUT_SEC_MIN = 5;
@@ -35,6 +38,7 @@ export const DEFAULT_SETTINGS: LingoTunerSettings = {
   logbookEnabled: false,
   logbookFolder: "LingoTuner",
   newNoteFolder: "",
+  choice: {},
 };
 
 function presetName(raw: unknown): string {
@@ -56,12 +60,18 @@ function sanitizePresets(raw: unknown): UserPreset[] {
 export function loadSettings(raw: unknown): LingoTunerSettings {
   const merged = mergeSettings(DEFAULT_SETTINGS, raw);
   const rawList = merged.endpoints as unknown as (string | EndpointConfig)[] | undefined;
+  const rawChoice = (merged as { choice?: unknown }).choice;
+  const choice: EndpointChoice = rawChoice && typeof rawChoice === "object"
+    ? { ...((rawChoice as EndpointChoice).endpointId ? { endpointId: String((rawChoice as EndpointChoice).endpointId) } : {}),
+        ...((rawChoice as EndpointChoice).model ? { model: String((rawChoice as EndpointChoice).model) } : {}) }
+    : {};
   return {
     ...merged,
     endpoints: migrateEndpointList(undefined, rawList),
     lastDials: normalizeDials(merged.lastDials),
     userPresets: sanitizePresets(merged.userPresets),
     timeoutSec: Math.max(TIMEOUT_SEC_MIN, Number(merged.timeoutSec) || DEFAULT_SETTINGS.timeoutSec),
+    choice,
   };
 }
 

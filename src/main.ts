@@ -2,6 +2,8 @@ import { Notice, Plugin, getLanguage, type WorkspaceLeaf } from "obsidian";
 import "./i18n/strings";
 import { getLang, pickLang, setLang, t } from "./vendor/kit/i18n";
 import type { EndpointConfig } from "./vendor/kit/endpoint_config";
+import { resolveEndpointSource, type SourceKind as EndpointSourceKind } from "./vendor/kit/endpoint-source";
+import { findEndpointManager, onEndpointManagerChanged } from "./vendor/kit-obsidian/endpoint-source";
 import { copyToClipboard } from "./vendor/kit-obsidian/clipboard";
 import { confirmAction } from "./vendor/kit-obsidian/confirm";
 import { DEFAULT_SETTINGS, PROBE_TIMEOUT_MS, allPresets, loadSettings, upsertUserPreset, type LingoTunerSettings } from "./core/settings";
@@ -11,7 +13,6 @@ import { loadOverrides } from "./core/examples/overrides";
 import { readiness as readinessOf, type Readiness, type SourceKind } from "./core/source";
 import { streamTune, type TuneResult } from "./core/llm/client";
 import { classifyNetworkFailure } from "./core/llm/errors";
-import { EndpointResolver } from "./core/llm/resolver";
 import { createLingoTunerApi, type LingoTunerApi } from "./core/api";
 import { probeEndpoint, listModels, xhrTransport } from "./obsidian/http";
 import { SelectionTracker, createTunedNote, replaceCapture } from "./obsidian/editor-io";
@@ -36,11 +37,22 @@ function safeGetLanguage(): string | null {
 
 export default class LingoTunerPlugin extends Plugin {
   settings: LingoTunerSettings = DEFAULT_SETTINGS;
-  resolver!: EndpointResolver;
   api!: LingoTunerApi;
   private tracker!: SelectionTracker;
   private selectionDebounce: number | null = null;
   private activeEndpoint: EndpointConfig | null = null;
+  /** Modell fuer den naechsten Aufruf — kommt aus resolveEndpointSource (choice.model →
+   *  Manager-Default → lokales Modell). NIE settings.model direkt fuer den Aufruf nehmen. */
+  private activeModel = "";
+  private endpointSource: EndpointSourceKind = "local";
+  private unsubscribeManager: () => void = () => {};
+  /** Gemerktes Ergebnis fuer den LOKALEN Pfad — resolveEndpointSource pingt bei jedem Aufruf
+   *  frisch, das war vorher ueber EndpointResolver gecacht. Der Manager-Fall wird nie gecacht:
+   *  „im Manager-Fall cached der Manager" (Task-Brief). */
+  private cachedLocal: EndpointConfig | null = null;
+  /** Laufender Durchlauf, geteilt — sonst pingt jede gleichzeitige Frage die Liste selbst
+   *  (Muster aus dem entfernten core/llm/resolver.ts). */
+  private pendingResolve: Promise<EndpointConfig | null> | null = null;
   /** Zuletzt gemeldete Override-Probleme, als ein Schluessel. Ohne das meldet JEDER Lauf
    *  dieselbe kaputte Datei erneut — bei zehn Laeufen zehn Notices fuer denselben Befund. */
   private lastOverrideProblems = "";
@@ -48,11 +60,13 @@ export default class LingoTunerPlugin extends Plugin {
   async onload(): Promise<void> {
     setLang(pickLang(safeGetLanguage()));
     this.settings = loadSettings(await this.loadData());
-    this.resolver = new EndpointResolver(() => this.settings.endpoints, (ep) => probeEndpoint(ep, PROBE_TIMEOUT_MS).then((s) => s.reachable));
     this.tracker = new SelectionTracker(this.app.workspace);
     // Nicht awaiten: onload darf nicht auf einer Netz-Probe haengen. Setzt activeEndpoint,
     // damit die Endpunkt-Liste in den Einstellungen die aktive Zeile schon VOR dem ersten Lauf kennt.
     void this.resolveEndpoint();
+    // Der Manager kann jederzeit installiert, aktiviert, deaktiviert oder umkonfiguriert
+    // werden — bei jeder solchen Aenderung frisch aufloesen, kein this.resolver-Cache mehr.
+    this.unsubscribeManager = onEndpointManagerChanged(this.app, () => { this.cachedLocal = null; void this.resolveEndpoint(); });
 
     // Sofort setzen: sobald das Plugin-Objekt in app.plugins.plugins auftaucht, soll `api` da sein.
     this.api = createLingoTunerApi({
@@ -120,19 +134,45 @@ export default class LingoTunerPlugin extends Plugin {
     this.addSettingTab(new LingoTunerSettingTab(this.app, this));
   }
 
-  onunload(): void { /* Views raeumt Obsidian selbst ab */ }
+  onunload(): void { this.unsubscribeManager(); /* Views raeumt Obsidian selbst ab */ }
 
   async saveSettings(): Promise<void> { await this.saveData(this.settings); }
 
   activeEndpointUrl(): string | null { return this.activeEndpoint?.url ?? null; }
 
-  /** EINZIGER Weg zum Endpunkt: aufloesen UND merken. `resolve()` direkt zu rufen liess
-   *  activeEndpoint stehen, wo es stand — die Einstellungen zeigten dann bis zum ersten Lauf
-   *  keine aktive Zeile. Die Resolver-Klasse bleibt unangetastet (byte-gleich zu koda-agent). */
+  /** Verwirft den gemerkten lokalen Endpunkt; der naechste resolveEndpoint() pingt die
+   *  lokale Liste erneut. Ersatz fuer das entfernte EndpointResolver.invalidate(). */
+  invalidateEndpointCache(): void { this.cachedLocal = null; }
+
+  /** EINZIGER Weg zum Endpunkt: aufloesen UND merken. Quelle ist `resolveEndpointSource` —
+   *  Manager, wenn vorhanden (Plugin API, bei JEDEM Aufruf frisch gelesen ueber
+   *  findEndpointManager, nie gecacht), sonst die lokale Liste. Der lokale Pfad wird HIER
+   *  gecacht (wie zuvor im entfernten EndpointResolver), der Manager-Pfad nicht — der Manager
+   *  cached sich selbst. */
   async resolveEndpoint(): Promise<EndpointConfig | null> {
-    const ep = await this.resolver.resolve();
-    this.activeEndpoint = ep;
-    return ep;
+    const manager = findEndpointManager(this.app);
+    if (!manager && this.cachedLocal !== null) {
+      this.activeEndpoint = this.cachedLocal;
+      return this.cachedLocal;
+    }
+    if (this.pendingResolve !== null) return this.pendingResolve;
+    this.pendingResolve = resolveEndpointSource({
+      manager,
+      local: this.settings.endpoints,
+      localModel: this.settings.model,
+      capability: "chat",
+      choice: this.settings.choice,
+      caller: "lingotuner",
+    }, (ep) => probeEndpoint(ep, PROBE_TIMEOUT_MS).then((s) => s.reachable))
+      .then((r) => {
+        this.activeEndpoint = r.config;
+        this.activeModel = r.model;
+        this.endpointSource = r.kind;
+        if (r.kind === "local") this.cachedLocal = r.config;
+        return r.config;
+      })
+      .finally(() => { this.pendingResolve = null; });
+    return this.pendingResolve;
   }
 
   private panel(): LingoTunerView | null {
@@ -177,7 +217,7 @@ export default class LingoTunerPlugin extends Plugin {
     this.lastOverrideProblems = key;
     const opts = { note: p.note, lang: getLang(), overrides };
     const messages = buildMessages(p.text, p.dials, opts);
-    const model = ep.model && ep.model !== "" ? ep.model : this.settings.model;
+    const model = ep.model && ep.model !== "" ? ep.model : this.activeModel;
 
     const started = Date.now();
     let first: number | undefined;
@@ -208,7 +248,7 @@ export default class LingoTunerPlugin extends Plugin {
       // „Probe gruen, Chat rot" — ein lokaler Server ohne CORS-Header antwortet requestUrl, nicht XHR.
       const probe = await probeEndpoint(ep, PROBE_TIMEOUT_MS);
       result = { ok: false, error: classifyNetworkFailure(probe.reachable), partial: result.partial };
-      if (!probe.reachable) this.resolver.invalidate();
+      if (!probe.reachable) this.invalidateEndpointCache();
     }
 
     try {

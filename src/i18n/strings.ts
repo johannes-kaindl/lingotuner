@@ -189,6 +189,16 @@ export const STRINGS = {
     "ep.checkConnection": "Test connection",
     "ep.saveFailed": "Could not save the endpoint list.",
 
+    "src.managed": "Endpoints come from the LLM Endpoint Manager",
+    "src.managedDesc": "This plugin uses the endpoints configured in the LLM Endpoint Manager plugin. Your local list stays as a fallback.",
+    "src.openManager": "Open manager settings",
+    "src.pickEndpoint": "Endpoint",
+    "src.automatic": "automatic (first reachable)",
+    "src.importLocal": "Copy local endpoints into the manager",
+    "src.imported": "Copied: {0} new, {1} merged.",
+    "src.importFailed": "Copying failed.",
+    "src.modelManaged": "The model is chosen in the endpoint section above while the LLM Endpoint Manager is active.",
+
     "think.on": "Thinking on",
     "think.off": "Thinking off",
     "think.always": "Always thinks",
@@ -387,6 +397,16 @@ export const STRINGS = {
     "ep.preset": "Adresse von {0} eintragen",
     "ep.checkConnection": "Verbindung prüfen",
     "ep.saveFailed": "Die Endpunkt-Liste konnte nicht gespeichert werden.",
+
+    "src.managed": "Endpunkte kommen vom LLM Endpoint Manager",
+    "src.managedDesc": "Dieses Plugin nutzt die Endpunkte aus dem Plugin LLM Endpoint Manager. Die lokale Liste bleibt als Rückfall erhalten.",
+    "src.openManager": "Manager-Einstellungen öffnen",
+    "src.pickEndpoint": "Endpunkt",
+    "src.automatic": "automatisch (erster erreichbarer)",
+    "src.importLocal": "Lokale Endpunkte in den Manager übernehmen",
+    "src.imported": "Übernommen: {0} neu, {1} zusammengeführt.",
+    "src.importFailed": "Übernahme fehlgeschlagen.",
+    "src.modelManaged": "Das Modell wird oben im Endpunkt-Abschnitt gewählt, solange der LLM Endpoint Manager aktiv ist.",
 
     "think.on": "Denken an",
     "think.off": "Denken aus",

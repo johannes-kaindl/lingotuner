@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.34.0, src/obsidian/stable-writer.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.37.0, src/obsidian/stable-writer.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // ONE mechanical deviation from verbatim: kit-internal imports (../pure/ and ../vendor/code-kit/{pure,web}/) → ../kit/ (vendor layout); reproduce on every re-vendor, nothing else may differ.
 import { splitStable } from "../kit/stream-blocks";
 import type { StreamArea } from "./stream-area";

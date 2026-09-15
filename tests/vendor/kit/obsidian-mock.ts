@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.34.0, src/testing/obsidian-mock.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.37.0, src/testing/obsidian-mock.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Self-contained Obsidian test double for obsidian-kit.
 // - Zero external imports (NOT from "obsidian", NOT from "vitest").
 // - Consumed via vitest `resolve.alias` as a drop-in for `import ... from "obsidian"`,
@@ -482,18 +482,18 @@ export function makeFakeEditor(initial = ""): any {
     const ls = lines();
     const line = Math.max(0, Math.min(pos?.line ?? 0, ls.length - 1));
     let off = 0;
-    for (let i = 0; i < line; i++) off += ls[i].length + 1;
-    return off + Math.max(0, Math.min(pos?.ch ?? 0, ls[line].length));
+    for (let i = 0; i < line; i++) off += (ls[i] ?? "").length + 1;
+    return off + Math.max(0, Math.min(pos?.ch ?? 0, (ls[line] ?? "").length));
   };
   const offsetToPos = (offset: number) => {
     const ls = lines();
     let rest = Math.max(0, Math.min(offset, value.length));
     for (let i = 0; i < ls.length; i++) {
-      const len = ls[i].length;
+      const len = (ls[i] ?? "").length;
       if (rest <= len) return { line: i, ch: rest };
       rest -= len + 1;
     }
-    return { line: ls.length - 1, ch: ls[ls.length - 1].length };
+    return { line: ls.length - 1, ch: (ls[ls.length - 1] ?? "").length };
   };
   const sortiert = () => (posToOffset(anchor) <= posToOffset(head) ? [anchor, head] : [head, anchor]);
   return {
@@ -777,6 +777,20 @@ export function makeFakeApp(): any {
   // registrierten Leaves laufen kann (`workspace.__leaves`).
   const workspace: any = {};
   return {
+    // Schlüsselbund-Double (Obsidian ≥ 1.11.4): Map statt Keychain. Die ID-Regel der echten
+    // API („lowercase alphanumeric with optional dashes", setSecret wirft sonst) wird
+    // nachgebildet, damit ein Test einen falschen Präfix findet, bevor es der Nutzer tut.
+    secretStorage: (() => {
+      const secrets = new Map<string, string>();
+      return {
+        __secrets: secrets,
+        getSecret: (id: string): string | null => secrets.get(id) ?? null,
+        setSecret: (id: string, value: string): void => {
+          if (!/^[a-z0-9-]+$/.test(id)) throw new Error(`invalid secret id: ${id}`);
+          secrets.set(id, value);
+        },
+      };
+    })(),
     vault: {
       adapter: {
         read: fn().mockResolvedValue(""),
