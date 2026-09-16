@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Endpunkt-Liste: Stil für Zusatz- und Schlüsselfelder nachgezogen (Kit 0.37.0).
+
 ## [0.2.0] — 2026-09-15
 
 ### Added
