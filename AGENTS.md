@@ -167,16 +167,15 @@ und **unmittelbar nach dem Lauf** freigeben — Committen und Doku brauchen den 
 Deklaration nach `UI-STANDARD.md` §1a — von einem verbindlichen §8-Baustein abzuweichen ist
 erlaubt, stillschweigend abzuweichen nicht.
 
-- **Modell-Auswahl im Panel ist ein reines Dropdown ohne Freitext-Fallback** (§8 „Async
-  Modell-Feld" verlangt beides). Grund: das Panel ist der Schnellwechsler; das verbindliche Feld
-  mit Freitext trägt der Settings-Tab über den Kit-Picker.
-  `gilt-solange:` `src/obsidian/settings-tab.ts` ruft `renderModelPicker` aus
-  `src/vendor/kit-obsidian/model-picker.ts`.
-- **Status-Indikator kennt einen fuenften Zustand „bereit" mit Icon `circle` und ohne `is-*`-Klasse**
-  (§8 nennt vier Zustaende/Icons). Grund: vor dem ersten Lauf ist weder Erfolg noch Fehler wahr —
-  ein gruener Haken neben „Bereit" behauptete einen Erfolg, den es nicht gab (Final-Review 2026-09-07).
-  `gilt-solange:` `paintStatus` in `src/obsidian/view-render.ts` setzt fuer `phase === "idle"` das Icon
-  `circle` und keine Zustandsklasse; `aria-label` bleibt gesetzt.
+- **Async Modell-Feld** — Grund: Modell-Auswahl im Panel ist ein reines Dropdown ohne
+  Freitext-Fallback (§8 verlangt beides) — das Panel ist der Schnellwechsler, das verbindliche
+  Feld mit Freitext trägt der Settings-Tab über den Kit-Picker.
+  — gilt-solange: `src/obsidian/view-render.ts` enthaelt-nicht `renderModelPicker`
+- **Status-Indikator** — Grund: kennt im Panel einen fuenften Zustand „bereit" mit Icon `circle`
+  und ohne `is-*`-Klasse (§8 nennt vier Zustaende/Icons) — vor dem ersten Lauf ist weder Erfolg
+  noch Fehler wahr, ein gruener Haken neben „Bereit" behauptete einen Erfolg, den es nicht gab
+  (Final-Review 2026-09-07).
+  — gilt-solange: `src/obsidian/view-render.ts` enthaelt `"circle"`
 
 ## Gotchas
 
