@@ -152,6 +152,81 @@ relayer_pure() { # relayer_pure <vendored-file>
   mv "$f.tmp" "$f"
 }
 
+# Einzeldatei-Modus: MODULE=<name> REF=<tag> sh tools/sync-kit.sh --single
+#
+# Holt GENAU EINE Datei aus einer eigenen, festen Ref, ohne die gemeinsame VER/CODE_VER der
+# Sammelliste zu beruehren — der Normalfall (oben) berechnet eine VER fuer PURE_MODULE +
+# OBSIDIAN_MODULE zusammen; wer eine einzelne Datei aus einem NEUEREN Tag holen will, wuerde
+# damit ungewollt alle uebrigen Module mit anheben. Herkunft: koda-agent `dd55354` (Handarbeit,
+# weil dieser Modus noch fehlte) — hier als wiederverwendbarer Modus, weil `tools/sync-kit.sh`
+# in lingotuner die Vorlage ist, aus der yijing-oracle, slide-deck und koda-agent kopiert haben.
+# Ergebnis landet unter "vendored_mixed_version" in der jeweiligen VENDOR.json (eigenes Feld,
+# eigene version/sha je Eintrag) — "version"/"sha" der Sammelliste bleiben unangetastet.
+single_vendor() {
+  : "${MODULE:?MODULE=<name> setzen (z. B. explain-texts)}"
+  : "${REF:?REF=<tag> setzen (z. B. 0.38.0)}"
+
+  git -C "$KIT" rev-parse --verify --quiet "$REF^{commit}" >/dev/null || {
+    echo "FEHLER: Ref '$REF' existiert nicht in $KIT (REF pruefen)." >&2
+    exit 2
+  }
+  sha_single=$(git -C "$KIT" rev-parse --short "$REF^{commit}")
+
+  # Nur obsidian-kit selbst, nicht code-kit — der Anlassfall (explain-texts) ist ein neues
+  # Kit-Modul; code-kit brauchte bislang keinen Einzeldatei-Zugriff. Erweitern, sobald es
+  # einen zweiten Anlassfall gibt (nicht vorab bauen, CORE-AGENT-07).
+  if git -C "$KIT" cat-file -e "$REF:src/pure/$MODULE.ts" 2>/dev/null; then
+    rel="src/pure/$MODULE.ts"; ziel="src/vendor/kit/$MODULE.ts"; schicht=pure
+  elif git -C "$KIT" cat-file -e "$REF:src/obsidian/$MODULE.ts" 2>/dev/null; then
+    rel="src/obsidian/$MODULE.ts"; ziel="src/vendor/kit-obsidian/$MODULE.ts"; schicht=obsidian
+  else
+    echo "FEHLER: $MODULE.ts liegt in $KIT@$REF weder unter src/pure/ noch src/obsidian/." >&2
+    exit 2
+  fi
+
+  mkdir -p src/vendor/kit src/vendor/kit-obsidian
+  hole "$KIT" "$REF" "$rel" "$ziel" || {
+    echo "FEHLER: $REF:$rel nicht lesbar in $KIT" >&2; exit 2; }
+  # Querimport-Umschrieb wie im Sammellauf — no-op, wenn die Datei keinen traegt (beide
+  # Funktionen pruefen selbst per cmp und schreiben nur bei tatsaechlicher Aenderung eine
+  # Notiz).
+  if [ "$schicht" = pure ]; then relayer_pure "$ziel"; else relayer "$ziel"; fi
+  stamp "$ziel" "$rel" obsidian-kit "$REF"
+
+  if [ "$schicht" = pure ]; then vendorjson=src/vendor/kit/VENDOR.json; else vendorjson=src/vendor/kit-obsidian/VENDOR.json; fi
+  python3 - "$MODULE.ts" "$rel" "$REF" "$sha_single" "$vendorjson" <<'PY'
+import json
+import pathlib
+import sys
+
+name, rel, ref, sha, path = sys.argv[1:6]
+p = pathlib.Path(path)
+data = json.loads(p.read_text())
+entries = data.setdefault("vendored_mixed_version", [])
+modul = name[:-3] if name.endswith(".ts") else name
+entry = {
+    "file": name,
+    "version": ref,
+    "sha": sha,
+    "note": (
+        f"Einzeln vendoriert (git show {ref}:{rel}), NICHT ueber die gemeinsame "
+        "PURE_MODULE/OBSIDIAN_MODULE-Liste von tools/sync-kit.sh — ein Lauf ohne --single "
+        "haette beim Aufnehmen dieser Datei alle anderen Module ebenfalls auf diese Ref "
+        f"gehoben. Re-vendor mit MODULE={modul} REF=<neuer-tag> sh tools/sync-kit.sh "
+        "--single; Kopf-Stempel und dieser Eintrag ziehen automatisch nach."
+    ),
+}
+entries[:] = [e for e in entries if e.get("file") != name] + [entry]
+p.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+PY
+
+  echo "vendored (single) obsidian-kit@$REF/$rel → $ziel"
+}
+
+case "${1:-}" in
+  --single) single_vendor; exit 0 ;;
+esac
+
 mkdir -p src/vendor/kit src/vendor/kit-obsidian
 
 PURE_MODULE="clipboard sse endpoint endpoint_config endpoint_diagnostics model-choice model-list-cache reasoning capabilities think-splitter think-toggle timeout error_body i18n settings stream-blocks endpoint-source"
