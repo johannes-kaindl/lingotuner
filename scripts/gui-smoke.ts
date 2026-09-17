@@ -391,8 +391,9 @@ function median(xs: number[]): number {
 }
 
 /** Einen Tune-Lauf ausloesen und auf seinen Endzustand warten. `false` = nicht gruen geworden. */
-async function laufeTune(cdp: Cdp): Promise<boolean> {
+async function laufeTune(cdp: Cdp, waehrendDesLaufs?: () => Promise<void>): Promise<boolean> {
   await clickReal(cdp, `document.querySelector(".lt-run")`);
+  if (waehrendDesLaufs) await waehrendDesLaufs();
   const done = await pollUntil<{ ok: boolean }>(cdp, `const s = document.querySelector(".lt-status"); return s && (s.classList.contains("is-ok") || s.classList.contains("is-error")) ? { ok: true } : null;`, 120_000, 1000);
   return done !== null && (await hasClass(cdp, ".lt-status", "is-ok"));
 }
@@ -465,7 +466,7 @@ const C_AUSGAENGE = [
 // endet — auch wenn er scheitert, denn der Schluss-Draw laeuft in beiden Faellen. Er gehoert
 // deshalb NICHT in C_AUSGAENGE (dort wuerde er zusaetzlich als uebersprungen gefuehrt und
 // stuende doppelt im Protokoll), wohl aber in C_NAMEN: ohne Endpunkt gibt es keinen Lauf.
-const C_NAMEN = ["C5 is-checking animiert", "C11 Panel folgt dem Strom", "C11b Hochscrollen im Strom wird respektiert", "C1 Stream liefert Ergebnis", "B11 Tippen ueberlebt das Ende eines Laufs", ...C_AUSGAENGE];
+const C_NAMEN = ["C5 is-checking animiert", "C11 Panel folgt dem Strom", "C11b Hochscrollen im Strom wird respektiert", "C1 Stream liefert Ergebnis", "B11 Tippen ueberlebt das Ende eines Laufs", "B11b Tippen im Quelltextfeld ueberlebt das Ende eines Laufs", ...C_AUSGAENGE];
 
 /** C9 — Pflicht-Punkt (b) aus dem Skill `gui-smoke-setup` § 3a, seit 2026-09-11 mit neuer
  *  Frage: **ist jedes Bedienelement ERREICHBAR?**
@@ -689,10 +690,15 @@ async function gegenprobeErreichbarkeit(cdp: Cdp): Promise<void> {
  *  Gemessen in der B10-Form: Mutation getrennt, danach ein Fenster auf den NEGATIVEN Zustand.
  *  Die Mutation laeuft WAEHREND des Streams, gemessen wird NACH seinem Ende. Nummer nach
  *  Fehlerbild (B10s Zwilling), Ort nach Abhaengigkeit — ohne echten Lauf ist er nicht messbar.
- *  Der Rueckgabewert sagt, ob gemessen werden konnte. */
-async function tippeWaehrendDesLaufs(cdp: Cdp): Promise<boolean> {
+ *  Der Rueckgabewert sagt, ob gemessen werden konnte.
+ *
+ *  `.lt-freetext` (Quelle „Textfeld") durchlaeuft denselben `render()`/`sourceRow()`-Codepfad
+ *  wie `.lt-note` (0.1.1-Nachlese, Review-Punkt: „derselbe Codepfad, kein eigener Pruefpunkt").
+ *  Selektor und Anzeigename sind deshalb Parameter statt zweiter Kopie — B11b (unten) ruft
+ *  dieselben zwei Funktionen mit `.lt-freetext` auf. */
+async function tippeWaehrendDesLaufs(cdp: Cdp, selector = ".lt-note"): Promise<boolean> {
   return (await cdp.evaluate<{ ok: boolean }>(`
-    const el = document.querySelector(".lt-note");
+    const el = document.querySelector(${q(selector)});
     if (!el) return { ok: false };
     el.focus();
     el.value = "";
@@ -703,26 +709,63 @@ async function tippeWaehrendDesLaufs(cdp: Cdp): Promise<boolean> {
   `)).ok;
 }
 
-async function messeB11(cdp: Cdp): Promise<void> {
+async function messeB11(cdp: Cdp, selector = ".lt-note", name = "B11 Tippen ueberlebt das Ende eines Laufs"): Promise<void> {
   const verloren = await pollUntil<{ aktiv: string }>(cdp, `
     const a = document.activeElement;
-    if (a && a.matches(".lt-note")) return null;
+    if (a && a.matches(${q(selector)})) return null;
     return { aktiv: a ? (a.className || a.tagName) : "(null)" };
   `, 1200, 100);
   const stand = await cdp.evaluate<{ wert: string; aktiv: string }>(`
-    const el = document.querySelector(".lt-note");
+    const el = document.querySelector(${q(selector)});
     const a = document.activeElement;
     return { wert: el ? el.value : "(keine Textarea)", aktiv: a ? (a.className || a.tagName) : "(null)" };
   `);
-  const gehalten = verloren === null && stand.aktiv.split(" ").includes("lt-note");
-  record("B11 Tippen ueberlebt das Ende eines Laufs", gehalten && stand.wert === "abc",
-    gehalten ? `value=${JSON.stringify(stand.wert)}, Fokus blieb nach dem Schluss-Draw in .lt-note`
+  const klasse = selector.replace(/^\./, "");
+  const gehalten = verloren === null && stand.aktiv.split(" ").includes(klasse);
+  record(name, gehalten && stand.wert === "abc",
+    gehalten ? `value=${JSON.stringify(stand.wert)}, Fokus blieb nach dem Schluss-Draw in ${selector}`
              : `value=${JSON.stringify(stand.wert)}, Fokus fiel auf ${JSON.stringify((verloren?.aktiv ?? stand.aktiv).slice(0, 60))}`);
   await cdp.evaluate(`
-    const el = document.querySelector(".lt-note");
+    const el = document.querySelector(${q(selector)});
     if (el) { el.value = ""; el.dispatchEvent(new Event("input", { bubbles: true })); el.blur(); }
     return { ok: true };
   `);
+}
+
+/** B11b — dieselbe Frage wie B11, fuer die Quelle „Textfeld" (`.lt-freetext`) statt „Aktive
+ *  Notiz" (`.lt-note`): derselbe render()/sourceRow()-Codepfad, 0.1.1-Nachlese-Review-Punkt
+ *  „derselbe Codepfad, kein eigener Pruefpunkt".
+ *
+ *  EIGENER dritter Lauf, nicht in C6 (zweiter Lauf) gefaltet: C3/C4 direkt nach C6 brauchen,
+ *  dass die Session-Runde von C6 zur LEBENDEN Notiz passt (`canReplaceNote` vergleicht
+ *  `cap.text` mit dem Text, der tatsaechlich getunt wurde) — ein C6-Lauf mit Quelle „Textfeld"
+ *  verletzt das und macht `.lt-out-replace-note` disabled, WEIL sourceText (Platzhaltertext)
+ *  nie zur Notiz passt. Erster Entwurf (2026-09-17) faltete B11b in C6 und riss dabei C3 rot
+ *  („Notiz ersetzen schreibt Body" — Datei blieb unveraendert, weil der Knopf gesperrt war).
+ *  Deshalb hier, NACH C3/C4/C8/C9d: nichts danach haengt mehr an einer Notiz-Quelle passenden
+ *  Session-Runde — C10 setzt die Sitzung ohnehin komplett zurueck. */
+async function pruefeB11bFreetext(cdp: Cdp): Promise<void> {
+  const name = "B11b Tippen im Quelltextfeld ueberlebt das Ende eines Laufs";
+  const klick = await waehleQuelle(cdp, 2);
+  const da = await pollUntil<{ ok: boolean }>(cdp, `return document.querySelector(".lt-freetext") ? { ok: true } : null;`, 3000, 200);
+  if (da === null) {
+    skipped(name, `Quelle „Textfeld" liess sich nicht waehlen${klick}`);
+    await waehleQuelle(cdp, 1).catch(() => "");
+    return;
+  }
+  await cdp.evaluate(`
+    const ta = document.querySelector(".lt-freetext");
+    ta.value = "Quelltext fuer B11b, damit die Quelle bereit ist.";
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
+    return { ok: true };
+  `);
+  let getippt = false;
+  // Ergebnis des Laufs ist hier egal (wie bei B11 auf .lt-note): der Schluss-Draw laeuft
+  // sowohl bei Erfolg als auch bei einem Fehler.
+  await laufeTune(cdp, async () => { getippt = await tippeWaehrendDesLaufs(cdp, ".lt-freetext"); });
+  if (getippt) await messeB11(cdp, ".lt-freetext", name);
+  else skipped(name, "Tippen waehrend des Laufs schlug fehl — .lt-freetext war beim Klick nicht im DOM");
+  await waehleQuelle(cdp, 1).catch(() => "");
 }
 
 /** C9d — das Quell-Textfeld, und zwar wirklich gemessen.
@@ -968,6 +1011,10 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
 
     // --- C9d vor C10: er wechselt die Quelle und braucht ein Panel mit Inhalt ---
     await pruefeTextfeldErreichbar(cdp);
+
+    // --- B11b nach C3/C4/C8/C9d, vor C10: eigener dritter Lauf mit Quelle "Textfeld" — ab
+    // hier haengt nichts Nachfolgendes mehr an einer zur Notiz passenden Session-Runde.
+    await pruefeB11bFreetext(cdp);
 
     // --- C10 ganz zuletzt: er raeumt die Sitzung, alles danach saehe eine leere ---
     await pruefeZuruecksetzen(cdp);

@@ -286,17 +286,19 @@ export function structureKey(m: PanelModel): string {
 }
 
 /** Aktualisierung OHNE Neuaufbau — der einzige zulaessige Weg, solange der Fokus im Panel
- *  liegt. Deckt Bereitschaftszeile, Knopf-Sperren, Stufennamen, Preset-Markierung und die
- *  Ausgangsknoepfe ab.
+ *  liegt. Deckt Bereitschaftszeile, Knopf-Sperren, Stufennamen, Preset-Markierung, die
+ *  Ausgangsknoepfe UND (seit der 0.1.1-Nachlese) den Status-Indikator ab.
  *
- *  ⚠️ AUSGENOMMEN ist der Status-Indikator: `paintStatus` laeuft nur aus `renderPanel`.
- *  Das ist heute folgenlos, weil jeder Pfad, der `statusText` oder `phase` aendert, ohnehin
- *  `draw()` ruft — aber es ist eine Annahme ueber die Aufrufer, keine Eigenschaft dieser
- *  Funktion. Wer `statusText` kuenftig ohne Voll-Draw aendert, ergaenzt hier `paintStatus`
- *  (dafuer muessten die `PanelParts` hereingereicht werden). */
-export function patchPanel(root: El, m: PanelModel): void {
+ *  `parts` ist optional und NULL vor dem ersten Voll-Draw (`this.parts` in view.ts startet als
+ *  `null`) — `softDraw()` ruft `patchPanel` aber nur nach mindestens einem `draw()`, `parts` ist
+ *  zur Laufzeit also praktisch nie null; der Parameter bleibt trotzdem optional, weil der Typ
+ *  in view.ts `PanelParts | null` ist und `patchPanel` keine eigene Invariante darueber
+ *  erzwingen kann. Ohne `parts` bleibt der Indikator unveraendert (kein Wurf) statt zu bluffen. */
+export function patchPanel(root: El, m: PanelModel, parts: PanelParts | null = null): void {
   root.dataset.preset = m.presetId ?? "";
   const busy = m.phase === "streaming";
+
+  if (parts !== null) paintStatus(parts, m.phase, m.statusText);
 
   const line = one(root, ".lt-source-line");
   if (line !== null) {

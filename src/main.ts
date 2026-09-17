@@ -298,7 +298,13 @@ export default class LingoTunerPlugin extends Plugin {
     if (result.ok && this.settings.logbookEnabled) {
       try {
         await appendLogEntry(this.app, this.settings.logbookFolder, { at: new Date(), model: result.model || model, dials: p.dials, note: p.note, input: p.text, output: result.text });
-      } catch (e) { new Notice(e instanceof Error ? e.message : String(e)); }
+      } catch (e) {
+        // Wie beim Override-Problem oben (Zeile 237): ein Fremdaufruf ueber die API (quiet)
+        // schiebt dem Nutzer keine Meldung ins Fenster, die er nicht angestossen hat.
+        const msg = e instanceof Error ? e.message : String(e);
+        if (p.quiet === true) console.warn(`LingoTuner: ${msg}`);
+        else new Notice(msg);
+      }
     }
     return result;
   }

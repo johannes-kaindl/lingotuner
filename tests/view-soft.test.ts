@@ -111,6 +111,27 @@ describe("patchPanel — aktualisiert ohne Neuaufbau", () => {
     patchPanel(root, model({ phase: "streaming", readiness: { kind: "no-selection" } }));
     expect(findByClass<El>(root, "lt-run")?.disabled).not.toBe(true);
   });
+
+  it("zieht den Status-Indikator nach, wenn PanelParts uebergeben werden (0.1.1-Nachlese)", () => {
+    const root = makeFakeEl();
+    const parts = renderPanel(root, model({ phase: "idle", statusText: "Ready" }), handlers());
+    expect(findByClass<El>(root, "lt-status")?.className).not.toContain("is-ok");
+
+    patchPanel(root, model({ phase: "done", statusText: "Fertig" }), parts);
+
+    expect(findByClass<El>(root, "lt-status")?.className).toContain("is-ok");
+    expect(findByClass<El>(root, "lt-status-label")?.textContent).toBe("Fertig");
+  });
+
+  it("laesst den Status-Indikator unveraendert, wenn keine PanelParts uebergeben werden", () => {
+    const root = makeFakeEl();
+    renderPanel(root, model({ phase: "idle", statusText: "Ready" }), handlers());
+
+    patchPanel(root, model({ phase: "done", statusText: "Fertig" }));
+
+    expect(findByClass<El>(root, "lt-status")?.className).not.toContain("is-ok");
+    expect(findByClass<El>(root, "lt-status-label")?.textContent).toBe("Ready");
+  });
 });
 
 describe("Zuruecksetzen", () => {

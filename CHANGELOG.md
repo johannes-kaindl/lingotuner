@@ -13,6 +13,12 @@ All notable changes to this project are documented here. The format follows
   the state on every render, icon switches `brain` ↔ `brain-cog` for on/off instead of always
   showing `brain`. Native `disabled` and the tooltip via `think.hint` were already correct.
 - Endpunkt-Liste: Stil für Zusatz- und Schlüsselfelder nachgezogen (Kit 0.37.0).
+- Ein API-Lauf (`quiet: true`) zeigt bei einem fehlgeschlagenen Logbuch-Eintrag keine `Notice`
+  mehr, sondern schreibt wie der Override-Fehler daneben nur nach `console.warn` — ein
+  Fremdaufruf soll dem Nutzer keine unangeforderte Meldung ins Fenster schieben.
+- Der Status-Indikator wird jetzt auch bei einem reinen Patch (`patchPanel`, ohne Voll-Draw)
+  nachgezogen — bislang blieb er stehen, bis der nächste Voll-Draw kam (heute folgenlos, weil
+  jeder Aufrufer ohnehin einen Voll-Draw auslöst, aber keine Eigenschaft der Funktion selbst).
 
 ## [0.2.0] — 2026-09-15
 

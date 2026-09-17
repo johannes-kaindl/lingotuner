@@ -270,7 +270,7 @@ export class LingoTunerView extends ItemView {
     const strukturell = structureKey(m) !== this.struct;
     const gesperrt = m.phase === "streaming" || this.focusInPanel();
     if (strukturell && !gesperrt) { this.draw(); return; }
-    patchPanel(this.contentEl, m);
+    patchPanel(this.contentEl, m, this.parts);
   }
 
   /** Markdown in ein Element rendern. Fehler kosten die Formatierung, nicht den Text.
