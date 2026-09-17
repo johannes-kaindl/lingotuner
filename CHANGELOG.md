@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **Thinking toggle now shows its state without relying on color alone** (UI-STANDARD §8,
+  state-button contract) — `aria-pressed` was missing entirely. Fixed: `aria-pressed` follows
+  the state on every render, icon switches `brain` ↔ `brain-cog` for on/off instead of always
+  showing `brain`. Native `disabled` and the tooltip via `think.hint` were already correct.
 - Endpunkt-Liste: Stil für Zusatz- und Schlüsselfelder nachgezogen (Kit 0.37.0).
 
 ## [0.2.0] — 2026-09-15

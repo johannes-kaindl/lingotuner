@@ -118,6 +118,24 @@ describe("renderPanel", () => {
     expect(findByClass<El>(root, "lt-run")?.textContent).toBe("Cancel");
   });
 
+  it("Thinking-Toggle traegt aria-pressed passend zum Zustand (UI-STANDARD 8)", () => {
+    const off = makeFakeEl();
+    renderPanel(off, model({ model: "qwen3:8b", suppressThinking: true }), handlers());
+    expect(findByClass<El>(off, "lt-think")?.getAttribute?.("aria-pressed")).toBe("false");
+
+    const on = makeFakeEl();
+    renderPanel(on, model({ model: "qwen3:8b", suppressThinking: false }), handlers());
+    expect(findByClass<El>(on, "lt-think")?.getAttribute?.("aria-pressed")).toBe("true");
+  });
+
+  it("gesperrtes Immer-denkt-Modell zeigt aria-pressed=true", () => {
+    const root = makeFakeEl();
+    renderPanel(root, model({ model: "gpt-oss:20b", suppressThinking: false }), handlers());
+    const toggle = findByClass<El>(root, "lt-think");
+    expect(toggle?.disabled).toBe(true);
+    expect(toggle?.getAttribute?.("aria-pressed")).toBe("true");
+  });
+
   it("paintStatus setzt Klasse, Icon-Form und aria-label je Phase", () => {
     const cases: Array<["streaming" | "done" | "error" | "aborted", string]> = [
       ["streaming", "is-checking"],

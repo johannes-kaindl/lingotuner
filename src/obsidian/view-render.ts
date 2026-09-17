@@ -194,11 +194,13 @@ function runRow(parent: El, m: PanelModel, h: PanelHandlers): void {
   refresh.addEventListener("click", () => h.onRefreshModels());
 
   const think = thinkToggleState(m.model, m.suppressThinking);
+  const thinkOn = think.mode !== "off";
   const toggle = row.createEl("button", { cls: "lt-think" });
   toggle.toggleClass("is-off", think.mode === "off");
-  setIcon(toggle.createSpan(), "brain");
+  setIcon(toggle.createSpan(), thinkOn ? "brain" : "brain-cog");
   toggle.createSpan({ text: t(`think.${think.mode}`) });
   if (think.hint !== null) toggle.setAttribute("title", t(`think.hint.${think.hint}`));
+  toggle.setAttribute("aria-pressed", String(thinkOn));
   toggle.disabled = busy || think.disabled;
   if (think.disabled) toggle.setAttribute("aria-disabled", "true");
   if (!think.disabled) toggle.addEventListener("click", () => h.onToggleThinking());
