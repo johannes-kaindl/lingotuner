@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-23
+
 ### Changed
 
 - **Sampling-Werte, Denkstufe und Tokenbudget kommen jetzt aus dem Anfrage-Profil (`code-kit`
