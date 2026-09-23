@@ -12,9 +12,6 @@ import type { TuneError } from "./errors";
  *  ohne zu erfinden (Spec § 4.1: "transform"). Nur EIN Modus, deshalb hier fest verdrahtet. */
 export const MODE = "transform";
 
-/** Die Request-Bau-Funktion DES PLUGINS (Rezept 8): nur sie kennt lingotuners festen Modus.
- *  Goldene Requests laufen dagegen, nicht gegen resolveRequestParams direkt — sonst pruefte
- *  der Test das Kit statt das Plugin. */
 /** Wandelt ein `TuneResult` in die Eingabe fuer `checkResponse` (Spec § 3.3). `null`, wenn
  *  gar keine Server-Antwort vorlag (Abbruch, Netzfehler, Timeout, CORS-Verdacht) — dafuer
  *  hat `checkResponse` keine sinnvolle Aussage. */
@@ -39,6 +36,9 @@ export function responseFactsFromResult(result: TuneResult): ResponseFacts | nul
   }
 }
 
+/** Die Request-Bau-Funktion DES PLUGINS (Rezept 8): nur sie kennt lingotuners festen Modus.
+ *  Goldene Requests laufen dagegen, nicht gegen resolveRequestParams direkt — sonst pruefte
+ *  der Test das Kit statt das Plugin. */
 export function buildTuneParams(input: {
   family: FamilyId | null;
   backend: BackendId;
