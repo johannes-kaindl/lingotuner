@@ -15,10 +15,17 @@ function fake(outcome: () => Promise<StreamOutcome>, seen: { url?: string; init?
 }
 
 describe("streamTune", () => {
-  it("baut URL, Auth-Header und Body mit stream:true und Suppress-Parametern", async () => {
+  it("sends the resolved params and the canonical model, nothing legacy", async () => {
+    let sent: Record<string, unknown> = {};
+    const transport = { stream: async (_u: string, init: { body: string }) => { sent = JSON.parse(init.body) as Record<string, unknown>; return { content: "ok", reasoning: "", model: "m" }; } };
+    await streamTune(transport as never, { messages: [], endpoint: { url: "http://h:1234/v1" }, model: "qwen/qwen3.8-27b", sentModel: "qwen/qwen3.8-27b@4bit", params: { temperature: 0.2, top_p: 0.8, reasoning_effort: "none" } });
+    expect(sent).toEqual({ model: "qwen/qwen3.8-27b@4bit", messages: [], stream: true, temperature: 0.2, top_p: 0.8, reasoning_effort: "none" });
+  });
+
+  it("baut URL und Auth-Header, Body traegt genau die uebergebenen Parameter", async () => {
     const seen: { url?: string; init?: { headers: Record<string, string>; body: string } } = {};
     const t = fake(() => Promise.resolve({ content: "ok", reasoning: "", model: "m" }), seen);
-    const r = await streamTune(t, { messages: msgs, endpoint: ep, model: "qwen", suppressThinking: true });
+    const r = await streamTune(t, { messages: msgs, endpoint: ep, model: "qwen", sentModel: "qwen", params: { temperature: 0.2, reasoning_effort: "none" } });
     expect(r).toEqual({ ok: true, text: "ok", reasoning: "", model: "m", truncated: false });
     expect(seen.url).toBe("http://127.0.0.1:1234/v1/chat/completions");
     expect(seen.init?.headers["Authorization"]).toBe("Bearer k");
@@ -27,44 +34,46 @@ describe("streamTune", () => {
     expect(body.stream).toBe(true);
     expect(body.messages).toEqual(msgs);
     expect(body.reasoning_effort).toBe("none");
+    expect(body).not.toHaveProperty("chat_template_kwargs");
+    expect(body).not.toHaveProperty("reasoning_budget");
   });
 
-  it("schickt keine Suppress-Parameter, wenn Denken an ist", async () => {
+  it("schickt keine Parameter, die nicht mitgegeben wurden", async () => {
     const seen: { init?: { headers: Record<string, string>; body: string } } = {};
     const t = fake(() => Promise.resolve({ content: "ok", reasoning: "", model: "m" }), seen);
-    await streamTune(t, { messages: msgs, endpoint: ep, model: "qwen", suppressThinking: false });
+    await streamTune(t, { messages: msgs, endpoint: ep, model: "qwen", sentModel: "qwen", params: { temperature: 0.2 } });
     expect(JSON.parse(seen.init?.body ?? "{}")).not.toHaveProperty("reasoning_effort");
   });
 
   it("meldet truncated bei finish_reason length, Ergebnis bleibt nutzbar", async () => {
     const t = fake(() => Promise.resolve({ content: "halb", reasoning: "", model: "m", finishReason: "length" }));
-    const r = await streamTune(t, { messages: msgs, endpoint: ep, model: "", suppressThinking: true });
-    expect(r).toMatchObject({ ok: true, text: "halb", truncated: true });
+    const r = await streamTune(t, { messages: msgs, endpoint: ep, model: "", sentModel: "", params: {} });
+    expect(r).toMatchObject({ ok: true, text: "halb", truncated: true, finishReason: "length" });
   });
 
   it("leerer Content mit Reasoning → thought-only; ganz leer → empty", async () => {
-    const a = await streamTune(fake(() => Promise.resolve({ content: "  ", reasoning: "denk", model: "m" })), { messages: msgs, endpoint: ep, model: "", suppressThinking: false });
-    expect(a).toMatchObject({ ok: false, error: { kind: "thought-only" } });
-    const b = await streamTune(fake(() => Promise.resolve({ content: "", reasoning: "", model: "m" })), { messages: msgs, endpoint: ep, model: "", suppressThinking: false });
+    const a = await streamTune(fake(() => Promise.resolve({ content: "  ", reasoning: "denk", model: "m" })), { messages: msgs, endpoint: ep, model: "", sentModel: "", params: {} });
+    expect(a).toMatchObject({ ok: false, error: { kind: "thought-only" }, reasoning: "denk" });
+    const b = await streamTune(fake(() => Promise.resolve({ content: "", reasoning: "", model: "m" })), { messages: msgs, endpoint: ep, model: "", sentModel: "", params: {} });
     expect(b).toMatchObject({ ok: false, error: { kind: "empty" } });
   });
 
   it("HTTP-Fehler traegt Status und Klartext aus dem Body", async () => {
     const t = fake(() => Promise.reject(new StreamHttpError(401, '{"error":{"message":"Not authenticated"}}')));
-    const r = await streamTune(t, { messages: msgs, endpoint: ep, model: "", suppressThinking: false });
-    expect(r).toMatchObject({ ok: false, error: { kind: "http", status: 401, detail: "Not authenticated" } });
+    const r = await streamTune(t, { messages: msgs, endpoint: ep, model: "", sentModel: "", params: {} });
+    expect(r).toMatchObject({ ok: false, error: { kind: "http", status: 401, detail: "Not authenticated" }, status: 401 });
   });
 
   it("Abbruch behaelt den Teiltext", async () => {
     const t: StreamTransport = {
       stream: (_u, _i, onContent) => { onContent("teil"); const e = new Error("Aborted"); e.name = "AbortError"; return Promise.reject(e); },
     };
-    const r = await streamTune(t, { messages: msgs, endpoint: ep, model: "", suppressThinking: false });
+    const r = await streamTune(t, { messages: msgs, endpoint: ep, model: "", sentModel: "", params: {} });
     expect(r).toEqual({ ok: false, error: { kind: "aborted" }, partial: "teil" });
   });
 
   it("Netzfehler → network", async () => {
-    const r = await streamTune(fake(() => Promise.reject(new Error("net"))), { messages: msgs, endpoint: ep, model: "", suppressThinking: false });
+    const r = await streamTune(fake(() => Promise.reject(new Error("net"))), { messages: msgs, endpoint: ep, model: "", sentModel: "", params: {} });
     expect(r).toMatchObject({ ok: false, error: { kind: "network" } });
   });
 });

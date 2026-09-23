@@ -2,19 +2,23 @@ import { Notice, Plugin, getLanguage, type WorkspaceLeaf } from "obsidian";
 import "./i18n/strings";
 import { getLang, pickLang, setLang, t } from "./vendor/kit/i18n";
 import type { EndpointConfig } from "./vendor/kit/endpoint_config";
-import { resolveEndpointSource, type ApiErrorCode, type SourceKind as EndpointSourceKind } from "./vendor/kit/endpoint-source";
+import { resolveEndpointSource, type ApiErrorCode, type SourceKind as EndpointSourceKind, type EndpointSourceResult } from "./vendor/kit/endpoint-source";
 import { findEndpointManager, onEndpointManagerChanged } from "./vendor/kit-obsidian/endpoint-source";
 import { copyToClipboard } from "./vendor/kit-obsidian/clipboard";
 import { confirmAction } from "./vendor/kit-obsidian/confirm";
-import { DEFAULT_SETTINGS, PROBE_TIMEOUT_MS, allPresets, loadSettings, upsertUserPreset, type LingoTunerSettings } from "./core/settings";
+import { createRequestSession, type RequestSession } from "./vendor/kit-obsidian/request-session";
+import type { RequestSectionState } from "./vendor/kit-obsidian/request-section";
+import { checkResponse, thinkingFor, onLevelFor, type RequestSettings } from "./vendor/kit/sampling-profiles";
+import { deviationNotice } from "./core/request-text";
+import { DEFAULT_SETTINGS, PROBE_TIMEOUT_MS, allPresets, loadRequestSettings, loadSettings, upsertUserPreset, type LingoTunerSettings } from "./core/settings";
 import { type Dials } from "./core/dials";
 import { buildMessages, systemPrompt } from "./core/prompt";
 import { loadOverrides } from "./core/examples/overrides";
 import { readiness as readinessOf, type Readiness, type SourceKind } from "./core/source";
-import { streamTune, type TuneResult } from "./core/llm/client";
+import { streamTune, buildTuneParams, responseFactsFromResult, MODE, type TuneResult } from "./core/llm/client";
 import { classifyNetworkFailure } from "./core/llm/errors";
 import { createLingoTunerApi, type LingoTunerApi } from "./core/api";
-import { probeEndpoint, listModels, xhrTransport } from "./obsidian/http";
+import { probeEndpoint, listModels, xhrTransport, cachedProbe } from "./obsidian/http";
 import { SelectionTracker, createTunedNote, replaceCapture } from "./obsidian/editor-io";
 import { vaultOverrideReader } from "./obsidian/overrides-io";
 import { appendLogEntry } from "./obsidian/logbook-io";
@@ -45,6 +49,14 @@ export default class LingoTunerPlugin extends Plugin {
    *  Manager-Default → lokales Modell). NIE settings.model direkt fuer den Aufruf nehmen. */
   private activeModel = "";
   private endpointSource: EndpointSourceKind = "local";
+  /** Volles Ergebnis der letzten Aufloesung — traegt Familie/Backend/sentModel fuer den
+   *  Abschnitt „Anfrage" und den Denk-Knopf im Panel (Spec § 3.1). Oeffentlich: der Settings-
+   *  Tab liest sie fuer `buildRequestSection`. */
+  private activeSource: EndpointSourceResult | null = null;
+  requestSession: RequestSession = createRequestSession({
+    message: (d) => deviationNotice(d),
+    onChange: () => { this.panel()?.refresh(); },
+  });
   /** Grund, warum `resolveEndpoint()` keinen Endpunkt fand (nur im Manager-Fall gesetzt) —
    *  Review-Fund I3: `tune()` warf das bisher weg und zeigte bei JEDEM Fehlschlag denselben
    *  Text, auch wenn z. B. ein API-Schluessel im Manager fehlt (`secret-missing`). */
@@ -63,7 +75,14 @@ export default class LingoTunerPlugin extends Plugin {
 
   async onload(): Promise<void> {
     setLang(pickLang(safeGetLanguage()));
-    this.settings = loadSettings(await this.loadData());
+    const raw: unknown = await this.loadData();
+    this.settings = loadSettings(raw);
+    const { request, dropped } = loadRequestSettings(raw);
+    this.settings.request = request;
+    if (dropped.length > 0) {
+      new Notice(t("request.dropped", String(dropped.length)));
+      console.warn("LingoTuner: request settings dropped", dropped);
+    }
     this.tracker = new SelectionTracker(this.app.workspace);
     // Nicht awaiten: onload darf nicht auf einer Netz-Probe haengen. Setzt activeEndpoint,
     // damit die Endpunkt-Liste in den Einstellungen die aktive Zeile schon VOR dem ersten Lauf kennt.
@@ -102,8 +121,15 @@ export default class LingoTunerPlugin extends Plugin {
         this.invalidateEndpointCache();
         void this.resolveEndpoint();
       },
-      getSuppress: () => this.settings.suppressThinking,
-      setSuppress: (v) => { this.settings.suppressThinking = v; void this.saveSettings(); },
+      getFamily: () => this.activeSource?.family ?? null,
+      getThinkingLevel: () => thinkingFor(this.settings.request, MODE),
+      getThinkingOnLevel: () => onLevelFor(this.settings.request, MODE),
+      getLevelPickerInChat: () => this.settings.request.levelPickerInChat,
+      setThinkingLevel: (l) => {
+        this.settings.request.thinking[MODE] = l;
+        if (l !== "off") this.settings.request.lastOnLevel[MODE] = l;
+        void this.saveSettings();
+      },
       savePreset: (name, dials) => {
         const { list, replaced } = upsertUserPreset(this.settings.userPresets, name, dials);
         this.settings.userPresets = list;
@@ -156,6 +182,22 @@ export default class LingoTunerPlugin extends Plugin {
 
   activeEndpointUrl(): string | null { return this.activeEndpoint?.url ?? null; }
 
+  /** Fuer `buildRequestSection` im Settings-Tab (Spec § 5.1). */
+  requestSectionState(): RequestSectionState {
+    const s = this.activeSource;
+    return {
+      family: s?.family ?? null, familySource: s?.familySource ?? "none",
+      backend: s?.backend ?? "unknown", backendSource: s?.backendSource ?? "none",
+      model: s?.model ?? "", sentModel: s?.sentModel ?? "",
+      ...(s?.defaultModel !== undefined ? { defaultModel: s.defaultModel } : {}),
+    };
+  }
+
+  async saveRequestSettings(next: RequestSettings): Promise<void> {
+    this.settings.request = next;
+    await this.saveSettings();
+  }
+
   /** Verwirft den gemerkten lokalen Endpunkt; der naechste resolveEndpoint() pingt die
    *  lokale Liste erneut. Ersatz fuer das entfernte EndpointResolver.invalidate(). */
   invalidateEndpointCache(): void { this.cachedLocal = null; }
@@ -179,12 +221,14 @@ export default class LingoTunerPlugin extends Plugin {
       capability: "chat",
       choice: this.settings.choice,
       caller: "lingotuner",
+      backendOf: (cfg) => cachedProbe(cfg.url, cfg.model || this.settings.model),
     }, (ep) => probeEndpoint(ep, PROBE_TIMEOUT_MS).then((s) => s.reachable))
       .then((r) => {
         this.activeEndpoint = r.config;
         this.activeModel = r.model;
         this.endpointSource = r.kind;
         this.lastEndpointReason = r.reason;
+        this.activeSource = r;
         if (r.kind === "local") this.cachedLocal = r.config;
         return r.config;
       })
@@ -248,6 +292,13 @@ export default class LingoTunerPlugin extends Plugin {
     // wuerde sonst hier verworfen. `ep.model` gewinnt deshalb NUR noch im lokalen Fall (dort
     // ist es die Pro-Endpunkt-Ueberschreibung der lokalen Liste, s. `set.model`/`ep.ariaModel`).
     const model = this.endpointSource === "local" && ep.model ? ep.model : this.activeModel;
+    const family = this.activeSource?.family ?? null;
+    const backend = this.activeSource?.backend ?? "unknown";
+    const sentModel = this.activeSource?.sentModel ?? model;
+    const level = thinkingFor(this.settings.request, MODE);
+    const paramOverrides = this.settings.request.overrides[MODE]?.[family ?? "unknown"] ?? {};
+    const { params } = buildTuneParams({ family, backend, thinking: level, overrides: paramOverrides });
+    this.requestSession.recordRequest(params);
 
     const started = Date.now();
     let first: number | undefined;
@@ -269,7 +320,7 @@ export default class LingoTunerPlugin extends Plugin {
       if (first === undefined) { first = Date.now(); window.clearTimeout(timer); }
       p.onReasoning?.(tk);
     };
-    let result = await streamTune(xhrTransport, { messages, endpoint: ep, model, suppressThinking: this.settings.suppressThinking, signal: ctrl.signal, onToken, onReasoning });
+    let result = await streamTune(xhrTransport, { messages, endpoint: ep, model, sentModel, params, signal: ctrl.signal, onToken, onReasoning });
     window.clearTimeout(timer);
 
     if (!result.ok && result.error.kind === "aborted" && timedOut) {
@@ -280,6 +331,9 @@ export default class LingoTunerPlugin extends Plugin {
       result = { ok: false, error: classifyNetworkFailure(probe.reachable), partial: result.partial };
       if (!probe.reachable) this.invalidateEndpointCache();
     }
+
+    const facts = responseFactsFromResult(result);
+    if (facts) this.requestSession.report(checkResponse({ family, thinking: level }, facts));
 
     try {
       readLabApi(this.app)?.log({

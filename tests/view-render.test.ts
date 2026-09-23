@@ -10,7 +10,7 @@ function model(over: Partial<PanelModel> = {}): PanelModel {
   return {
     source: "selection", readiness: { kind: "no-selection" }, freeText: "",
     dials: { ...NEUTRAL }, presets: [...BUILTIN_PRESETS], presetId: "neutral", note: "",
-    models: [], model: "", suppressThinking: true,
+    models: [], model: "", family: null, thinkingLevel: "off", thinkingOnLevel: "low", levelPickerInChat: false,
     phase: "idle", statusText: "Ready", truncated: false,
     session: EMPTY_SESSION, preview: "", reasoning: "", reasoningOpen: false,
     canReplaceSelection: false, canReplaceNote: false,
@@ -20,7 +20,7 @@ function model(over: Partial<PanelModel> = {}): PanelModel {
 
 function handlers(): PanelHandlers {
   const h: Record<string, ReturnType<typeof vi.fn>> = {};
-  for (const k of ["onSource","onFreeText","onDial","onPreset","onSavePreset","onNote","onTune","onRefine","onAbort","onReset","onSelectRound","onModel","onRefreshModels","onToggleThinking","onToggleReasoning","onReplaceSelection","onReplaceNote","onCopy","onNewNote"]) h[k] = vi.fn();
+  for (const k of ["onSource","onFreeText","onDial","onPreset","onSavePreset","onNote","onTune","onRefine","onAbort","onReset","onSelectRound","onModel","onRefreshModels","onThinkingLevel","onToggleReasoning","onReplaceSelection","onReplaceNote","onCopy","onNewNote"]) h[k] = vi.fn();
   return h as unknown as PanelHandlers;
 }
 
@@ -114,26 +114,26 @@ describe("renderPanel", () => {
     }
     expect(findByClass<El>(root, "lt-model")?.disabled).toBe(true);
     expect(findByClass<El>(root, "lt-model-refresh")?.disabled).toBe(true);
-    expect(findByClass<El>(root, "lt-think")?.disabled).toBe(true);
+    expect(findByClass<El>(root, "okit-thinking-toggle")?.disabled).toBe(true);
     expect(findByClass<El>(root, "lt-run")?.textContent).toBe("Cancel");
   });
 
   it("Thinking-Toggle traegt aria-pressed passend zum Zustand (UI-STANDARD 8)", () => {
     const off = makeFakeEl();
-    renderPanel(off, model({ model: "qwen3:8b", suppressThinking: true }), handlers());
-    expect(findByClass<El>(off, "lt-think")?.getAttribute?.("aria-pressed")).toBe("false");
+    renderPanel(off, model({ model: "qwen3:8b", thinkingLevel: "off" }), handlers());
+    expect(findByClass<El>(off, "okit-thinking-toggle")?.getAttribute?.("aria-pressed")).toBe("false");
 
     const on = makeFakeEl();
-    renderPanel(on, model({ model: "qwen3:8b", suppressThinking: false }), handlers());
-    expect(findByClass<El>(on, "lt-think")?.getAttribute?.("aria-pressed")).toBe("true");
+    renderPanel(on, model({ model: "qwen3:8b", thinkingLevel: "low" }), handlers());
+    expect(findByClass<El>(on, "okit-thinking-toggle")?.getAttribute?.("aria-pressed")).toBe("true");
   });
 
-  it("gesperrtes Immer-denkt-Modell zeigt aria-pressed=true", () => {
+  it("gpt-oss kann Denken nicht ganz abschalten — der Knopf-Text sagt das", () => {
     const root = makeFakeEl();
-    renderPanel(root, model({ model: "gpt-oss:20b", suppressThinking: false }), handlers());
-    const toggle = findByClass<El>(root, "lt-think");
-    expect(toggle?.disabled).toBe(true);
-    expect(toggle?.getAttribute?.("aria-pressed")).toBe("true");
+    renderPanel(root, model({ model: "gpt-oss:20b", family: "gpt-oss", thinkingLevel: "off" }), handlers());
+    const toggle = findByClass<El>(root, "okit-thinking-toggle");
+    expect(toggle?.getAttribute?.("aria-pressed")).toBe("false");
+    expect(toggle?.textContent).toContain("can't fully turn off");
   });
 
   it("paintStatus setzt Klasse, Icon-Form und aria-label je Phase", () => {

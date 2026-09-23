@@ -10,7 +10,7 @@ function model(over: Partial<PanelModel> = {}): PanelModel {
   return {
     source: "selection", readiness: { kind: "no-selection" }, freeText: "",
     dials: { ...NEUTRAL }, presets: [...BUILTIN_PRESETS], presetId: "neutral", note: "",
-    models: [], model: "", suppressThinking: true,
+    models: [], model: "", family: null, thinkingLevel: "off", thinkingOnLevel: "low", levelPickerInChat: false,
     phase: "idle", statusText: "Ready", truncated: false,
     session: EMPTY_SESSION, preview: "", reasoning: "", reasoningOpen: false,
     canReplaceSelection: false, canReplaceNote: false,
@@ -20,7 +20,7 @@ function model(over: Partial<PanelModel> = {}): PanelModel {
 
 function handlers(): PanelHandlers {
   const h: Record<string, ReturnType<typeof vi.fn>> = {};
-  for (const k of ["onSource","onFreeText","onDial","onPreset","onSavePreset","onNote","onTune","onRefine","onAbort","onReset","onSelectRound","onModel","onRefreshModels","onToggleThinking","onToggleReasoning","onReplaceSelection","onReplaceNote","onCopy","onNewNote"]) h[k] = vi.fn();
+  for (const k of ["onSource","onFreeText","onDial","onPreset","onSavePreset","onNote","onTune","onRefine","onAbort","onReset","onSelectRound","onModel","onRefreshModels","onThinkingLevel","onToggleReasoning","onReplaceSelection","onReplaceNote","onCopy","onNewNote"]) h[k] = vi.fn();
   return h as unknown as PanelHandlers;
 }
 
@@ -47,7 +47,7 @@ describe("structureKey — was einen Voll-Draw erzwingt", () => {
     expect(structureKey(model({ session: { rounds: [r], active: 0 } }))).not.toBe(basis);
     expect(structureKey(model({ models: ["a", "b"] }))).not.toBe(basis);
     expect(structureKey(model({ model: "a" }))).not.toBe(basis);
-    expect(structureKey(model({ suppressThinking: false }))).not.toBe(basis);
+    expect(structureKey(model({ thinkingLevel: "low" }))).not.toBe(basis);
     expect(structureKey(model({ truncated: true }))).not.toBe(basis);
     expect(structureKey(model({ preview: "x" }))).not.toBe(basis);
     expect(structureKey(model({ reasoning: "x" }))).not.toBe(basis);

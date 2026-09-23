@@ -5,13 +5,18 @@ import { renderSettingDefinitions, settingBodyHost, refreshSettingsTab } from ".
 import { buildEndpointList, type EndpointListStrings } from "../vendor/kit-obsidian/endpoint-list";
 import { renderModelPicker } from "../vendor/kit-obsidian/model-picker";
 import { buildEndpointSourceSection, findEndpointManager } from "../vendor/kit-obsidian/endpoint-source";
+import { buildRequestSection } from "../vendor/kit-obsidian/request-section";
+import { installTabRefreshOnOpen } from "../vendor/kit-obsidian/settings_walker";
 import { resolveModelChoice } from "../vendor/kit/model-choice";
 import { createModelListCache, type ModelListCache } from "../vendor/kit/model-list-cache";
 import { ENDPOINT_PRESETS, type EndpointStatusKind } from "../vendor/kit/endpoint_diagnostics";
 import type { EndpointRole } from "../vendor/kit/endpoint_config";
+import { FAMILIES, BACKENDS, type FamilyId, type BackendId, type FieldExplain } from "../vendor/kit/sampling-profiles";
+import { deviationDetail } from "../core/request-text";
 import { clientFor } from "./http";
 import { writeShippedTexts } from "../core/examples/overrides";
 import { vaultOverrideWriter } from "./overrides-io";
+import { MODE } from "../core/llm/client";
 import { PROBE_TIMEOUT_MS, removeUserPreset, TIMEOUT_SEC_MIN } from "../core/settings";
 import { getLang } from "../vendor/kit/i18n";
 
@@ -39,9 +44,12 @@ export class LingoTunerSettingTab extends PluginSettingTab {
   private modelLists: ModelListCache = createModelListCache();
   private modelState: { url: string; models: string[]; reachable: boolean } | null = null;
   private cleanupPrevious: () => void = () => {};
+  private uninstallRefresh: () => void = () => {};
 
   constructor(app: App, private readonly plugin: LingoTunerPlugin) {
     super(app, plugin);
+    // „Letzte Anfrage" und Abweichungen sollen beim Oeffnen des Tabs aktuell sein (Rezept 6).
+    this.uninstallRefresh = installTabRefreshOnOpen(this, () => this.renderImperative());
   }
 
   getSettingDefinitions(): SettingDefinitionItem[] {
@@ -52,7 +60,7 @@ export class LingoTunerSettingTab extends PluginSettingTab {
         items: [
           { name: t("set.endpoints"), desc: t("set.endpointsDesc"), render: (s) => { this.renderEndpoints(s); } },
           { name: t("set.model"), desc: t("set.modelDesc"), render: (s) => { this.renderModel(s); } },
-          { name: t("set.suppress"), desc: t("set.suppressDesc"), control: { type: "toggle", key: "suppressThinking" } },
+          { name: t("request.title"), render: (s) => { this.renderRequestSection(s); } },
           { name: t("set.timeout"), desc: t("set.timeoutDesc"), control: { type: "number", key: "timeoutSec", min: TIMEOUT_SEC_MIN } },
         ],
       },
@@ -185,6 +193,69 @@ export class LingoTunerSettingTab extends PluginSettingTab {
     });
   }
 
+  private fieldStateText(e: FieldExplain): string {
+    const key = {
+      "sent-effective": "request.state.sentEffective",
+      "sent-unproven": "request.state.sentUnproven",
+      "not-sent-ignored": "request.state.notSentIgnored",
+      "not-sent-unsupported": "request.state.notSentUnsupported",
+      "not-sent-unknown-family": "request.state.notSentUnknownFamily",
+      "not-sent-no-value": "request.state.notSentNoValue",
+    }[e.state];
+    let s = t(key);
+    const noteKey = e.note ? {
+      "raised-to-reserve": "request.note.raisedToReserve",
+      "raised-to-thinking-floor": "request.note.raisedToThinkingFloor",
+      "below-thinking-floor": "request.note.belowThinkingFloor",
+      "off-not-possible": "request.note.offNotPossible",
+    }[e.note] : undefined;
+    if (noteKey) s += ` ${t(noteKey)}`;
+    if (e.field === "top_p") s += t("request.top_p.hint");
+    return s;
+  }
+
+  private renderRequestSection(setting: Setting): void {
+    const host = settingBodyHost(setting);
+    buildRequestSection({
+      containerEl: host,
+      modes: [MODE],
+      state: () => this.plugin.requestSectionState(),
+      settings: () => this.plugin.settings.request,
+      save: (s) => this.plugin.saveRequestSettings(s),
+      maxTokens: () => undefined,
+      session: this.plugin.requestSession,
+      rerender: () => { this.refreshUi(); },
+      strings: {
+        title: t("request.title"),
+        head: (family, familySource, backend, backendSource) => {
+          const famLabel = family === "—" ? "—" : (FAMILIES[family as FamilyId]?.label ?? family);
+          const backLabel = BACKENDS[backend as BackendId]?.label ?? backend;
+          return t("request.head", famLabel, t(`request.familySource.${familySource}`), backLabel, t(`request.backendSource.${backendSource}`));
+        },
+        unknownFamily: t("request.unknownFamily"),
+        jitWarning: (model, defaultModel) => t("request.jitWarning", model, defaultModel),
+        sentAs: (model) => t("request.sentAs", model),
+        modeHeading: (mode) => t(`request.mode.${mode}`),
+        fieldName: (field) => t(`request.field.${field}`),
+        fieldDesc: (e) => this.fieldStateText(e),
+        reset: t("request.reset"),
+        thinkingLevel: t("request.thinkingLevel"),
+        level: (l) => t(`request.level.${l}`),
+        levelPicker: t("request.levelPicker"),
+        levelPickerDesc: t("request.levelPickerDesc"),
+        dormant: (fam) => t("request.dormant", fam === "unknown" ? t("request.familySource.none") : (FAMILIES[fam]?.label ?? fam)),
+        deleteDormant: t("request.deleteDormant"),
+        lastRequest: t("request.lastRequest"),
+        lastRequestNone: t("request.lastRequestNone"),
+        copy: t("request.copy"),
+        copied: t("request.copied"),
+        deviationsOk: t("request.deviationsOk"),
+        deviationsWarn: (n) => t("request.deviationsWarn", String(n)),
+        deviation: (kind, count, detail) => `${deviationDetail(kind, detail)} (${count}×)`,
+      },
+    });
+  }
+
   private renderOverrideWrite(setting: Setting): void {
     setting.addButton((b) => b.setButtonText(t("set.overrideWrite")).onClick(() => {
       const folder = this.plugin.settings.overrideFolder.trim() || "LingoTuner";
@@ -223,7 +294,7 @@ export class LingoTunerSettingTab extends PluginSettingTab {
 
   display(): void { this.renderImperative(); }
 
-  hide(): void { this.modelLists.clear(); }
+  hide(): void { this.modelLists.clear(); this.uninstallRefresh(); }
 
   private refreshUi(): void { refreshSettingsTab(this, () => this.renderImperative()); }
 
@@ -237,7 +308,6 @@ export class LingoTunerSettingTab extends PluginSettingTab {
   getControlValue(key: string): string | number | boolean | undefined {
     const s = this.plugin.settings;
     switch (key) {
-      case "suppressThinking": return s.suppressThinking;
       case "timeoutSec": return s.timeoutSec;
       case "overrideFolder": return s.overrideFolder;
       case "logbookEnabled": return s.logbookEnabled;
@@ -250,7 +320,6 @@ export class LingoTunerSettingTab extends PluginSettingTab {
   setControlValue(key: string, value: unknown): void {
     const s = this.plugin.settings;
     switch (key) {
-      case "suppressThinking": s.suppressThinking = Boolean(value); break;
       case "timeoutSec": {
         const n = Number.parseInt(String(value), 10);
         s.timeoutSec = Number.isFinite(n) ? Math.max(TIMEOUT_SEC_MIN, n) : s.timeoutSec;

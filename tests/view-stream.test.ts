@@ -39,8 +39,11 @@ function baue(lauf: (req: RunRequest, root: unknown) => void): { view: LingoTune
     listModels: () => Promise.resolve([]),
     getModel: () => "",
     setModel: () => { /* egal */ },
-    getSuppress: () => false,
-    setSuppress: () => { /* egal */ },
+    getFamily: () => null,
+    getThinkingLevel: () => "off",
+    getThinkingOnLevel: () => "low",
+    getLevelPickerInChat: () => false,
+    setThinkingLevel: () => { /* egal */ },
     savePreset: () => { /* egal */ },
     run: (req) => {
       lauf(req, halter.root);

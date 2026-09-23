@@ -7,6 +7,8 @@ import { classifyEndpointStatus, extractModelIds, type EndpointStatus } from "..
 import { normalizeEndpoint } from "../vendor/kit/endpoint";
 import { authHeaders, type EndpointConfig } from "../vendor/kit/endpoint_config";
 import { withTimeout } from "../vendor/kit/timeout";
+import { probeBaseUrl, probeEndpoint as probeBackend, type CapabilityFetch } from "../vendor/kit/capabilities";
+import type { BackendId } from "../vendor/kit/sampling-profiles";
 
 /** Streamt einen OpenAI-kompatiblen SSE-Stream ueber XMLHttpRequest — `requestUrl` kann nicht
  *  streamen, `fetch` scheitert im Renderer haeufiger an CORS. Inline-<think> wird per ThinkSplitter
@@ -96,4 +98,23 @@ export async function listModels(ep: EndpointConfig, timeoutMs: number): Promise
 /** EIN Client je Endpunkt-Zeile fuer die Kit-Endpoint-Liste (Status-Icon UND Modell-Liste). */
 export function clientFor(ep: EndpointConfig, timeoutMs: number): { probe(): Promise<EndpointStatus>; listModels(): Promise<string[]> } {
   return { probe: () => probeEndpoint(ep, timeoutMs), listModels: () => listModels(ep, timeoutMs) };
+}
+
+const fetchJsonAdapter: CapabilityFetch = async (req) => {
+  const res = await requestUrl({ url: req.url, method: req.method ?? "GET", headers: req.headers, body: req.body, throw: false });
+  if (res.status < 200 || res.status >= 300) return null;
+  try { return { json: JSON.parse(res.text) as unknown }; } catch { return null; }
+};
+
+const BACKEND_CACHE_MS = 30_000;
+let backendCache: { url: string; backend: BackendId; at: number } | null = null;
+
+/** Welches Backend hinter einer URL steckt — 30 s je URL zwischengespeichert (dieselbe Regel
+ *  wie der Modelllisten-Cache), bei Aenderung der URL verworfen. Spec § 3.1. */
+export async function cachedProbe(url: string, model: string): Promise<BackendId | null> {
+  const now = Date.now();
+  if (backendCache && backendCache.url === url && now - backendCache.at < BACKEND_CACHE_MS) return backendCache.backend;
+  const { backend } = await probeBackend(fetchJsonAdapter, probeBaseUrl(url), model);
+  backendCache = { url, backend, at: now };
+  return backend;
 }

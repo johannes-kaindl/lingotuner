@@ -4,6 +4,7 @@ import { EMPTY_SESSION, activeRound, addRound, rootInput, rootSourceName, select
 import { type Readiness, type SourceKind } from "../core/source";
 import { errorMessageKey } from "../core/llm/errors";
 import type { TuneResult } from "../core/llm/client";
+import type { FamilyId, ThinkingLevel } from "../vendor/kit/sampling-profiles";
 import { patchPanel, renderPanel, structureKey, type PanelHandlers, type PanelModel, type PanelParts, type RunPhase } from "./view-render";
 import { createStableWriter, type StableMarkdownWriter } from "../vendor/kit-obsidian/stable-writer";
 import { t } from "../vendor/kit/i18n";
@@ -29,8 +30,11 @@ export interface ViewDeps {
   listModels(): Promise<string[]>;
   getModel(): string;
   setModel(m: string): void;
-  getSuppress(): boolean;
-  setSuppress(v: boolean): void;
+  getFamily(): FamilyId | null;
+  getThinkingLevel(): ThinkingLevel;
+  getThinkingOnLevel(): ThinkingLevel;
+  getLevelPickerInChat(): boolean;
+  setThinkingLevel(l: ThinkingLevel): void;
   savePreset(name: string, dials: Dials): void;
   run(req: RunRequest): Promise<TuneResult>;
   output(kind: "replace-selection" | "replace-note" | "copy" | "new-note", text: string, sourceText: string, sourceName: string | null): Promise<void>;
@@ -116,7 +120,9 @@ export class LingoTunerView extends ItemView {
       freeText: this.freeText,
       dials, presets, presetId: presetFor(dials, presets),
       note: this.note,
-      models: this.models, model: this.deps.getModel(), suppressThinking: this.deps.getSuppress(),
+      models: this.models, model: this.deps.getModel(),
+      family: this.deps.getFamily(), thinkingLevel: this.deps.getThinkingLevel(),
+      thinkingOnLevel: this.deps.getThinkingOnLevel(), levelPickerInChat: this.deps.getLevelPickerInChat(),
       phase: this.phase, statusText: this.statusText, truncated: this.truncated,
       session: this.session, preview: this.preview, reasoning: this.reasoning, reasoningOpen: this.reasoningOpen,
       canReplaceSelection: this.source === "selection" && sourceText !== null && this.deps.canReplace("selection", sourceText),
@@ -164,7 +170,7 @@ export class LingoTunerView extends ItemView {
       },
       onModel: (m) => { this.deps.setModel(m); this.draw(); },
       onRefreshModels: () => { void this.deps.listModels().then((m) => { this.models = m; if (this.phase === "streaming") return; this.draw(); }); },
-      onToggleThinking: () => { this.deps.setSuppress(!this.deps.getSuppress()); this.draw(); },
+      onThinkingLevel: (l) => { this.deps.setThinkingLevel(l); this.draw(); },
       onToggleReasoning: (open) => { this.reasoningOpen = open; },
       onReplaceSelection: () => {
         const s = rootInput(this.session);

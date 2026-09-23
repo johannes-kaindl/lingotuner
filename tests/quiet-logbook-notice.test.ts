@@ -15,7 +15,10 @@ import "../src/i18n/strings";
 // den vollen Panel-View- oder Api-Aufbau (`onload()`) fuer einen einzelnen catch-Zweig zu
 // mocken.
 vi.mock("../src/core/llm/client", () => ({
+  MODE: "transform",
   streamTune: vi.fn(() => Promise.resolve({ ok: true, text: "tuned", reasoning: "", model: "m", truncated: false })),
+  buildTuneParams: vi.fn(() => ({ params: {}, explain: [] })),
+  responseFactsFromResult: vi.fn(() => null),
 }));
 vi.mock("../src/obsidian/logbook-io", () => ({
   appendLogEntry: vi.fn(() => Promise.reject(new Error("Logbuch-Fehler"))),
@@ -25,7 +28,7 @@ vi.mock("../src/core/examples/overrides", () => ({
 }));
 
 function makeApp(): App {
-  return { plugins: { plugins: {} } } as unknown as App;
+  return { plugins: { plugins: {} }, workspace: { getLeavesOfType: () => [] } } as unknown as App;
 }
 
 type TuneParams = { text: string; dials: typeof NEUTRAL; note: string; quiet?: boolean };

@@ -21,7 +21,7 @@ describe("LingoTunerSettingTab", () => {
     const defs = tab.getSettingDefinitions() as unknown as { heading: string; items: { control?: { key: string } }[] }[];
     expect(defs).toHaveLength(3);
     const keys = defs.flatMap((g) => g.items.map((i) => i.control?.key).filter((k): k is string => k !== undefined));
-    expect(keys).toEqual(["suppressThinking", "timeoutSec", "overrideFolder", "logbookEnabled", "logbookFolder", "newNoteFolder"]);
+    expect(keys).toEqual(["timeoutSec", "overrideFolder", "logbookEnabled", "logbookFolder", "newNoteFolder"]);
   });
 
   it("setControlValue klemmt das Zeitlimit und speichert", () => {

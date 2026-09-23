@@ -1,13 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_SETTINGS, loadSettings, allPresets, upsertUserPreset, removeUserPreset } from "../src/core/settings";
+import { DEFAULT_SETTINGS, loadSettings, loadRequestSettings, allPresets, upsertUserPreset, removeUserPreset } from "../src/core/settings";
 import { NEUTRAL } from "../src/core/dials";
 
 describe("settings", () => {
-  it("Defaults: lokaler Endpunkt, Denken aus, Logbuch aus, neutrale Regler", () => {
+  it("Defaults: lokaler Endpunkt, Denken aus (Modus transform), Logbuch aus, neutrale Regler", () => {
     expect(DEFAULT_SETTINGS.endpoints).toEqual([{ url: "http://127.0.0.1:1234" }]);
-    expect(DEFAULT_SETTINGS.suppressThinking).toBe(true);
+    expect(DEFAULT_SETTINGS.request).toEqual({ overrides: {}, thinking: {}, lastOnLevel: {}, levelPickerInChat: false });
     expect(DEFAULT_SETTINGS.logbookEnabled).toBe(false);
     expect(DEFAULT_SETTINGS.lastDials).toEqual(NEUTRAL);
+  });
+
+  it("loadRequestSettings migriert suppressThinking einmalig nach request.thinking.transform, Feld ist danach weg", () => {
+    const a = loadRequestSettings({ suppressThinking: true });
+    expect(a.request.thinking.transform).toBe("off");
+    const b = loadRequestSettings({ suppressThinking: false });
+    expect(b.request.thinking.transform).toBe("low");
+    // Ist request.thinking.transform schon explizit gesetzt, migriert die Legacy nicht mehr drueber.
+    const c = loadRequestSettings({ suppressThinking: true, request: { thinking: { transform: "high" } } });
+    expect(c.request.thinking.transform).toBe("high");
+    expect(loadSettings({ suppressThinking: true }) as unknown as { suppressThinking?: unknown }).not.toHaveProperty("suppressThinking");
   });
 
   it("loadSettings migriert string[]-Endpunkte, normalisiert Regler und Presets, behaelt Unbekanntes", () => {

@@ -2,8 +2,9 @@ import { setIcon } from "obsidian";
 import { DIMENSIONS, isNoop, levelKey, type Dials, type Dimension, type Level, type Preset } from "../core/dials";
 import type { Session } from "../core/session";
 import { readinessKey, type Readiness, type SourceKind } from "../core/source";
-import { thinkToggleState } from "../vendor/kit/think-toggle";
 import { buildStreamArea, type StreamArea } from "../vendor/kit-obsidian/stream-area";
+import { buildThinkingControl } from "../vendor/kit-obsidian/thinking-control";
+import type { FamilyId, ThinkingLevel } from "../vendor/kit/sampling-profiles";
 import { t } from "../vendor/kit/i18n";
 
 export type RunPhase = "idle" | "streaming" | "done" | "error" | "aborted";
@@ -18,7 +19,10 @@ export interface PanelModel {
   note: string;
   models: string[];
   model: string;
-  suppressThinking: boolean;
+  family: FamilyId | null;
+  thinkingLevel: ThinkingLevel;
+  thinkingOnLevel: ThinkingLevel;
+  levelPickerInChat: boolean;
   phase: RunPhase;
   statusText: string;
   truncated: boolean;
@@ -44,7 +48,7 @@ export interface PanelHandlers {
   onSelectRound(i: number): void;
   onModel(m: string): void;
   onRefreshModels(): void;
-  onToggleThinking(): void;
+  onThinkingLevel(l: ThinkingLevel): void;
   onToggleReasoning(open: boolean): void;
   onReplaceSelection(): void;
   onReplaceNote(): void;
@@ -193,17 +197,23 @@ function runRow(parent: El, m: PanelModel, h: PanelHandlers): void {
   refresh.disabled = busy;
   refresh.addEventListener("click", () => h.onRefreshModels());
 
-  const think = thinkToggleState(m.model, m.suppressThinking);
-  const thinkOn = think.mode !== "off";
-  const toggle = row.createEl("button", { cls: "lt-think" });
-  toggle.toggleClass("is-off", think.mode === "off");
-  setIcon(toggle.createSpan(), thinkOn ? "brain" : "brain-cog");
-  toggle.createSpan({ text: t(`think.${think.mode}`) });
-  if (think.hint !== null) toggle.setAttribute("title", t(`think.hint.${think.hint}`));
-  toggle.setAttribute("aria-pressed", String(thinkOn));
-  toggle.disabled = busy || think.disabled;
-  if (think.disabled) toggle.setAttribute("aria-disabled", "true");
-  if (!think.disabled) toggle.addEventListener("click", () => h.onToggleThinking());
+  const thinkHost = row.createDiv({ cls: "lt-think" });
+  buildThinkingControl({
+    containerEl: thinkHost,
+    family: () => m.family,
+    current: () => m.thinkingLevel,
+    onLevel: () => m.thinkingOnLevel,
+    setLevel: (l) => { h.onThinkingLevel(l); return Promise.resolve(); },
+    levelPicker: () => m.levelPickerInChat,
+    strings: {
+      button: (level, offNotPossible) => level === "off"
+        ? (offNotPossible ? t("think.button.offNotPossible", t("request.level.off")) : t("think.button.off"))
+        : t("think.button.on", t(`request.level.${level}`)),
+      level: (l) => t(`request.level.${l}`),
+      pickerLabel: t("think.pickerLabel"),
+    },
+  });
+  if (busy) for (const el of thinkHost.querySelectorAll("button, select")) (el as HTMLButtonElement | HTMLSelectElement).disabled = true;
 }
 
 function statusRow(parent: El): Pick<PanelParts, "statusEl" | "statusIconEl" | "statusLabelEl"> {
@@ -273,7 +283,7 @@ export function structureKey(m: PanelModel): string {
   return [
     m.source, m.phase,
     String(m.session.rounds.length), String(m.session.active),
-    m.models.join(" "), m.model, String(m.suppressThinking),
+    m.models.join(" "), m.model, m.thinkingLevel, String(m.levelPickerInChat),
     m.presets.map((p) => p.id).join(" "),
     String(m.truncated),
     m.preview === "" ? "0" : "1",
