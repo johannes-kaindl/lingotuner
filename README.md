@@ -77,7 +77,7 @@ The replace buttons stay disabled unless the source is still live — same note,
 |---|---|
 | Endpoints | An ordered list of OpenAI-compatible servers, each with an optional API key and model override. The first reachable one is used; every row shows its own reachability status. |
 | Model | Read live from the endpoint. Empty means the server picks whatever model it has loaded. |
-| Skip model reasoning | Asks reasoning models to answer without thinking first. Models that always think say so instead of pretending the switch works. |
+| Request | Shows the sampling values, thinking level and token budget actually sent for the current model family and backend, with per-family overrides, the last request and any deviations for the running session. The thinking control in the panel switches between off and the model's preferred level; a per-family toggle in this section turns it into a four-level dropdown. |
 | Timeout | How long to wait for the *first* token before giving up. A long answer that has started streaming is never cut off by this. |
 | Override folder | Optional vault folder with `system.md` and `<dimension>_<level>.md` files that replace shipped prompt text. Empty means shipped text. |
 | Saved presets | Your own dial combinations, saved from the panel. |

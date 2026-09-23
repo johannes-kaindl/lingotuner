@@ -77,7 +77,7 @@ Die Ersetzen-Knöpfe bleiben gesperrt, solange die Quelle nicht mehr live ist �
 |---|---|
 | Endpunkte | Geordnete Liste OpenAI-kompatibler Server, je mit optionalem API-Schlüssel und Modell-Override. Der erste erreichbare wird genommen; jede Zeile zeigt ihren eigenen Erreichbarkeitsstatus. |
 | Modell | Live vom Endpunkt gelesen. Leer heißt: der Server nimmt das geladene Modell. |
-| Denken überspringen | Bittet denkende Modelle, ohne Gedankenschritt zu antworten. Modelle, die immer denken, sagen das, statt einen wirkungslosen Schalter zu zeigen. |
+| Anfrage | Zeigt Sampling-Werte, Denkstufe und Tokenbudget, die für die aktuelle Modellfamilie und das Backend tatsächlich gesendet werden, mit Überschreibung je Familie, der letzten Anfrage und Abweichungen der laufenden Sitzung. Die Denk-Steuerung im Panel schaltet zwischen aus und der bevorzugten Stufe des Modells; ein Schalter in diesem Abschnitt macht daraus ein Dropdown mit vier Stufen. |
 | Zeitlimit | Wie lange auf das *erste* Token gewartet wird. Eine lange Antwort, die bereits streamt, wird davon nie abgeschnitten. |
 | Override-Ordner | Optionaler Vault-Ordner mit `system.md` und `<dimension>_<stufe>.md`, die ausgelieferten Prompt-Text ersetzen. Leer heißt Auslieferungsstand. |
 | Gespeicherte Presets | Eigene Reglerstellungen, aus dem Panel gesichert. |
