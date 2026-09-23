@@ -1404,6 +1404,98 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
   }
 }
 
+/** N1-N4 (Sampling-Profile-Welle, Teil D, Rezept 8): der neue Abschnitt „Anfrage" in den
+ *  Settings und die Denk-Steuerung im Panel (`buildThinkingControl`). Kein echter LLM-Server
+ *  noetig — alles hier ist DOM-Zustand nach einer Einstellungs-Aenderung. */
+async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
+  console.log('\nN · Abschnitt "Anfrage" (Sampling-Profile)');
+  let stelle: SettingsStelle | null = null;
+  const NAMEN = [
+    "N1 Abschnitt Anfrage laesst sich aufklappen",
+    "N2 Eigener Wert wird gesetzt und wieder zurueckgesetzt",
+    "N3 Denk-Knopf im Panel schaltet um",
+    "N4 Stufenwahl im Chat zeigt ein Dropdown",
+  ];
+  try {
+    stelle = await openSettings(cdp, port);
+    // N1 — Header per Titeltext finden (De/En, je nach Sprache des Vaults), klicken, Body
+    // verliert is-collapsed.
+    const geklappt = await stelle.cdp.evaluate<{ textDa: boolean; ok: boolean }>(`return ${stelle.el(`(() => {
+      const header = [...root.querySelectorAll(".okit-collapsible-header")].find((h) => /Anfrage|Request/.test(h.textContent || ""));
+      if (!header) return { textDa: false, ok: false };
+      header.click();
+      const body = header.closest(".okit-collapsible").querySelector(".okit-collapsible-body");
+      return { textDa: true, ok: !!body && !body.classList.contains("is-collapsed") };
+    })()`)};`);
+    record(NAMEN[0]!, geklappt.textDa && geklappt.ok,
+      geklappt.textDa ? `aufgeklappt=${geklappt.ok}` : "kein .okit-collapsible-header mit 'Anfrage'/'Request' gefunden");
+
+    if (geklappt.textDa && geklappt.ok) {
+      // N2 — Temperatur-Feld ueberschreiben (blur loest das Speichern aus), pruefen, dass es
+      // als eigener Wert markiert ist, dann per Zuruecksetzen-Knopf (Extra-Button) aufheben.
+      const gesetzt = await stelle.cdp.evaluate<{ own: boolean; zurueck: boolean }>(`return ${stelle.el(`(async () => {
+        const input = root.querySelector('input[data-field="temperature"]');
+        if (!input) return { own: false, zurueck: false };
+        input.value = "0.9";
+        input.dispatchEvent(new Event("blur"));
+        await new Promise((r) => setTimeout(r, 300));
+        const nachInput = root.querySelector('input[data-field="temperature"]');
+        const own = !!nachInput && nachInput.classList.contains("okit-request-own");
+        const item = nachInput ? nachInput.closest(".setting-item") : null;
+        const resetBtn = item ? item.querySelector(".clickable-icon") : null;
+        if (resetBtn) resetBtn.click();
+        await new Promise((r) => setTimeout(r, 300));
+        const nachReset = root.querySelector('input[data-field="temperature"]');
+        const zurueck = !!nachReset && !nachReset.classList.contains("okit-request-own");
+        return { own, zurueck };
+      })()`)};`);
+      record(NAMEN[1]!, gesetzt.own && gesetzt.zurueck, `eigener Wert gesetzt=${gesetzt.own}, zurueckgesetzt=${gesetzt.zurueck}`);
+    } else {
+      skipped(NAMEN[1]!, "Abschnitt liess sich nicht aufklappen — ohne ihn ist kein Feld erreichbar");
+    }
+    closeSettings(cdp, stelle);
+    stelle = null;
+
+    // N3 — Denk-Knopf im Panel: ein Klick schaltet is-off um.
+    const vor = await hasClass(cdp, ".okit-thinking-toggle", "is-off");
+    await clickReal(cdp, `document.querySelector(".okit-thinking-toggle")`).catch(() => undefined);
+    await new Promise((r) => { setTimeout(r, 300); });
+    const nach = await hasClass(cdp, ".okit-thinking-toggle", "is-off");
+    record(NAMEN[2]!, vor !== nach, `is-off vorher=${vor}, nachher=${nach}`);
+    if (vor !== nach) await clickReal(cdp, `document.querySelector(".okit-thinking-toggle")`).catch(() => undefined); // zurueck
+
+    // N4 — "Stufenwahl im Chat" einschalten (direkt in den Settings, kein Umweg ueber einen
+    // zweiten Settings-Aufruf) und das Panel selbst neu zeichnen lassen (`refresh()`, das
+    // Kit-Muster fuer Aenderungen von aussen) — danach steht ein <select> statt des Knopfs.
+    const dropdown = await cdp.evaluate<{ vorher: boolean; nachher: boolean }>(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      const vorher = !!document.querySelector(".okit-thinking-control select");
+      p.settings.request.levelPickerInChat = true;
+      await p.saveSettings();
+      const leaf = app.workspace.getLeavesOfType(${q(VIEW_TYPE)})[0];
+      if (leaf && leaf.view && leaf.view.refresh) leaf.view.refresh();
+      await new Promise((r) => setTimeout(r, 300));
+      const nachher = !!document.querySelector(".okit-thinking-control select");
+      return { vorher, nachher };
+    `);
+    record(NAMEN[3]!, !dropdown.vorher && dropdown.nachher, `Dropdown vorher=${dropdown.vorher}, nachher=${dropdown.nachher}`);
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.settings.request.levelPickerInChat = false;
+      await p.saveSettings();
+      const leaf = app.workspace.getLeavesOfType(${q(VIEW_TYPE)})[0];
+      if (leaf && leaf.view && leaf.view.refresh) leaf.view.refresh();
+      return { ok: true };
+    `).catch(() => undefined);
+  } catch (e) {
+    for (const n of NAMEN) {
+      if (!checks.some((c) => c.name === n)) skipped(n, `Messung abgebrochen: ${(e as Error).message}`);
+    }
+  } finally {
+    if (stelle) closeSettings(cdp, stelle);
+  }
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (argv.includes("--setup")) { setupVault(); return; }
@@ -1426,6 +1518,7 @@ async function main(): Promise<void> {
     await pruefePanel(cdp);
     await pruefeLauf(cdp);
     await pruefeManager(cdp, port);
+    await pruefeAnfrage(cdp, port);
     skipped("Markierung ersetzen (Rand-Whitespace)", "Editor-Selektion per CDP ist im Unit-Test abgedeckt (editor-io.test.ts); im Smoke muesste sie ueber CodeMirror gesetzt werden — Handarbeit");
   } finally {
     if (vorherigeDials !== null) {

@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Sampling-Werte, Denkstufe und Tokenbudget kommen jetzt aus dem Anfrage-Profil (`code-kit`
+  `sampling-profiles`) statt aus einer fest eingetragenen Temperatur.** LingoTuner sendet im
+  Modus `transform`; die bisherige feste Temperatur `0.3` wird zur Modus-Vorgabe `0.2` —
+  **Verhaltenswechsel**, sichtbar im goldenen Request. Der alte Schalter „Denkschritt
+  überspringen" wird einmalig zu einer Denkstufe je Modus migriert (`suppressThinking: true` →
+  aus, `false` → niedrig); das alte Feld wird danach nicht mehr gespeichert.
+- Neuer, aufklappbarer Abschnitt „Anfrage" in den Einstellungen (unter dem Endpunkt-Abschnitt):
+  zeigt Modellfamilie und Backend, welche Felder gesendet werden und warum, erlaubt eigene
+  Werte je Familie, zeigt die letzte gesendete Anfrage und Abweichungen der laufenden Sitzung.
+- Der Denk-Knopf im Panel erkennt die Modellfamilie jetzt über den Endpunkt (LLM Endpoint
+  Manager oder Namensschätzung) statt über eine reine Namensheuristik, und bietet bei Bedarf
+  vier Stufen (aus/niedrig/mittel/hoch) statt nur an/aus.
+- Kein `chat_template_kwargs`/`reasoning_budget` mehr im Anfrage-Body; gpt-oss bekommt nie
+  `reasoning_effort: "none"` (das Modell denkt dabei nachweislich *mehr* als bei `"low"`).
+
 ### Fixed
 
 - **Thinking toggle now shows its state without relying on color alone** (UI-STANDARD §8,

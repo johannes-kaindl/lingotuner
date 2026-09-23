@@ -6,6 +6,7 @@ import { buildEndpointList, type EndpointListStrings } from "../vendor/kit-obsid
 import { renderModelPicker } from "../vendor/kit-obsidian/model-picker";
 import { buildEndpointSourceSection, findEndpointManager } from "../vendor/kit-obsidian/endpoint-source";
 import { buildRequestSection } from "../vendor/kit-obsidian/request-section";
+import type { CollapsibleStorage } from "../vendor/kit-obsidian/collapsible";
 import { installTabRefreshOnOpen } from "../vendor/kit-obsidian/settings_walker";
 import { resolveModelChoice } from "../vendor/kit/model-choice";
 import { createModelListCache, type ModelListCache } from "../vendor/kit/model-list-cache";
@@ -45,6 +46,15 @@ export class LingoTunerSettingTab extends PluginSettingTab {
   private modelState: { url: string; models: string[]; reachable: boolean } | null = null;
   private cleanupPrevious: () => void = () => {};
   private uninstallRefresh: () => void = () => {};
+  /** Nur fuer die Sitzung des offenen Tabs: `renderImperative()` baut den DOM bei JEDER
+   *  Aenderung (z. B. eine Ueberschreibung setzen) komplett neu — ohne diesen Speicher faellt
+   *  `collapsibleSection` dabei auf `defaultCollapsed` zurueck und der Abschnitt „Anfrage"
+   *  klappte nach jedem Tastendruck wieder zu (am Screenshot gefunden, nicht am Gate). */
+  private readonly collapsedState = new Map<string, boolean>();
+  private readonly collapsedStorage: CollapsibleStorage = {
+    getCollapsed: (key) => this.collapsedState.get(key),
+    setCollapsed: (key, collapsed) => { this.collapsedState.set(key, collapsed); },
+  };
 
   constructor(app: App, private readonly plugin: LingoTunerPlugin) {
     super(app, plugin);
@@ -224,12 +234,13 @@ export class LingoTunerSettingTab extends PluginSettingTab {
       save: (s) => this.plugin.saveRequestSettings(s),
       maxTokens: () => undefined,
       session: this.plugin.requestSession,
+      collapsedStorage: this.collapsedStorage,
       rerender: () => { this.refreshUi(); },
       strings: {
         title: t("request.title"),
         head: (family, familySource, backend, backendSource) => {
           const famLabel = family === "—" ? "—" : (FAMILIES[family as FamilyId]?.label ?? family);
-          const backLabel = BACKENDS[backend as BackendId]?.label ?? backend;
+          const backLabel = backend === "unknown" ? t("request.backendSource.none") : (BACKENDS[backend as BackendId]?.label ?? backend);
           return t("request.head", famLabel, t(`request.familySource.${familySource}`), backLabel, t(`request.backendSource.${backendSource}`));
         },
         unknownFamily: t("request.unknownFamily"),
