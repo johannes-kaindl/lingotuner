@@ -229,11 +229,13 @@ esac
 
 mkdir -p src/vendor/kit src/vendor/kit-obsidian
 
-PURE_MODULE="clipboard sse endpoint endpoint_config endpoint_diagnostics model-choice model-list-cache reasoning capabilities think-splitter think-toggle timeout error_body i18n settings stream-blocks endpoint-source"
+PURE_MODULE="clipboard sse endpoint endpoint_config endpoint_diagnostics model-choice model-list-cache reasoning capabilities think-splitter think-toggle timeout error_body i18n settings stream-blocks sampling-profiles endpoint-source"
 # Die gekoppelte Schicht (importiert `obsidian`). stable-writer traegt einen Querimport auf
 # ../vendor/code-kit/pure/stream-blocks und braucht deshalb den relayer (Fallgruppe unten);
 # endpoint-source ebenso (../pure/endpoint-source + ../vendor/code-kit/pure/*).
-OBSIDIAN_MODULE="clipboard confirm endpoint-list model-picker settings_walker folder-suggest stream-area stable-writer endpoint-source"
+# request-section/request-session/thinking-control ebenso, Querimport auf
+# ../vendor/code-kit/pure/sampling-profiles (Sampling-Profile-Welle, Teil D 2026-09-23).
+OBSIDIAN_MODULE="clipboard confirm endpoint-list model-picker settings_walker folder-suggest stream-area stable-writer endpoint-source request-section request-session thinking-control collapsible"
 
 # Die "vendored"-Zeile der VENDOR.json wird aus derselben Liste erzeugt, aus der kopiert wird.
 # Zwei Orte fuer dieselbe Wahrheit driften (CORE-META-16) — und zwar leise: die Datei, in der
@@ -272,7 +274,7 @@ for m in $OBSIDIAN_MODULE; do
   # clipboard.ts, endpoint-list.ts, model-picker.ts, stable-writer.ts und endpoint-source.ts
   # tragen Querimporte auf ../vendor/code-kit/{pure,web}/ bzw. ../pure/. Ein pauschaler Aufruf
   # waere wirkungslos, aber irrefuehrend — deshalb gezielt.
-  case "$m" in clipboard|endpoint-list|model-picker|stable-writer|endpoint-source) relayer "src/vendor/kit-obsidian/$m.ts" ;; esac
+  case "$m" in clipboard|endpoint-list|model-picker|stable-writer|endpoint-source|request-section|request-session|thinking-control) relayer "src/vendor/kit-obsidian/$m.ts" ;; esac
   stamp "src/vendor/kit-obsidian/$m.ts" "src/obsidian/$m.ts"
   echo "vendored obsidian-kit@$VER/obsidian/$m.ts"
 done

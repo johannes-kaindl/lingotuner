@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.37.0, src/obsidian/endpoint-source.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.41.0, src/obsidian/endpoint-source.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // ONE mechanical deviation from verbatim: kit-internal imports (../pure/ and ../vendor/code-kit/{pure,web}/) → ../kit/ (vendor layout); reproduce on every re-vendor, nothing else may differ.
 import { Notice, Setting, type App } from "obsidian";
 import { resolveModelChoice, type ModelHintKey } from "../kit/model-choice";
@@ -16,6 +16,11 @@ export function findEndpointManager(app: App): LlmEndpointManagerApi | null {
   return isLlmEndpointManagerApi(api) ? api : null;
 }
 
+/** Abonniert Änderungen am Manager; ohne Manager ein dauerhaftes No-op (Plan-konform — lädt der
+ *  Manager erst NACH dem Konsumenten, bleibt das Abo für die gesamte Session wirkungslos, weil
+ *  Obsidians Plugin-Ladereihenfolge nicht garantiert ist). Konsumenten sollten das Abo deshalb
+ *  idealerweise erst nach `app.workspace.onLayoutReady(...)` setzen, nicht direkt in `onload()` —
+ *  das verringert (behebt aber nicht) das Risiko, den Manager zu verpassen. */
 export function onEndpointManagerChanged(app: App, cb: () => void): () => void {
   const api = findEndpointManager(app);
   if (!api) return () => {};
@@ -27,6 +32,9 @@ export interface EndpointSourceSectionStrings {
   pickEndpoint: string; automatic: string; model: string;
   importLocal: string; imported(r: ImportResult): string; importFailed: string;
   modelHint(key: ModelHintKey): string; savedSuffix: string; refreshModels: string;
+  /** Notice bei fehlgeschlagenem `setChoice` (Endpunkt- oder Modellwahl) — Vorbild:
+   *  `EndpointListOptions.strings.saveFailed` in `endpoint-list.ts`. */
+  saveFailed: string;
 }
 
 export interface EndpointSourceSectionOptions {
@@ -65,7 +73,9 @@ export function buildEndpointSourceSection(opts: EndpointSourceSectionOptions): 
     d.selectEl.setAttribute("aria-label", st.pickEndpoint);
     d.onChange((v) => {
       // Endpunktwechsel setzt das Modell zurück: ein Modellname gilt nur auf seinem Endpunkt.
-      void opts.setChoice({ endpointId: v || undefined, model: undefined }).then(() => opts.rerender());
+      void opts.setChoice({ endpointId: v || undefined, model: undefined })
+        .then(() => opts.rerender())
+        .catch(() => { new Notice(st.saveFailed); opts.rerender(); });
     });
   });
 
@@ -79,7 +89,10 @@ export function buildEndpointSourceSection(opts: EndpointSourceSectionOptions): 
       renderModelPicker({
         setting: modelRow, choice: labelled, ariaLabel: st.model, placeholder: "", hint: st.modelHint(c.hintKey), hintAs: "tooltip",
         savedSuffix: st.savedSuffix, refreshTooltip: st.refreshModels,
-        onPick: (v) => { void opts.setChoice({ ...opts.choice(), model: v || undefined }); },
+        onPick: (v) => {
+          void opts.setChoice({ ...opts.choice(), model: v || undefined })
+            .catch(() => { new Notice(st.saveFailed); opts.rerender(); });
+        },
         onRefresh: () => { void api.models(targetId, { force: true }).then(() => opts.rerender()).catch(() => opts.rerender()); },
       });
     };

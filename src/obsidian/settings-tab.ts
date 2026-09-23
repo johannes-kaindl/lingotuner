@@ -120,6 +120,7 @@ export class LingoTunerSettingTab extends PluginSettingTab {
         pickEndpoint: t("src.pickEndpoint"), automatic: t("src.automatic"), model: t("set.model"),
         importLocal: t("src.importLocal"), imported: (r) => t("src.imported", String(r.added.length), String(r.merged.length)), importFailed: t("src.importFailed"),
         modelHint: (key) => (key === "" ? "" : t(`set.modelHint.${key}`)), savedSuffix: t("ep.saved"), refreshModels: t("ep.refreshModels"),
+        saveFailed: t("ep.saveFailed"),
       },
       renderLocalList: () => { this.renderLocalEndpointList(host); },
       rerender: () => { this.refreshUi(); },

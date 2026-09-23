@@ -11,6 +11,9 @@ describe("Pilot lingotuner", () => {
   });
   it("ohne Manager läuft die lokale Liste mit dem lokalen Modell", async () => {
     const r = await resolveEndpointSource({ manager: null, local: [{ url: "http://l" }], localModel: "lm", capability: "chat", caller: "lingotuner" }, () => Promise.resolve(true));
-    expect(r).toEqual({ kind: "local", config: { url: "http://l" }, model: "lm" });
+    expect(r).toEqual({
+      kind: "local", config: { url: "http://l" }, model: "lm", sentModel: "lm",
+      family: null, familySource: "none", backend: "unknown", backendSource: "none",
+    });
   });
 });
