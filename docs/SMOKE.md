@@ -263,6 +263,15 @@ Frage ist weg. Steht das System auf `prefers-reduced-motion: reduce`, schaltet `
 die Animation absichtlich ab; der Punkt wird dann **übersprungen mit genau diesem Grund**,
 nicht rot (gemessen am 2026-09-07: reduce war aus).
 
+### L1 — llm-lab bekommt Aufzeichnungen (seit 2026-09-25)
+
+Der Punkt, den der Treiber bis dahin nicht hatte: `readLabApi` gab bei einer Versionsabweichung **still** `null` zurück, und `llm-lab` (apiVersion 4) bekam von LingoTuner (Client prüfte 3) nichts — ohne Fehler, ohne rotes Zeichen. Gemessen wird deshalb die **Wirkung** gegen das **echte** `llm-lab` (kein Stub, dessen Version mit dem Client altern könnte): eine neue Zeile mit `plugin: "lingotuner"` in `.obsidian/plugins/llm-lab/traces/*.jsonl`, mit gesetzter `turnId`.
+
+- `npm run smoke:gui -- --setup` deployt `../llm-lab` (`main.js`, `manifest.json`, `styles.css`; vorher dort bauen) in den Staging-Vault und trägt es in `community-plugins.json` ein. Die Zweitinstanz danach **neu starten** (Plugin-Code wird nur beim Start geladen).
+- Ohne geladenes `llm-lab` steht der Punkt **übersprungen** mit Grund da — nie still grün.
+- Der Lauf geht gegen den Fake-Manager-Endpunkt (wie M2), braucht also kein Modell in LM Studio.
+- Gegenprobe (2026-09-25): mit dem Client-Stand von 0.3.1 (`SUPPORTED_API_VERSION = 3`) ist L1 rot (`Zeilen von lingotuner 0 → 0`), mit 4 grün (`4 → 5`, `turnId` gesetzt).
+
 ## Bewusst übersprungene Punkte
 
 | Punkt | Grund |

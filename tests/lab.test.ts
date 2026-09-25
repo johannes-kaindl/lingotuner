@@ -11,8 +11,13 @@ describe("readLabApi", () => {
   });
 
   it("mit passender apiVersion und vollstaendiger API: die API", () => {
-    const app = withLab({ apiVersion: 3, status: () => ({}), log: () => "id" });
+    const app = withLab({ apiVersion: 4, status: () => ({}), log: () => "id" });
     expect(readLabApi(app)).not.toBeNull();
+  });
+
+  it("apiVersion 3 (llm-lab liefert seit 4): null — sonst bliebe die Aufzeichnung still aus", () => {
+    const app = withLab({ apiVersion: 3, status: () => ({}), log: () => "id" });
+    expect(readLabApi(app)).toBeNull();
   });
 
   it("falsche apiVersion: null — eine aeltere Fassung wird nicht halb benutzt", () => {

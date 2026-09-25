@@ -36,7 +36,7 @@
  *
  * Typen: `tsconfig.scripts.json` (im `gate` ueber `npm run typecheck:scripts`).
  */
-import { copyFileSync, existsSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -58,6 +58,7 @@ const LOGBOOK_FOLDER = "LingoTuner";
 // llm-endpoint-manager/scripts/gui-smoke.ts (Fake-HTTP-Server, koda-agent-Herkunft) und
 // obsidian-kit/src/pure/endpoint-source.ts (LlmEndpointManagerApi-Form).
 const MANAGER_PLUGIN_ID = "llm-endpoint-manager";
+const LAB_PLUGIN_ID = "llm-lab";
 const MANAGER_DEFAULT_MODEL = "smoke-manager-model";
 // M3-Nacharbeit (Fix-Runde, 2026-09-15): der lokale Fallback-Teil von M3 braucht einen ZWEITEN
 // Fake-Server, unabhaengig vom Manager-Fake — sonst haengt M3 an einem echten LM-Studio-Server
@@ -111,8 +112,24 @@ function setupVault(): void {
     copyFileSync(quelle, join(vaultDir, ".obsidian", "plugins", PLUGIN_ID, "data.json"));
     console.log("  · Plugin-Einstellungen aus fixtures/vault/plugin-data.json gesetzt");
   }
+  deployLab(vaultDir);
   console.log("\nDen Vault in der Zweitinstanz registrieren (Rezept im Dateikopf) und dann:");
   console.log("  npm run smoke:gui -- --port 9341");
+}
+
+/** Optional: llm-lab (Geschwister-Repo im Dach) in den Staging-Vault legen, damit Abschnitt L die
+ *  Aufzeichnung messen kann. Fehlt ../llm-lab/main.js, bleibt L "uebersprungen" — nie still gruen. */
+function deployLab(vaultDir: string): void {
+  const quelle = join(REPO_ROOT, "..", "llm-lab");
+  if (!existsSync(join(quelle, "main.js"))) { console.log("  · llm-lab nicht gebaut (../llm-lab/main.js fehlt) — Abschnitt L wird uebersprungen"); return; }
+  const ziel = join(vaultDir, ".obsidian", "plugins", LAB_PLUGIN_ID);
+  mkdirSync(ziel, { recursive: true });
+  for (const f of ["main.js", "manifest.json", "styles.css"]) if (existsSync(join(quelle, f))) copyFileSync(join(quelle, f), join(ziel, f));
+  const listeDatei = join(vaultDir, ".obsidian", "community-plugins.json");
+  const liste = existsSync(listeDatei) ? (JSON.parse(readFileSync(listeDatei, "utf8")) as string[]) : [];
+  if (!liste.includes(LAB_PLUGIN_ID)) liste.push(LAB_PLUGIN_ID);
+  writeFileSync(listeDatei, JSON.stringify(liste, null, 2));
+  console.log("  · llm-lab als zweites Plugin deployt (Abschnitt L)");
 }
 
 async function endpointReachable(): Promise<boolean> {
@@ -1407,6 +1424,41 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
 /** N1-N4 (Sampling-Profile-Welle, Teil D, Rezept 8): der neue Abschnitt „Anfrage" in den
  *  Settings und die Denk-Steuerung im Panel (`buildThinkingControl`). Kein echter LLM-Server
  *  noetig — alles hier ist DOM-Zustand nach einer Einstellungs-Aenderung. */
+/** L — llm-lab bekommt Aufzeichnungen. Der Punkt, den der Smoke bis 2026-09-25 nicht hatte: der Client
+ *  pruefte apiVersion 3, das Lab lieferte 4, `readLabApi` gab still null zurueck und NICHTS wurde
+ *  aufgezeichnet — kein Fehler, kein rotes Zeichen. Gemessen wird deshalb die Wirkung: eine neue
+ *  Zeile in der Trace-Datei des Labs, mit turnId. Ohne geladenes llm-lab: uebersprungen und benannt. */
+async function pruefeLab(cdp: Cdp): Promise<void> {
+  console.log("\nL · llm-lab-Aufzeichnung (optionale Fremd-Quelle)");
+  const NAME = "L1 Ein Tunen erzeugt eine Lab-Aufzeichnung mit turnId (apiVersion 4)";
+  const info = await cdp.evaluate<{ da: boolean; version: number | null }>(`const l = app.plugins.plugins[${q(LAB_PLUGIN_ID)}]; return { da: !!l?.api, version: l?.api?.apiVersion ?? null };`);
+  if (!info.da) { skipped(NAME, `llm-lab nicht geladen — 'npm run smoke:gui -- --setup' deployt es aus ../llm-lab (gebaut), danach die Zweitinstanz neu starten`); return; }
+  let fake: FakeChatEndpoint | null = null;
+  const zeilen = `
+    const dir = ".obsidian/plugins/${LAB_PLUGIN_ID}/traces";
+    const out = [];
+    if (await app.vault.adapter.exists(dir)) {
+      for (const f of (await app.vault.adapter.list(dir)).files) {
+        for (const z of (await app.vault.adapter.read(f)).split("\\n")) { if (!z) continue; try { const r = JSON.parse(z); if (r.plugin === "lingotuner") out.push(r); } catch { /* halbe Zeile */ } }
+      }
+    }
+    return { zeilen: out };`;
+  try {
+    fake = await startFakeChatEndpoint(MANAGER_DEFAULT_MODEL);
+    await installFakeManager(cdp, fake.url);
+    const vorher = (await cdp.evaluate<{ zeilen: unknown[] }>(zeilen)).zeilen.length;
+    const ok = await laufeTune(cdp);
+    const nach = await pollUntil<{ zeilen: Array<{ turnId?: string }> }>(cdp, zeilen.replace("return { zeilen: out };", `return out.length > ${vorher} ? { zeilen: out } : null;`), 5000, 250);
+    const letzte = nach?.zeilen[nach.zeilen.length - 1];
+    record(NAME, ok && nach !== null && typeof letzte?.turnId === "string" && letzte.turnId.length > 0,
+      ok ? `Lab apiVersion ${String(info.version)}, Zeilen von lingotuner ${vorher} → ${nach?.zeilen.length ?? vorher}, turnId ${JSON.stringify(letzte?.turnId ?? null)}`
+         : `Lauf lieferte kein Ergebnis (Status: ${(await text(cdp, ".lt-status")) ?? "?"})`);
+  } finally {
+    await removeFakeManager(cdp).catch(() => null);
+    if (fake) await fake.close();
+  }
+}
+
 async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
   console.log('\nN · Abschnitt "Anfrage" (Sampling-Profile)');
   let stelle: SettingsStelle | null = null;
@@ -1518,6 +1570,7 @@ async function main(): Promise<void> {
     await pruefePanel(cdp);
     await pruefeLauf(cdp);
     await pruefeManager(cdp, port);
+    await pruefeLab(cdp);
     await pruefeAnfrage(cdp, port);
     skipped("Markierung ersetzen (Rand-Whitespace)", "Editor-Selektion per CDP ist im Unit-Test abgedeckt (editor-io.test.ts); im Smoke muesste sie ueber CodeMirror gesetzt werden — Handarbeit");
   } finally {

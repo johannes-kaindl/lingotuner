@@ -1,9 +1,10 @@
-// uebernommen aus vault-rag/src/lab_client.ts, 2026-09-07
+// uebernommen aus obsidian-transmute/src/obsidian/lab.ts, 2026-09-25 (dort aus koda-agent/src/obsidian/lab.ts,
+// dort aus vault-rag/src/lab_client.ts — die Kette bleibt sichtbar; zuvor hier: vault-rag, 2026-09-07). apiVersion 4 (turnId).
 /** Liest llm-labs oeffentliche API defensiv aus dem Plugin-Register.
  *
  *  Bewusst bei JEDEM Aufruf statt einmal beim Laden: das Lab kann zur Laufzeit
  *  aktiviert oder deaktiviert werden, und der Zugriff ist nur ein Objekt-Lookup. */
-const SUPPORTED_API_VERSION = 3;
+const SUPPORTED_API_VERSION = 4;
 const PLUGIN_ID = "llm-lab";
 
 export interface LabLogInput {
@@ -25,6 +26,9 @@ export interface LabLogInput {
   /** apiVersion 3: der stabile Anteil des System-Prompts (ohne Retrieval-Kontext,
    *  ohne Nutzereingabe). Grundlage des Prompt-Fassungsvergleichs im Lab. */
   promptTemplate?: string;
+  /** apiVersion 4: klammert mehrere Aufrufe, die zu EINER Nutzer-Handlung gehoeren
+   *  (hier: ein Tunen = eine turnId). */
+  turnId?: string;
 }
 
 export interface LabApi {

@@ -301,6 +301,8 @@ export default class LingoTunerPlugin extends Plugin {
     this.requestSession.recordRequest(params);
 
     const started = Date.now();
+    // Ein Tunen = eine Nutzer-Handlung = eine turnId (apiVersion 4); das Lab klammert damit Aufrufe.
+    const turnId = crypto.randomUUID();
     let first: number | undefined;
     const ctrl = new AbortController();
     if (p.signal) {
@@ -345,6 +347,7 @@ export default class LingoTunerPlugin extends Plugin {
         ...(first !== undefined ? { ttftMs: first - started } : {}),
         ...(ep.apiKey ? { secrets: [ep.apiKey] } : {}),
         promptTemplate: systemPrompt(p.dials, { lang: opts.lang, overrides }),
+        turnId,
         ...(result.ok ? {} : { error: result.error.kind }),
       });
     } catch { /* Telemetrie darf einen Lauf nie mitreissen. */ }

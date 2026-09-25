@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Die Aufzeichnung in `llm-lab` war still aus.** Der Lab-Client prüfte `apiVersion 3`, `llm-lab` liefert seit 0.7 die Fassung 4 — `readLabApi` gab deshalb `null` zurück, und kein Tunen wurde aufgezeichnet (ohne Fehlermeldung). Der Client spricht jetzt Fassung 4.
+
+### Added
+- Jeder Tunen-Lauf trägt eine `turnId` in der Lab-Aufzeichnung (ein Tunen = eine Nutzer-Handlung), damit das Lab zusammengehörige Aufrufe klammern kann.
+
 ## [0.3.1] — 2026-09-24
 
 ### Changed
