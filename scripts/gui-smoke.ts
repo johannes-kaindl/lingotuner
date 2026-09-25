@@ -899,6 +899,10 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
         modellGeaendert = true;
         modellVorwert = konfiguriert;
         await setPluginSetting(cdp, PLUGIN_ID, "model", gewaehlt);
+        // setPluginSetting schreibt nur die Einstellung; der lokale Endpunkt-Cache (`cachedLocal`) und
+        // `activeModel` tragen weiter das alte "" — der Panel-Weg (`setModel`) invalidiert, dieser nicht.
+        // Ohne das ging `model: ""` an LM Studio (400 "Invalid model identifier"): C1 rot seit Welle 6.
+        await cdp.evaluate(`const p = app.plugins.plugins[${q(PLUGIN_ID)}]; p.invalidateEndpointCache(); await p.resolveEndpoint(); return { ok: true };`);
         console.log(`  · Modell fuer diesen Lauf gesetzt: ${gewaehlt} (Einstellung war „Server waehlt", ${ids.length} Modelle geladen)`);
       }
     }
