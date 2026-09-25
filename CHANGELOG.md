@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.2] — 2026-09-25
+
 ### Fixed
 - **Die Aufzeichnung in `llm-lab` war still aus.** Der Lab-Client prüfte `apiVersion 3`, `llm-lab` liefert seit dem 2026-09-03 die Fassung 4 — `readLabApi` gab deshalb `null` zurück, und kein Tunen wurde aufgezeichnet (ohne Fehlermeldung). Der Client spricht jetzt Fassung 4.
 
