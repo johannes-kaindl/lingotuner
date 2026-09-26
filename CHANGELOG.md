@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.3] — 2026-09-26
+
 ### Added
 - **Nutzer-Dokumentation.** `docs/README.md` als Index, dazu *Getting started* und *Troubleshooting* (die Meldungen wörtlich aus dem Plugin, je mit Ursache und Abhilfe). Die README verlinkt sie im Abschnitt „Documentation“.
 - **README-Bilder** (Hero, Runden, Einstellungen, Regler), reproduzierbar per `npm run shots`; Aufnahme-Vertrag in `docs/images/README.md`.

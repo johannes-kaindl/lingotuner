@@ -1,6 +1,6 @@
 {
   "name": "lingotuner",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Retune the communication style of a text with four dials and a local LLM — direct or diplomatic, explicit or implicit, factual or social, literal or figurative.",
   "type": "module",
   "scripts": {
