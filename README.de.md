@@ -11,6 +11,8 @@
 
 Neurodivergente und neurotypische Kommunikationsstile unterscheiden sich entlang einiger gut beschriebener Dimensionen: wie direkt eine Bitte ausgesprochen wird, wie viel Kontext ausformuliert ist, wie viel soziale Rahmung den Inhalt umgibt und wie wörtlich die Sprache ist. LingoTuner dolmetscht zwischen diesen Stilen. Text markieren, vier Regler stellen, bei Bedarf eine Anmerkung dazuschreiben — ein lokales Modell schreibt den Text um: dieselbe Information, anderer Stil. Ein Panel in der Seitenleiste trägt die vier Regler, das Anmerkungsfeld, das streamende Ergebnis und die vier Wege hinaus.
 
+<p align="center"><img src="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/hero.png" width="820" alt="Obsidian mit einer Notiz im Editor und dem LingoTuner-Panel rechts: the source line reads Selection, 175 characters, the preset Maximum clarity is active, the streamed result reads Could you send me the report by Friday?, and four buttons — Replace selection, Replace note, Copy, New note — sit below"></p>
+
 ## Was es tut
 
 - **Vier Regler mit je fünf Stufen.** Direktheit, Kontext, soziale Rahmung und Semantik, jeweils von −2 bis +2. Die Mitte heißt „diese Dimension nicht anfassen“; angewiesen wird nur, was bewegt wurde, und jede Stufe bringt ihr eigenes Vorher/Nachher-Beispiel für das Modell mit. Das Modell sieht nie eine Zahl, sondern den Namen der Stufe.
@@ -69,6 +71,12 @@ Danach `main.js`, `manifest.json` und `styles.css` nach `<vault>/.obsidian/plugi
 
 Die Ersetzen-Knöpfe bleiben gesperrt, solange die Quelle nicht mehr live ist — dieselbe Notiz, weiterhin im Bearbeitungsmodus, Text seit dem Einlesen unverändert. Kopieren und Neue Notiz gehen immer.
 
+<p align="center"><img src="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/rounds.png" width="820" alt="Das Panel nach zwei Runden (Oberfläche englisch aufgenommen): Anmerkung „Keep the offer of another day.“, das nachgeschärfte Ergebnis und die Liste der Runden"></p>
+
+<p align="center"><a href="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/dials.png"><img src="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/thumbs/dials.png" width="380" alt="Das Panel mit dem Preset Collegial (Oberfläche englisch aufgenommen): vier Regler auf verschiedenen Stufen mit ihren Stufennamen, leeres Anmerkungsfeld, Knopf Tune und leere Vorschau"></a></p>
+
+<p align="center"><sub>Vorschau anklicken für die volle Größe — die vier Regler mit ihren Stufennamen</sub></p>
+
 ## Konfiguration
 
 **Einstellungen → Community-Plugins → LingoTuner**, gegliedert in Verbindung, Stil und Ausgabe:
@@ -83,6 +91,8 @@ Die Ersetzen-Knöpfe bleiben gesperrt, solange die Quelle nicht mehr live ist �
 | Gespeicherte Presets | Eigene Reglerstellungen, aus dem Panel gesichert. |
 | Logbuch | Standardmäßig aus. Eingeschaltet hängt es jeden Lauf an eine Monatsnotiz an (Zeit, Modell, Reglerwerte, Anmerkung, Original, Ergebnis). |
 | Ordner für neue Notizen | Wohin **Neue Notiz** den getunten Text legt. Leer heißt Vault-Wurzel. |
+
+<p align="center"><img src="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/settings.png" width="820" alt="Der Einstellungen-Tab von LingoTuner (Oberfläche englisch aufgenommen): die Gruppe Connection mit einem erreichbaren, als aktiv markierten Endpunkt, Modell, Request und Timeout, darunter die Gruppe Style mit dem Override-Ordner"></p>
 
 ## Funktionsweise
 

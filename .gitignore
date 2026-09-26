@@ -7,3 +7,4 @@ data.json
 .tune-lab.mjs
 .gui-smoke.mjs
 .superpowers/
+.shots.mjs

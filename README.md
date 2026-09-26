@@ -11,6 +11,8 @@
 
 Neurodivergent and neurotypical communication styles differ along a few well-described dimensions: how direct a request is, how much context is spelled out, how much social framing surrounds the content, and how literal the language is. LingoTuner is an interpreter between those styles. Select a text, set four dials, add a note if you like, and a local model rewrites the text — same information, different style. A sidebar panel next to your note holds the four sliders, the note field, the streamed result and the four ways out of it.
 
+<p align="center"><img src="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/hero.png" width="820" alt="Obsidian with a note open in the editor and the LingoTuner panel on the right: the source line reads Selection, 175 characters, the preset Maximum clarity is active, the streamed result reads Could you send me the report by Friday?, and four buttons — Replace selection, Replace note, Copy, New note — sit below"></p>
+
 ## What it does
 
 - **Four dials, five steps each.** Directness, context, social nuance and semantics, each from −2 to +2. The middle means "leave this dimension alone"; only what you move is instructed, and each step carries its own before/after example for the model. The model never sees a number, only the name of the step.
@@ -69,6 +71,12 @@ Copy `main.js`, `manifest.json` and `styles.css` into `<vault>/.obsidian/plugins
 
 The replace buttons stay disabled unless the source is still live — same note, still in editing mode, text unchanged since it was read. Copy and New note always work.
 
+<p align="center"><img src="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/rounds.png" width="820" alt="The panel after two rounds: a note reading Keep the offer of another day, the refined result, and the Rounds list with Round 1 from source and Round 2 refined from round 1"></p>
+
+<p align="center"><a href="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/dials.png"><img src="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/thumbs/dials.png" width="380" alt="The panel with the preset Collegial: four dials at different steps, each with its step name, an empty note field, the Tune button and an empty preview"></a></p>
+
+<p align="center"><sub>Click the preview for full size — the four dials with their step names</sub></p>
+
 ## Configuration
 
 **Settings → Community plugins → LingoTuner**, grouped into connection, style and output:
@@ -83,6 +91,8 @@ The replace buttons stay disabled unless the source is still live — same note,
 | Saved presets | Your own dial combinations, saved from the panel. |
 | Logbook | Off by default. When on, every run is appended to a monthly note (time, model, dial values, note, original, result). |
 | Folder for new notes | Where **New note** puts the tuned text. Empty means the vault root. |
+
+<p align="center"><img src="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/settings.png" width="820" alt="The LingoTuner settings tab: the Connection group with one reachable endpoint marked active, the Model and Request rows and the timeout, then the Style group with the override folder"></p>
 
 ## How it works
 
