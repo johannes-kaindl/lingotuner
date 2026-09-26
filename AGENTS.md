@@ -136,7 +136,7 @@ reguläre Instanz auf `9222` gehört möglicherweise einer anderen Session und w
 
 ```bash
 npm run build && npm run smoke:gui -- --setup      # Staging-Vault aus fixtures/vault/ bauen
-# Zweitinstanz starten (Rezept vollständig in docs/SMOKE.md), dann:
+# Zweitinstanz starten (Rezept vollständig in docs/internal/SMOKE.md), dann:
 npm run smoke:gui -- --port 9341
 ```
 
@@ -200,7 +200,7 @@ erlaubt, stillschweigend abzuweichen nicht.
   oder ein Reload hilft hier **nicht**.
 - **Ein frisches Profil startet mit der gebündelten Obsidian-Version**, nicht mit der laufenden.
   Für `minAppVersion 1.8.7` ist das folgenlos; wer die `.asar` ins Testprofil kopiert, hebt die
-  Zweitinstanz gezielt an (Rezept in `docs/SMOKE.md`).
+  Zweitinstanz gezielt an (Rezept in `docs/internal/SMOKE.md`).
 - **„Notiz ersetzen" ersetzt nur den Body — das Frontmatter bleibt.** Ersetzt wird über den
   Editor (also Cmd+Z-fähig), und der Bereich beginnt hinter dem Frontmatter-Block. Wer hier auf
   `vault.modify` mit dem ganzen Dateiinhalt umbaut, zerstört Frontmatter **und** den Undo-Stack.

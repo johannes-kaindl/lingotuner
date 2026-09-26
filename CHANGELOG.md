@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Nutzer-Dokumentation.** `docs/README.md` als Index, dazu *Getting started* und *Troubleshooting* (die Meldungen wörtlich aus dem Plugin, je mit Ursache und Abhilfe). Die README verlinkt sie im Abschnitt „Documentation“.
+
+### Changed
+- `docs/LAB.md` und `docs/SMOKE.md` liegen jetzt unter `docs/internal/` (Wartungsmaterial, keine Nutzer-Doku).
+
 ## [0.3.2] — 2026-09-25
 
 ### Fixed

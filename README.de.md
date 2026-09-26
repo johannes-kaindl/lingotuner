@@ -29,7 +29,7 @@ Neurodivergente und neurotypische Kommunikationsstile unterscheiden sich entlang
 - **Obsidian 1.8.7+** (Desktop oder Mobil).
 - **Ein OpenAI-kompatibler lokaler Server** mit geladenem Chat-Modell — [LM Studio](https://lmstudio.ai), [Ollama](https://ollama.com) oder MLX. Neu bei lokalen LLMs? Die **[Anleitung für lokale LLMs](https://uplink.jkaindl.de/llm-setup)** führt durch Server, Modell und Mobilzugriff.
 - **CORS, falls der Verbindungstest grün ist und der Stream trotzdem blockiert.** Das Ergebnis wird per XHR aus dem Ursprung `app://obsidian.md` gestreamt, und ein Server, der eine einfache Anfrage beantwortet, kann genau das ablehnen. In LM Studio CORS in den Server-Einstellungen einschalten (`lms server start --bind 0.0.0.0 --cors` setzt beides zusammen — ein fehlendes Flag wird auf den Default zurückgesetzt); für Ollama `OLLAMA_ORIGINS=app://obsidian.md` setzen. Das Plugin benennt diesen Fall, statt einen allgemeinen Netzwerkfehler zu melden.
-- **Ein mittelgroßes Modell, wenn das Ergebnis zählen soll.** Das Umschreiben muss jede Information halten und dabei den Stil ändern; gemessen gegen ein lokales LM Studio erfand ein 35B-Mixture-of-Experts-Modell über alle 16 Reglerstufen in beiden Sprachen keine Information, wechselte nie die Sprache und gab den Text nie unverändert zurück. Zwei Stufen (`context:-2`, `social:2`) trafen den Ton, aber nicht die Konkretheit des erwarteten Textes — siehe [`docs/LAB.md`](docs/LAB.md). Ein sehr kleines Modell kürzt eher, als dass es umformuliert.
+- **Ein mittelgroßes Modell, wenn das Ergebnis zählen soll.** Das Umschreiben muss jede Information halten und dabei den Stil ändern; gemessen gegen ein lokales LM Studio erfand ein 35B-Mixture-of-Experts-Modell über alle 16 Reglerstufen in beiden Sprachen keine Information, wechselte nie die Sprache und gab den Text nie unverändert zurück. Zwei Stufen (`context:-2`, `social:2`) trafen den Ton, aber nicht die Konkretheit des erwarteten Textes — siehe [`docs/internal/LAB.md`](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/internal/LAB.md). Ein sehr kleines Modell kürzt eher, als dass es umformuliert.
 
 ## Installation
 
@@ -92,10 +92,16 @@ Die Antwort wird per XHR (Server-Sent Events) gestreamt, Denk-Ausgaben werden vo
 
 ## Dokumentation
 
-- [`docs/SMOKE.md`](docs/SMOKE.md) — der GUI-Smoke: was gegen ein laufendes Obsidian geprüft wird und wie der Lauf zu wiederholen ist.
-- [`docs/LAB.md`](docs/LAB.md) — der gemessene Lauf aller 16 Beispielpaare gegen ein lokales Modell, mit den Befunden, die den ausgelieferten Prompt-Text geformt haben.
-- [`AGENTS.md`](AGENTS.md) — Architektur, Konventionen und Fallstricke für Mitwirkende und KI-Agenten.
-- [`CHANGELOG.md`](CHANGELOG.md) — was sich je Release geändert hat.
+- [Dokumentations-Index](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/README.md) — alle Anleitungen an einem Ort (englisch).
+- [Getting started](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/getting-started.md) — von der Installation bis zum ersten getunten Text (englisch).
+- [Troubleshooting](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/troubleshooting.md) — die genaue Meldung, ihre Ursache und die Abhilfe (englisch).
+
+## Mitwirken
+
+- [`AGENTS.md`](https://github.com/johannes-kaindl/lingotuner/blob/main/AGENTS.md) — Architektur, Konventionen und Fallstricke für Mitwirkende und KI-Agenten.
+- [`docs/internal/SMOKE.md`](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/internal/SMOKE.md) — der GUI-Smoke: was gegen ein laufendes Obsidian geprüft wird und wie der Lauf zu wiederholen ist.
+- [`docs/internal/LAB.md`](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/internal/LAB.md) — der gemessene Lauf aller 16 Beispielpaare gegen ein lokales Modell, mit den Befunden, die den ausgelieferten Prompt-Text geformt haben.
+- [`CHANGELOG.md`](https://github.com/johannes-kaindl/lingotuner/blob/main/CHANGELOG.md) — was sich je Release geändert hat.
 
 ## Lizenz
 

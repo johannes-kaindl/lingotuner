@@ -29,7 +29,7 @@ Neurodivergent and neurotypical communication styles differ along a few well-des
 - **Obsidian 1.8.7+** (desktop or mobile).
 - **An OpenAI-compatible local server** with a chat model loaded — [LM Studio](https://lmstudio.ai), [Ollama](https://ollama.com) or MLX. New to local LLMs? The **[local LLM setup guide](https://uplink.jkaindl.de/llm-setup)** walks you through server, model and mobile access end to end.
 - **CORS, if the connection test is green but the stream is blocked.** The result is streamed over XHR from the origin `app://obsidian.md`, and a server that answers a plain request may still refuse that. In LM Studio enable CORS in the server settings (`lms server start --bind 0.0.0.0 --cors` sets both at once — a missing flag is reset to its default); for Ollama set `OLLAMA_ORIGINS=app://obsidian.md`. The plugin names this case instead of reporting a generic network error.
-- **A mid-size model, if you care about the result.** The rewrite has to keep every piece of information while changing the style; measured against a local LM Studio, a 35B mixture-of-experts model invented no information, never switched language and never returned the text unchanged, across all 16 dial steps in both languages. Two of those steps (`context:-2`, `social:2`) hit the intended tone but not the concreteness of the reference text — see [`docs/LAB.md`](docs/LAB.md). A very small model tends to shorten instead of rephrase.
+- **A mid-size model, if you care about the result.** The rewrite has to keep every piece of information while changing the style; measured against a local LM Studio, a 35B mixture-of-experts model invented no information, never switched language and never returned the text unchanged, across all 16 dial steps in both languages. Two of those steps (`context:-2`, `social:2`) hit the intended tone but not the concreteness of the reference text — see [`docs/internal/LAB.md`](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/internal/LAB.md). A very small model tends to shorten instead of rephrase.
 
 ## Install
 
@@ -92,10 +92,16 @@ The answer is streamed over XHR (server-sent events), reasoning output is separa
 
 ## Documentation
 
-- [`docs/SMOKE.md`](docs/SMOKE.md) — the GUI smoke test: what is checked against a running Obsidian, and how to reproduce the run.
-- [`docs/LAB.md`](docs/LAB.md) — the measured run of all 16 example pairs against a local model, with the findings that shaped the shipped prompt text.
-- [`AGENTS.md`](AGENTS.md) — architecture, conventions and gotchas for contributors and AI agents.
-- [`CHANGELOG.md`](CHANGELOG.md) — what changed per release.
+- [Documentation index](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/README.md) — all guides in one place.
+- [Getting started](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/getting-started.md) — from the install to your first tuned text.
+- [Troubleshooting](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/troubleshooting.md) — the exact message, its cause and the fix.
+
+## Contributing
+
+- [`AGENTS.md`](https://github.com/johannes-kaindl/lingotuner/blob/main/AGENTS.md) — architecture, conventions and gotchas for contributors and AI agents.
+- [`docs/internal/SMOKE.md`](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/internal/SMOKE.md) — the GUI smoke test: what is checked against a running Obsidian, and how to reproduce the run.
+- [`docs/internal/LAB.md`](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/internal/LAB.md) — the measured run of all 16 example pairs against a local model, with the findings that shaped the shipped prompt text.
+- [`CHANGELOG.md`](https://github.com/johannes-kaindl/lingotuner/blob/main/CHANGELOG.md) — what changed per release.
 
 ## License
 

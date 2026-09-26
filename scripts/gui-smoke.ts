@@ -1,5 +1,5 @@
 /**
- * GUI-Smoke — faehrt die Pruefpunkte aus docs/SMOKE.md gegen ein LAUFENDES Obsidian (CORE-TEST-02 b).
+ * GUI-Smoke — faehrt die Pruefpunkte aus docs/internal/SMOKE.md gegen ein LAUFENDES Obsidian (CORE-TEST-02 b).
  *
  * Der Lauf misst zwei Haelften: A/B ohne Modell (Panel, Quellen, Guards) und C mit Modell
  * (Stream + Ausgaenge). C wird UEBERSPRUNGEN und benannt, wenn auf :1234 kein Endpunkt
