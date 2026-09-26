@@ -196,7 +196,10 @@
 /* Der Verlauf steht fest unter der Vorschau; ab vielen Runden scrollt er in sich, statt der
    Vorschau ihren Platz zu nehmen. */
 .lt-history { display: flex; flex-direction: column; gap: var(--size-2-1); max-height: 20vh; overflow-y: auto; }
-.lt-history-row { text-align: left; font-size: var(--font-ui-smaller); background: var(--background-secondary); color: var(--text-muted); }
+/* Ein `button` haelt seinen Text auf einer Zeile und zentriert Ueberlauf — die Zeile der aktiven Runde
+   (Herkunft + Anmerkung, fett) wurde dadurch in der Standardbreite der Sidebar LINKS abgeschnitten.
+   Umbrechen statt kuerzen: die Anmerkung ist der Inhalt, an dem man Runden unterscheidet. */
+.lt-history-row { text-align: left; white-space: normal; overflow-wrap: anywhere; height: auto; min-height: var(--input-height); font-size: var(--font-ui-smaller); background: var(--background-secondary); color: var(--text-muted); }
 .lt-history-row.is-active { background: var(--background-modifier-hover); color: var(--text-normal); font-weight: var(--font-semibold); }
 
 .lt-outputs { display: flex; flex-wrap: wrap; gap: var(--size-2-2); }

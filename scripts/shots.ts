@@ -215,10 +215,6 @@ const MOTIVE: Motiv[] = [
       fake.setAnswer(ANSWERS.clarity);
       await panelZustand(ws);
       await oeffneMitMarkierung(ws);
-      // Runden-Zeilen tragen Herkunft UND Notiz; in der Standardbreite der Sidebar wird die
-      // zweite links abgeschnitten (Befund an den Master gemeldet) — das Bild zeigt eine breitere.
-      await ws.evaluate(`app.workspace.rightSplit.setSize(460); return { ok: true };`);
-      await sleep(500);
       await waehlePreset(ws, "Maximum clarity");
       await tune(ws);
       fake.setAnswer(ANSWERS.refined);
@@ -274,7 +270,7 @@ async function settingsBild(ws: Cdp, port: number, outDir: string): Promise<stri
       return { y: k ? k.getBoundingClientRect().top : -1 };
     `);
     if (von.y < 0) throw new Error("Gruppe „Connection“ nicht gefunden");
-    const clip: Rect = { x: stil.x - 16, y: von.y - 20, width: stil.width + 32, height: bis.y - von.y };
+    const clip: Rect = { x: stil.x - 16, y: von.y - 28, width: stil.width + 32, height: bis.y - von.y + 28 - 14 };
     const png = await capture(fenster, clip, 2);
     return await writeShot(fenster, "settings.png", png, { outDir, captureWidth: CAPTURE_WIDTH, thumbWidth: THUMB_WIDTH });
   } finally {

@@ -18,7 +18,7 @@ Der Treiber startet auf Port 1236 einen Fake-Server, der einen festen, redaktion
 | Datei | Klasse | referenziert von | muss zeigen |
 |---|---|---|---|
 | `hero.png` | hero | README.md, README.de.md (Kopf) | Das ganze Fenster: Notiz „Draft reply to Sam" im Editor, rechts das LingoTuner-Panel mit Quelle „Selection: 175 characters", Preset „Maximum clarity" aktiv, vier Reglern am linken Anschlag, dem gestreamten Ergebnis und den vier Ausgängen (Replace selection, Replace note, Copy, New note) |
-| `rounds.png` | feature | README.md, README.de.md (Usage) | Dasselbe Fenster nach zwei Runden: die Anmerkung „Keep the offer of another day.", das Ergebnis von Runde 2 und die Liste „Rounds" mit „Round 1 · from source · no note" und der aktiven „Round 2 · refined from round 1 · …". Die Seitenleiste ist dafür auf 460 px verbreitert (siehe Status) |
+| `rounds.png` | feature | README.md, README.de.md (Usage) | Dasselbe Fenster nach zwei Runden: die Anmerkung „Keep the offer of another day.", das Ergebnis von Runde 2 und die Liste „Rounds" mit „Round 1 · from source · no note" und der aktiven „Round 2 · refined from round 1 · …". Aufgenommen in der Standardbreite der Seitenleiste (~300 px) |
 | `settings.png` | feature | README.md, README.de.md (Configuration) | Den Einstellungen-Tab von „Connection" bis zum Ende von „Style": Endpunkt-Zeile mit grünem Haken und „active — this one is used", Modell, aufklappbares „Request", Timeout, Override-Ordner, „Write shipped texts into the folder", „No saved presets yet." Die Gruppe „Output" fehlt bewusst: der Tab ist länger als der Bildschirm |
 | `dials.png` | detail | README.md, README.de.md (Usage) | Nur das Panel, Preset „Collegial" aktiv, die vier Regler auf verschiedenen Stufen mit ihren Stufennamen („somewhat more direct", „somewhat warmer"), leere Anmerkung, Knopf „Tune", Statuszeile „Ready" und der leere Vorschaubereich „The tuned text appears here." |
 
@@ -43,5 +43,5 @@ npm run shots:check                                 # readme_lint, muss „keine
 
 Alle vier Bilder liegen (2026-09-26), Zweitinstanz auf Port 9325, jedes Bild selbst angesehen.
 
-- `rounds.png` zeigt eine breitere Seitenleiste als üblich. In der Standardbreite (≈300 px) wird die Zeile der aktiven Runde links abgeschnitten („2 · refined from round 1 · Keep the offer of anoth…") — ein Befund am Plugin, nicht am Bild; er ist an den Master gemeldet.
+- `rounds.png` entstand zuerst bei 460 px Seitenleiste, weil die Zeile der aktiven Runde in der Standardbreite links abgeschnitten wurde. Der Fehler ist behoben (`styles.css`: `.lt-history-row` bricht um), gemessen vom Smoke-Punkt R1; das Bild ist in Standardbreite neu aufgenommen.
 - Der Fake-Server-Port 1236 muss frei sein; der Treiber meldet es, wenn nicht.

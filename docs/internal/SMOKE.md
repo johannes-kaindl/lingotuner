@@ -456,3 +456,7 @@ beim **zweiten** Lauf sonst den Rest des ersten und ist rot, ohne dass sich am P
 geändert hätte. Der Treiber stellt den Ausgangszustand deshalb selbst her
 (`setzeAusgangszustand`: Layout leer, Regler neutral) und schreibt den Vorwert im `finally`
 zurück — der Lauf behält nichts vom Wirt.
+
+## R1 — Runden-Zeile bei ~300 px (Welle 9, 2026-09-26)
+
+Ein echter Lauf gegen einen Fake-Server, zwei Runden, die zweite mit langer Anmerkung, Sidebar auf 300 px: jede `.lt-history-row` muss `scrollWidth <= clientWidth` haben. Anlass: die aktive Zeile (fett, Herkunft plus Anmerkung) wurde links abgeschnitten, weil ein `button` seinen Text auf einer Zeile hält und Überlauf zentriert. Gegenprobe am alten Stand (`styles.css` aus `98df558`): rot, „2 von 6 Zeilen laufen über: 297 > 276, 452 > 276"; mit der Regel `white-space: normal` grün, 39 grün / 0 rot / 2 übersprungen von 41.

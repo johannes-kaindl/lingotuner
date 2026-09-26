@@ -1425,6 +1425,79 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
   }
 }
 
+/** R1 — die Zeile der aktiven Runde laeuft in der Standardbreite der Sidebar nicht ueber (Welle 9).
+ *
+ *  Gemessen wird an einem ECHTEN Lauf gegen einen Fake-Server (zwei Runden, die zweite mit langer
+ *  Anmerkung), bei ~300 px Sidebar-Breite: kein `.lt-history-row` darf breiter scrollen, als es
+ *  ist. Anlass: `rounds.png` fuer die README zeigte den Fehler nur, wenn man ihn ansah — die Zeile
+ *  wurde links abgeschnitten, und die Aufnahme haette ihn mit einer breiteren Sidebar versteckt.
+ *  Gegenprobe: mit der alten Regel (`white-space: nowrap` vom Button) ist dieser Punkt rot. */
+async function pruefeRundenZeile(cdp: Cdp): Promise<void> {
+  const name = "R1 Runden-Zeile laeuft bei ~300 px nicht ueber";
+  let fake: FakeChatEndpoint | null = null;
+  let vorher: { eps: unknown; breite: number } | null = null;
+  try {
+    fake = await startFakeChatEndpoint("smoke-rounds-model");
+    vorher = await cdp.evaluate<{ eps: unknown; breite: number }>(`return { eps: app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints, breite: app.workspace.rightSplit.size ?? 300 };`);
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.settings.endpoints = [{ url: ${q(fake.url)}, model: "smoke-rounds-model" }];
+      await p.saveSettings();
+      p.invalidateEndpointCache();
+      await p.resolveEndpoint();
+      app.workspace.rightSplit.setSize(300);
+      return { ok: true };
+    `);
+    // Quelle Textfeld, damit kein Editor gebraucht wird; Text tippen, damit die Quelle bereit ist.
+    await waehleQuelle(cdp, 2);
+    await cdp.evaluate(`
+      const el = document.querySelector(".lt-freetext");
+      el.value = "Could you maybe send the report by Friday?";
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      return { ok: true };
+    `);
+    await setzeNotiz(cdp, "Keep the offer of another day.");
+    const ok1 = await laufeTune(cdp);
+    await setzeNotiz(cdp, "Keep the offer of another day, and mention the deadline once more.");
+    await clickReal(cdp, `document.querySelector(".lt-refine")`);
+    const ok2 = await pollUntil<{ ok: boolean }>(cdp, `return document.querySelectorAll(".lt-history-row").length >= 2 && document.querySelector(".lt-status")?.classList.contains("is-ok") ? { ok: true } : null;`, 30_000, 300);
+    if (!ok1 || ok2 === null) { skipped(name, "zwei Runden liessen sich nicht herstellen (Fake-Lauf nicht gruen)"); return; }
+    await new Promise((r) => setTimeout(r, 400));
+    const m = await cdp.evaluate<{ zeilen: Array<{ scroll: number; client: number; panel: number }> }>(`
+      const p = document.querySelector(".lt-panel");
+      return { zeilen: [...document.querySelectorAll(".lt-history-row")].map((r) => ({ scroll: r.scrollWidth, client: r.clientWidth, panel: p ? p.clientWidth : 0 })) };
+    `);
+    const zu = m.zeilen.filter((z) => z.scroll > z.client + 1);
+    record(name, m.zeilen.length >= 2 && zu.length === 0,
+      zu.length === 0 ? `${m.zeilen.length} Zeilen, scrollWidth <= clientWidth (Panel ${m.zeilen[0]?.panel} px)` : `${zu.length} von ${m.zeilen.length} Zeilen laufen ueber: ${zu.map((z) => `${z.scroll} > ${z.client}`).join(", ")}`);
+  } catch (e) {
+    skipped(name, `Messung abgebrochen: ${(e as Error).message}`);
+  } finally {
+    if (vorher !== null) {
+      await cdp.evaluate(`
+        const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+        p.settings.endpoints = ${JSON.stringify(vorher.eps)};
+        await p.saveSettings();
+        p.invalidateEndpointCache();
+        await p.resolveEndpoint();
+        app.workspace.rightSplit.setSize(${Number(vorher.breite)});
+        return { ok: true };
+      `).catch(() => null);
+    }
+    await waehleQuelle(cdp, 1).catch(() => "");
+    if (fake) await fake.close().catch(() => undefined);
+  }
+}
+
+async function setzeNotiz(cdp: Cdp, text: string): Promise<void> {
+  await cdp.evaluate(`
+    const el = document.querySelector(".lt-note");
+    el.value = ${q(text)};
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    return { ok: true };
+  `);
+}
+
 /** N1-N4 (Sampling-Profile-Welle, Teil D, Rezept 8): der neue Abschnitt „Anfrage" in den
  *  Settings und die Denk-Steuerung im Panel (`buildThinkingControl`). Kein echter LLM-Server
  *  noetig — alles hier ist DOM-Zustand nach einer Einstellungs-Aenderung. */
@@ -1576,6 +1649,7 @@ async function main(): Promise<void> {
     await pruefeManager(cdp, port);
     await pruefeLab(cdp);
     await pruefeAnfrage(cdp, port);
+    await pruefeRundenZeile(cdp);
     skipped("Markierung ersetzen (Rand-Whitespace)", "Editor-Selektion per CDP ist im Unit-Test abgedeckt (editor-io.test.ts); im Smoke muesste sie ueber CodeMirror gesetzt werden — Handarbeit");
   } finally {
     if (vorherigeDials !== null) {

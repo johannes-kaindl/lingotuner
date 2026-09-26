@@ -10,6 +10,9 @@ All notable changes to this project are documented here. The format follows
 - **Nutzer-Dokumentation.** `docs/README.md` als Index, dazu *Getting started* und *Troubleshooting* (die Meldungen wörtlich aus dem Plugin, je mit Ursache und Abhilfe). Die README verlinkt sie im Abschnitt „Documentation“.
 - **README-Bilder** (Hero, Runden, Einstellungen, Regler), reproduzierbar per `npm run shots`; Aufnahme-Vertrag in `docs/images/README.md`.
 
+### Fixed
+- **Die Zeile der aktiven Runde wurde in der Standardbreite der Seitenleiste links abgeschnitten.** Ein Button hält seinen Text auf einer Zeile und zentriert den Überlauf; die Zeile bricht jetzt um. Der GUI-Smoke misst das mit dem neuen Punkt R1 (bei ~300 px, Gegenprobe am alten Stand rot).
+
 ### Changed
 - `docs/LAB.md` und `docs/SMOKE.md` liegen jetzt unter `docs/internal/` (Wartungsmaterial, keine Nutzer-Doku).
 
