@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Chat client from obsidian-kit 0.43.0** (`createChatClient`), replacing the local XHR client. Visible effects:
+  - After the first token, a stall of **120 seconds without data** now ends the run with "No answer within 120 seconds". Before, only the wait for the first token was limited (setting *Timeout*), and a stream that went silent later hung forever.
+  - A server that **refuses the XHR stream** (origin / CORS check) is retried once without streaming through Obsidian's `requestUrl`; the answer then appears all at once. The "stream blocked (CORS)" message only shows when that request fails as well.
+  - HTTP errors carry the server's message on one line, also for `200` answers that hold an error body, and a context overflow is reported as an HTTP error.
+  - The Lab recording measures `ttftMs` from the first byte of the answer (also reasoning) as before, now taken from the client's timing.
+- **Lab recording through `logToLab`** (kit `lab-client`): a Lab that returns a promise instead of an id no longer slips through, and a Lab with another `apiVersion` is named once per session in the console instead of looking like "no Lab".
+- Kit vendoring raised to 0.43.0; the copied styles for the endpoint list (`>` child selectors, so a nested setting keeps its label) and the streaming area (empty status and reasoning slots take no space) follow the kit.
+
 ## [0.4.0] — 2026-09-26
 
 ### Added

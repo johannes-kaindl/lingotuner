@@ -22,7 +22,7 @@ Each entry starts with what you see — the wording is the plugin's own English 
 
 > The server is reachable, but the stream was blocked by the browser (CORS). In LM Studio enable CORS in the server settings; for Ollama set OLLAMA_ORIGINS=app://obsidian.md.
 
-**Cause:** the result is streamed from the origin `app://obsidian.md`, and a server can answer a plain request while refusing that origin. The connection test passes, the stream does not.
+**Cause:** the result is streamed from the origin `app://obsidian.md`, and a server can answer a plain request while refusing that origin. The connection test passes, the stream does not. The plugin then retries once without streaming, and you only see this message when that request fails as well.
 
 **Fix:** in LM Studio switch on CORS in the server settings, or start it with `lms server start --bind 0.0.0.0 --cors`. For Ollama set `OLLAMA_ORIGINS=app://obsidian.md` and restart it.
 
@@ -46,9 +46,9 @@ Each entry starts with what you see — the wording is the plugin's own English 
 
 > No answer within {N} seconds. Check the server or raise the timeout in the settings.
 
-**Cause:** no first token arrived within the timeout (60 seconds by default). Big models can need longer to load.
+**Cause:** no first token arrived within the timeout (60 seconds by default), or an answer that had started went silent for 120 seconds. Big models can need longer to load.
 
-**Fix:** raise **Timeout (seconds)** in the settings, or load the model in the server before you press **Tune**. A long answer that has already started streaming is never cut off by the timeout.
+**Fix:** raise **Timeout (seconds)** in the settings, or load the model in the server before you press **Tune**. The setting only covers the wait for the first token; once streaming has started, only 120 seconds without any data end it.
 
 ## The server rejected the request
 

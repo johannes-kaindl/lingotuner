@@ -1,6 +1,5 @@
-import { normalizeEndpoint } from "../../vendor/kit/endpoint";
-import { authHeaders, type EndpointConfig } from "../../vendor/kit/endpoint_config";
-import { errorMessageFromText } from "../../vendor/kit/error_body";
+import type { EndpointConfig } from "../../vendor/kit/endpoint_config";
+import type { ChatClient, ChatTiming } from "../../vendor/kit-obsidian/chat-client";
 import {
   resolveRequestParams,
   type BackendId, type FamilyId, type FieldId, type ResolvedRequest, type ResponseFacts, type ThinkingLevel,
@@ -48,27 +47,6 @@ export function buildTuneParams(input: {
   return resolveRequestParams({ family: input.family, mode: MODE, backend: input.backend, thinking: input.thinking, overrides: input.overrides });
 }
 
-export class StreamHttpError extends Error {
-  constructor(readonly status: number, readonly body: string) {
-    super(`Stream HTTP ${status}`);
-    this.name = "StreamHttpError";
-  }
-}
-
-export interface StreamInit { method: "POST"; headers: Record<string, string>; body: string }
-export interface StreamOutcome { content: string; reasoning: string; model: string; finishReason?: string }
-
-/** Netz-Port. Die Implementierung (XHR) lebt in src/obsidian/http.ts — der Kern bleibt obsidian-frei. */
-export interface StreamTransport {
-  stream(
-    url: string,
-    init: StreamInit,
-    onContent: (t: string) => void,
-    onReasoning: (t: string) => void,
-    signal?: AbortSignal,
-  ): Promise<StreamOutcome>;
-}
-
 export interface TuneRequest {
   messages: ChatMessage[];
   endpoint: EndpointConfig;
@@ -77,44 +55,60 @@ export interface TuneRequest {
   /** Modell, wie es tatsaechlich gesendet wird (nach `aliasOf`-Aufloesung). */
   sentModel: string;
   params: Record<string, number | string>;
+  /** Fristen, die der Client fuer diesen Lauf traegt — nur fuer den Text „nach N s“ im Timeout-Fehler. */
+  timeouts: { firstChunkSec: number; idleSec: number };
   signal?: AbortSignal;
   onToken?: (t: string) => void;
   onReasoning?: (t: string) => void;
 }
 
 export type TuneResult =
-  | { ok: true; text: string; reasoning: string; model: string; truncated: boolean; finishReason?: string }
-  | { ok: false; error: TuneError; partial: string; reasoning?: string; finishReason?: string; status?: number; errorText?: string };
+  | { ok: true; text: string; reasoning: string; model: string; truncated: boolean; finishReason?: string; ttftMs?: number }
+  | { ok: false; error: TuneError; partial: string; reasoning?: string; finishReason?: string; status?: number; errorText?: string; ttftMs?: number };
 
-export async function streamTune(transport: StreamTransport, req: TuneRequest): Promise<TuneResult> {
-  const base = normalizeEndpoint(req.endpoint.url);
-  const body = JSON.stringify({
-    model: req.sentModel,
-    messages: req.messages,
-    stream: true,
-    ...req.params,
+/** Zeit bis zum ersten Byte (auch Reasoning) — der Wert, den das Lab als `ttftMs` fuehrt. */
+function ttftOf(t: ChatTiming): { ttftMs?: number } {
+  return t.firstChunkAt !== undefined ? { ttftMs: t.firstChunkAt - t.startedAt } : {};
+}
+
+/** Ein Tunen ueber den Kit-Chat-Client. Der Client liefert Transport, Fristen, Fallback und
+ *  Fehlerkoerper; hier bleibt, was nur lingotuner kennt: die Klassen `thought-only`/`empty` und
+ *  die Uebersetzung der Kit-Fehlerarten in `TuneError`. */
+export async function streamTune(client: ChatClient, req: TuneRequest): Promise<TuneResult> {
+  const r = await client.complete({
+    endpoint: req.endpoint, model: req.sentModel, messages: req.messages, params: req.params,
+    ...(req.signal ? { signal: req.signal } : {}),
+    ...(req.onToken ? { onToken: req.onToken } : {}),
+    ...(req.onReasoning ? { onReasoning: req.onReasoning } : {}),
   });
-  let partial = "";
-  const onContent = (t: string): void => { partial += t; req.onToken?.(t); };
-  const onReasoning = (t: string): void => { req.onReasoning?.(t); };
-  try {
-    const out = await transport.stream(
-      `${base}/v1/chat/completions`,
-      { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders(req.endpoint.apiKey) }, body },
-      onContent, onReasoning, req.signal,
-    );
-    if (out.content.trim() === "") {
-      return {
-        ok: false, error: out.reasoning.trim() !== "" ? { kind: "thought-only" } : { kind: "empty" }, partial,
-        reasoning: out.reasoning, ...(out.finishReason !== undefined ? { finishReason: out.finishReason } : {}),
-      };
-    }
-    return { ok: true, text: out.content, reasoning: out.reasoning, model: out.model, truncated: out.finishReason === "length", ...(out.finishReason !== undefined ? { finishReason: out.finishReason } : {}) };
-  } catch (e) {
-    if (e instanceof StreamHttpError) {
-      return { ok: false, error: { kind: "http", status: e.status, detail: errorMessageFromText(e.body) ?? e.body.slice(0, 200) }, partial, status: e.status, errorText: e.body };
-    }
-    if (e instanceof Error && e.name === "AbortError") return { ok: false, error: { kind: "aborted" }, partial };
-    return { ok: false, error: { kind: "network" }, partial };
+  const ttft = ttftOf(r.timing);
+  if (r.ok) {
+    if (r.content.trim() === "") return emptyResult(r.content, r.reasoning, r.finishReason, ttft);
+    return { ok: true, text: r.content, reasoning: r.reasoning, model: r.model ?? "", truncated: r.truncated, ...(r.finishReason !== undefined ? { finishReason: r.finishReason } : {}), ...ttft };
   }
+  switch (r.kind) {
+    case "aborted": return { ok: false, error: { kind: "aborted" }, partial: r.partial, ...ttft };
+    case "timeout": {
+      const seconds = r.timing.firstChunkAt === undefined ? req.timeouts.firstChunkSec : req.timeouts.idleSec;
+      return { ok: false, error: { kind: "timeout", seconds }, partial: r.partial, ...ttft };
+    }
+    case "network": return { ok: false, error: { kind: "network" }, partial: r.partial, ...ttft };
+    // Abgeschnitten ohne Text (das Denken hat das Budget verbraucht) ist fuer lingotuner
+    // dieselbe Lage wie zuvor: leerer Inhalt, mit oder ohne Gedanken — `finishReason` bleibt sichtbar.
+    case "truncated": return emptyResult(r.partial, r.reasoning, "length", ttft);
+    case "http":
+    case "overflow":
+      return {
+        ok: false, error: { kind: "http", status: r.status ?? 0, detail: r.detail }, partial: r.partial,
+        reasoning: r.reasoning, ...(r.status !== undefined ? { status: r.status } : {}),
+        ...(r.body !== undefined ? { errorText: r.body } : {}), ...ttft,
+      };
+  }
+}
+
+function emptyResult(partial: string, reasoning: string, finishReason: string | undefined, ttft: { ttftMs?: number }): TuneResult {
+  return {
+    ok: false, error: reasoning.trim() !== "" ? { kind: "thought-only" } : { kind: "empty" }, partial, reasoning,
+    ...(finishReason !== undefined ? { finishReason } : {}), ...ttft,
+  };
 }

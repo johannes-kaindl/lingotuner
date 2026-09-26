@@ -1567,6 +1567,63 @@ async function pruefeLab(cdp: Cdp): Promise<void> {
   }
 }
 
+/** F — Origin-Weigerung: der Chat-Client (Kit 0.43.0) wiederholt einmal ohne Stream ueber `requestUrl`.
+ *  Der Fake-Server sendet KEINE CORS-Header: der XHR-Preflight aus `app://obsidian.md` scheitert, waehrend
+ *  `requestUrl` (Hauptprozess, ohne Origin) durchkommt — genau die Lage „Probe gruen, Chat rot". Gemessen
+ *  wird die Wirkung: ein Ergebnis kommt an, und der POST, den der Server sah, trug `stream:false`. */
+async function pruefeFallback(cdp: Cdp): Promise<void> {
+  console.log("\nF · Origin-Weigerung → Anfrage ohne Stream");
+  const NAME = "F1 Ohne CORS-Freigabe kommt das Ergebnis ueber den Fallback ohne Stream";
+  let posts = 0;
+  let streamFlag: unknown = "nie gesehen";
+  const server: Server = createServer((req, res) => {
+    if (req.url?.includes("/v1/models") === true) { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ data: [{ id: "fb-model", object: "model" }] })); return; }
+    if (req.method === "POST" && req.url?.includes("/v1/chat/completions") === true) {
+      let body = "";
+      req.on("data", (c: Buffer) => { body += c.toString("utf8"); });
+      req.on("end", () => {
+        posts += 1;
+        try { streamFlag = (JSON.parse(body) as { stream?: unknown }).stream; } catch { streamFlag = "kein JSON"; }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ model: "fb-model", choices: [{ message: { content: "fallback ok" }, finish_reason: "stop" }] }));
+      });
+      return;
+    }
+    res.writeHead(404); res.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  let vorher: unknown = null;
+  try {
+    vorher = (await cdp.evaluate<{ eps: unknown }>(`return { eps: app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints };`)).eps;
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.settings.endpoints = [{ url: ${q(url)}, model: "fb-model" }];
+      await p.saveSettings();
+      p.invalidateEndpointCache();
+      await p.resolveEndpoint();
+      return { ok: true };
+    `);
+    const ok = await laufeTune(cdp);
+    const ergebnis = ok ? await text(cdp, ".okit-stream-body") : null;
+    record(NAME, ok && posts === 1 && streamFlag === false,
+      `Lauf ${ok ? "ok" : `fehlgeschlagen (${(await text(cdp, ".lt-status")) ?? "?"})`}, POST ohne Preflight-Freigabe: ${posts}, stream im Body: ${JSON.stringify(streamFlag)}, Ergebnis ${JSON.stringify(ergebnis?.slice(0, 40) ?? null)}`);
+  } finally {
+    if (vorher !== null) {
+      await cdp.evaluate(`
+        const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+        if (!p) return { ok: false };
+        p.settings.endpoints = ${JSON.stringify(vorher)};
+        await p.saveSettings();
+        p.invalidateEndpointCache();
+        await p.resolveEndpoint();
+        return { ok: true };
+      `).catch(() => null);
+    }
+    await new Promise<void>((resolve) => { server.close(() => { resolve(); }); });
+  }
+}
+
 async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
   console.log('\nN · Abschnitt "Anfrage" (Sampling-Profile)');
   let stelle: SettingsStelle | null = null;
@@ -1680,6 +1737,7 @@ async function main(): Promise<void> {
     await pruefeManager(cdp, port);
     await pruefeHilfeZeile(cdp, port);
     await pruefeLab(cdp);
+    await pruefeFallback(cdp);
     await pruefeAnfrage(cdp, port);
     await pruefeRundenZeile(cdp);
     skipped("Markierung ersetzen (Rand-Whitespace)", "Editor-Selektion per CDP ist im Unit-Test abgedeckt (editor-io.test.ts); im Smoke muesste sie ueber CodeMirror gesetzt werden — Handarbeit");

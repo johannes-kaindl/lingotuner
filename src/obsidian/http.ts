@@ -1,8 +1,7 @@
-// uebernommen aus vault-rag/src/sse.ts (streamSSE) und obsidian-transmute/src/obsidian/http.ts (probe), 2026-09-07
+// uebernommen aus obsidian-transmute/src/obsidian/http.ts (probe), 2026-09-07; Chat-Transport seit 2026-09-26 aus obsidian-kit 0.43.0 (chat-client)
 import { requestUrl } from "obsidian";
-import { StreamHttpError, type StreamInit, type StreamOutcome, type StreamTransport } from "../core/llm/client";
-import { parseSSE } from "../vendor/kit/sse";
-import { ThinkSplitter } from "../vendor/kit/think-splitter";
+import { createChatClient, type ChatClient } from "../vendor/kit-obsidian/chat-client";
+import { requestUrlTransport, xhrSseTransport } from "../vendor/kit-obsidian/chat-transport";
 import { classifyEndpointStatus, extractModelIds, type EndpointStatus } from "../vendor/kit/endpoint_diagnostics";
 import { normalizeEndpoint } from "../vendor/kit/endpoint";
 import { authHeaders, type EndpointConfig } from "../vendor/kit/endpoint_config";
@@ -10,63 +9,18 @@ import { withTimeout } from "../vendor/kit/timeout";
 import { probeBaseUrl, probeEndpoint as probeBackend, type CapabilityFetch } from "../vendor/kit/capabilities";
 import type { BackendId } from "../vendor/kit/sampling-profiles";
 
-/** Streamt einen OpenAI-kompatiblen SSE-Stream ueber XMLHttpRequest — `requestUrl` kann nicht
- *  streamen, `fetch` scheitert im Renderer haeufiger an CORS. Inline-<think> wird per ThinkSplitter
- *  in den Reasoning-Kanal gezogen; das erste `finish_reason` wird durchgereicht (Truncation). */
-function streamSSE(
-  url: string,
-  init: StreamInit,
-  onContent: (t: string) => void,
-  onReasoning: (t: string) => void,
-  signal?: AbortSignal,
-): Promise<StreamOutcome> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    const splitter = new ThinkSplitter();
-    let content = "", reasoning = "", model = "", buffer = "", seen = 0;
-    let finishReason: string | undefined;
-    const emit = (c: string, r: string): void => {
-      if (c) { content += c; onContent(c); }
-      if (r) { reasoning += r; onReasoning(r); }
-    };
-    const drain = (p: { content: string[]; reasoning: string[]; model?: string; finishReason?: string }): void => {
-      if (!model && p.model) model = p.model;
-      if (finishReason === undefined && p.finishReason) finishReason = p.finishReason;
-      for (const r of p.reasoning) emit("", r);
-      for (const c of p.content) { const s = splitter.push(c); emit(s.content, s.reasoning); }
-    };
-    const pump = (): void => {
-      const text = xhr.responseText;
-      buffer += text.slice(seen);
-      seen = text.length;
-      const p = parseSSE(buffer);
-      buffer = p.rest;
-      drain(p);
-    };
-    const abortError = (): Error => { const e = new Error("Aborted"); e.name = "AbortError"; return e; };
+/** Idle-Frist des Chat-Clients: Stille seit dem letzten Chunk. Die Frist bis zum ERSTEN Chunk ist
+ *  `timeoutSec` aus den Einstellungen (Reasoning-Modelle und JIT-Laden brauchen dort Minuten). */
+export const CHAT_IDLE_TIMEOUT_MS = 120_000;
 
-    xhr.open(init.method, url);
-    for (const [k, v] of Object.entries(init.headers)) xhr.setRequestHeader(k, v);
-    xhr.onprogress = (): void => pump();
-    xhr.onerror = (): void => reject(new Error("network"));
-    xhr.onabort = (): void => reject(abortError());
-    xhr.onload = (): void => {
-      pump();
-      drain(parseSSE(buffer));
-      const tail = splitter.flush();
-      emit(tail.content, tail.reasoning);
-      if (xhr.status < 200 || xhr.status >= 300) reject(new StreamHttpError(xhr.status, xhr.responseText));
-      else resolve({ content, reasoning, model, finishReason });
-    };
-    // Ein bereits abgebrochenes Signal feuert kein `abort`-Ereignis mehr — ohne diesen Guard
-    // ginge die Anfrage raus und die Zusage bliebe fuer immer offen (der Test lief in den Timeout).
-    if (signal?.aborted) { reject(abortError()); return; }
-    if (signal) signal.addEventListener("abort", () => xhr.abort());
-    xhr.send(init.body);
+/** EIN Chat-Client je Endpunkt und Zeitlimit: Streaming ueber XHR, bei Origin-/CORS-Weigerung
+ *  einmal ohne Stream ueber `requestUrl` — die Weigerung haengt an der Instanz (Kit-Vertrag). */
+export function makeChatClient(firstChunkTimeoutSec: number): ChatClient {
+  return createChatClient({
+    transport: xhrSseTransport, fallbackTransport: requestUrlTransport,
+    firstChunkTimeoutMs: firstChunkTimeoutSec * 1000, idleTimeoutMs: CHAT_IDLE_TIMEOUT_MS,
   });
 }
-
-export const xhrTransport: StreamTransport = { stream: streamSSE };
 
 type Wire = { status: number; text: string; timedOut: boolean; error: string | null };
 

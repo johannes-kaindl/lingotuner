@@ -7,7 +7,7 @@ This walk-through takes you from a fresh install to a text rewritten in a differ
 LingoTuner talks to any OpenAI-compatible server. The default address is `http://127.0.0.1:1234`, which is what [LM Studio](https://lmstudio.ai) uses out of the box.
 
 1. Start the server and load a chat model. A mid-size model gives the best results; a very small one tends to shorten the text instead of rephrasing it.
-2. In LM Studio, enable CORS in the server settings (or start it with `lms server start --cors`). Ollama needs `OLLAMA_ORIGINS=app://obsidian.md` instead. Without this, the connection test is green but the result never arrives — see [Troubleshooting](troubleshooting.md#stream-blocked-cors).
+2. In LM Studio, enable CORS in the server settings (or start it with `lms server start --cors`). Ollama needs `OLLAMA_ORIGINS=app://obsidian.md` instead. Without this, the connection test is green and the result arrives only all at once, or not at all — see [Troubleshooting](troubleshooting.md#stream-blocked-cors).
 
 New to local models? The [local LLM setup guide](https://uplink.jkaindl.de/llm-setup) covers server, model and access from other devices.
 

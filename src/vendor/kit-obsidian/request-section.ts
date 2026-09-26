@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.41.0, src/obsidian/request-section.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.43.0, src/obsidian/request-section.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // ONE mechanical deviation from verbatim: kit-internal imports (../pure/ and ../vendor/code-kit/{pure,web}/) → ../kit/ (vendor layout); reproduce on every re-vendor, nothing else may differ.
 import { Setting, setIcon } from "obsidian";
 import { collapsibleSection, type CollapsibleStorage } from "./collapsible";
@@ -62,6 +62,17 @@ export interface RequestSectionOptions {
   promptSlot?(el: HTMLElement): void;
 }
 
+/** Fallback, wenn der Konsument kein `collapsedStorage` übergibt: Das Modul merkt sich den
+ *  Auf/Zu-Zustand für die Laufzeit selbst. Ohne ihn klappte der Abschnitt nach jeder
+ *  Überschreibung und jedem Zurücksetzen wieder zu, weil `rerender()` ihn neu aufbaut und
+ *  `collapsibleSection` dann auf `defaultCollapsed` zurückfällt (Pilot lingotuner,
+ *  2026-09-23, gefunden am Screenshot, nicht am Smoke). Jedes Plugin vendort eine eigene
+ *  Kopie, der Zustand ist also je Plugin getrennt. */
+const memoryStorage: CollapsibleStorage = (() => {
+  const m = new Map<string, boolean>();
+  return { getCollapsed: (k) => m.get(k), setCollapsed: (k, c) => { m.set(k, c); } };
+})();
+
 const famKey = (f: FamilyId | null): FamilyKey => f ?? "unknown";
 const clone = (s: RequestSettings): RequestSettings => structuredClone(s);
 
@@ -74,8 +85,9 @@ function parseInput(field: FieldId, raw: string): number | string | null {
 
 export function buildRequestSection(opts: RequestSectionOptions): void {
   const st = opts.strings;
-  const sectionOpts: Parameters<typeof collapsibleSection>[1] = { title: st.title, defaultCollapsed: true, key: "request" };
-  if (opts.collapsedStorage) sectionOpts.storage = opts.collapsedStorage;
+  const sectionOpts: Parameters<typeof collapsibleSection>[1] = {
+    title: st.title, defaultCollapsed: true, key: "request", storage: opts.collapsedStorage ?? memoryStorage,
+  };
   const body = collapsibleSection(opts.containerEl, sectionOpts);
   const state = opts.state();
   const settings = opts.settings();

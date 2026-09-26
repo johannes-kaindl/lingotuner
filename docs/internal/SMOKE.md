@@ -272,6 +272,13 @@ Der Punkt, den der Treiber bis dahin nicht hatte: `readLabApi` gab bei einer Ver
 - Der Lauf geht gegen den Fake-Manager-Endpunkt (wie M2), braucht also kein Modell in LM Studio.
 - Gegenprobe (2026-09-25): mit dem Client-Stand von 0.3.1 (`SUPPORTED_API_VERSION = 3`) ist L1 rot (`Zeilen von lingotuner 0 → 0`), mit 4 grün (`4 → 5`, `turnId` gesetzt).
 
+### F1 — Origin-Weigerung: Anfrage ohne Stream (seit 2026-09-26)
+
+Der Chat-Client aus Kit 0.43.0 wiederholt nach einer Origin-/CORS-Weigerung des XHR-Streams einmal ohne Stream über `requestUrl`. Der Fake-Server sendet **keine** CORS-Header: der Preflight aus `app://obsidian.md` scheitert, `requestUrl` (Hauptprozess, ohne Origin) kommt durch. Gemessen wird die Wirkung: der Lauf liefert ein Ergebnis (`fallback ok`), der Server sah genau einen POST, und dessen Body trägt `stream: false`.
+
+- Der Renderer meldet dabei zwei erwartete Fehlerzeilen (CORS-Preflight, `net::ERR_FAILED`); sie stehen als `WARNUNG` in der Bilanz und sind hier die Ursache, kein Befund.
+- Gegenprobe (2026-09-26): mit CORS-Headern am Fake-Server ist F1 rot (`stream im Body: true`), ohne sie grün.
+
 ## Bewusst übersprungene Punkte
 
 | Punkt | Grund |

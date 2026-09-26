@@ -18,11 +18,13 @@ import { readiness as readinessOf, type Readiness, type SourceKind } from "./cor
 import { streamTune, buildTuneParams, responseFactsFromResult, MODE, type TuneResult } from "./core/llm/client";
 import { classifyNetworkFailure } from "./core/llm/errors";
 import { createLingoTunerApi, type LingoTunerApi } from "./core/api";
-import { probeEndpoint, listModels, xhrTransport, cachedProbe } from "./obsidian/http";
+import { probeEndpoint, listModels, makeChatClient, cachedProbe, CHAT_IDLE_TIMEOUT_MS } from "./obsidian/http";
+import type { ChatClient } from "./vendor/kit-obsidian/chat-client";
+import { logToLab } from "./vendor/kit-obsidian/lab-client";
+import { normalizeEndpoint } from "./vendor/kit/endpoint";
 import { SelectionTracker, createTunedNote, replaceCapture } from "./obsidian/editor-io";
 import { vaultOverrideReader } from "./obsidian/overrides-io";
 import { appendLogEntry } from "./obsidian/logbook-io";
-import { readLabApi } from "./obsidian/lab";
 import { LingoTunerSettingTab } from "./obsidian/settings-tab";
 import { LingoTunerView, VIEW_TYPE_LINGOTUNER, type RunRequest } from "./obsidian/view";
 
@@ -72,6 +74,9 @@ export default class LingoTunerPlugin extends Plugin {
   /** Zuletzt gemeldete Override-Probleme, als ein Schluessel. Ohne das meldet JEDER Lauf
    *  dieselbe kaputte Datei erneut — bei zehn Laeufen zehn Notices fuer denselben Befund. */
   private lastOverrideProblems = "";
+  private labMismatchWarned = false;
+  /** Ein Chat-Client je Endpunkt und Zeitlimit: die Weigerung, ohne Stream weiterzumachen, haengt an der Instanz. */
+  private chatClient: { key: string; client: ChatClient } | null = null;
 
   async onload(): Promise<void> {
     setLang(pickLang(safeGetLanguage()));
@@ -260,6 +265,12 @@ export default class LingoTunerPlugin extends Plugin {
     });
   }
 
+  private chatClientFor(ep: EndpointConfig): ChatClient {
+    const key = `${normalizeEndpoint(ep.url)}|${this.settings.timeoutSec}`;
+    if (this.chatClient?.key !== key) this.chatClient = { key, client: makeChatClient(this.settings.timeoutSec) };
+    return this.chatClient.client;
+  }
+
   /** EIN Ausfuehrungspfad fuer Panel und API: Endpunkt aufloesen → Overrides → Prompt → Stream → Lab → Logbuch. */
   private async tune(p: { text: string; dials: Dials; note: string; signal?: AbortSignal; quiet?: boolean; onToken?: (t: string) => void; onReasoning?: (t: string) => void }): Promise<TuneResult> {
     const ep = await this.resolveEndpoint();
@@ -303,54 +314,40 @@ export default class LingoTunerPlugin extends Plugin {
     const started = Date.now();
     // Ein Tunen = eine Nutzer-Handlung = eine turnId (apiVersion 4); das Lab klammert damit Aufrufe.
     const turnId = crypto.randomUUID();
-    let first: number | undefined;
-    const ctrl = new AbortController();
-    if (p.signal) {
-      if (p.signal.aborted) ctrl.abort();
-      else p.signal.addEventListener("abort", () => { ctrl.abort(); }, { once: true });
-    }
-    let timedOut = false;
-    const timer = window.setTimeout(() => { timedOut = true; ctrl.abort(); }, this.settings.timeoutSec * 1000);
-    // „Erstes Token, egal welcher Art": ein Reasoning-Modell schickt Minuten lang nur Gedanken,
-    // bevor der erste Inhalts-Token kommt. Loeschte nur onToken den Timer, riss das Zeitlimit
-    // einen sichtbar arbeitenden Lauf ab.
-    const onToken = (tk: string): void => {
-      if (first === undefined) { first = Date.now(); window.clearTimeout(timer); }
-      p.onToken?.(tk);
-    };
-    const onReasoning = (tk: string): void => {
-      if (first === undefined) { first = Date.now(); window.clearTimeout(timer); }
-      p.onReasoning?.(tk);
-    };
-    let result = await streamTune(xhrTransport, { messages, endpoint: ep, model, sentModel, params, signal: ctrl.signal, onToken, onReasoning });
-    window.clearTimeout(timer);
+    const timeouts = { firstChunkSec: this.settings.timeoutSec, idleSec: CHAT_IDLE_TIMEOUT_MS / 1000 };
+    let result = await streamTune(this.chatClientFor(ep), {
+      messages, endpoint: ep, model, sentModel, params, timeouts, signal: p.signal, onToken: p.onToken, onReasoning: p.onReasoning,
+    });
 
-    if (!result.ok && result.error.kind === "aborted" && timedOut) {
-      result = { ok: false, error: { kind: "timeout", seconds: this.settings.timeoutSec }, partial: result.partial };
-    } else if (!result.ok && result.error.kind === "network") {
-      // „Probe gruen, Chat rot" — ein lokaler Server ohne CORS-Header antwortet requestUrl, nicht XHR.
+    if (!result.ok && result.error.kind === "network") {
+      // „Probe gruen, Chat rot" — der Client hat Stream UND Anfrage ohne Stream versucht (Fallback
+      // ueber requestUrl); scheitern beide, ist der Endpunkt entweder tot oder verweigert beides.
       const probe = await probeEndpoint(ep, PROBE_TIMEOUT_MS);
-      result = { ok: false, error: classifyNetworkFailure(probe.reachable), partial: result.partial };
+      result = { ...result, error: classifyNetworkFailure(probe.reachable) };
       if (!probe.reachable) this.invalidateEndpointCache();
     }
 
     const facts = responseFactsFromResult(result);
     if (facts) this.requestSession.report(checkResponse({ family, thinking: level }, facts));
 
-    try {
-      readLabApi(this.app)?.log({
-        plugin: "lingotuner", feature: "tune", model, endpointUrl: ep.url, messages,
-        content: result.ok ? result.text : result.partial,
-        ...(result.ok && result.reasoning ? { reasoning: result.reasoning } : {}),
-        ...(result.ok && result.truncated ? { finishReason: "length" } : {}),
-        latencyMs: Date.now() - started,
-        ...(first !== undefined ? { ttftMs: first - started } : {}),
-        ...(ep.apiKey ? { secrets: [ep.apiKey] } : {}),
-        promptTemplate: systemPrompt(p.dials, { lang: opts.lang, overrides }),
-        turnId,
-        ...(result.ok ? {} : { error: result.error.kind }),
-      });
-    } catch { /* Telemetrie darf einen Lauf nie mitreissen. */ }
+    const lab = logToLab(this.app, {
+      plugin: "lingotuner", feature: "tune", model, endpointUrl: ep.url, messages,
+      content: result.ok ? result.text : result.partial,
+      ...(result.ok && result.reasoning ? { reasoning: result.reasoning } : {}),
+      ...(result.ok && result.truncated ? { finishReason: "length" } : {}),
+      latencyMs: Date.now() - started,
+      ...(result.ttftMs !== undefined ? { ttftMs: result.ttftMs } : {}),
+      ...(ep.apiKey ? { secrets: [ep.apiKey] } : {}),
+      promptTemplate: systemPrompt(p.dials, { lang: opts.lang, overrides }),
+      turnId,
+      ...(result.ok ? {} : { error: result.error.kind }),
+    });
+    // Ein Lab, das da ist, aber nicht antwortet wie erwartet (andere apiVersion), sah bisher aus
+    // wie „kein Lab“ — einmal je Sitzung melden.
+    if (!lab.ok && lab.reason === "version-mismatch" && !this.labMismatchWarned) {
+      this.labMismatchWarned = true;
+      console.warn(`LingoTuner: ${lab.detail} — Aufzeichnung im Lab ist aus`);
+    }
 
     if (result.ok && this.settings.logbookEnabled) {
       try {
