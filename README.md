@@ -1,12 +1,12 @@
 # LingoTuner
 
-> 🇬🇧 English · [🇩🇪 Deutsch](https://git.jkaindl.de/jkaindl/lingotuner/src/branch/main/README.de.md)
+> 🇬🇧 English · [🇩🇪 Deutsch](https://github.com/johannes-kaindl/lingotuner/blob/main/README.de.md)
 
 **Retune the communication style of a text with four dials and a local LLM — direct or diplomatic, explicit or implicit, factual or social, literal or figurative. Nothing leaves your machine.**
 
-[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](https://git.jkaindl.de/jkaindl/lingotuner/src/branch/main/LICENSE)
-[![Docs: CC BY-SA 4.0](https://img.shields.io/badge/docs-CC%20BY--SA%204.0-lightgrey.svg)](https://git.jkaindl.de/jkaindl/lingotuner/src/branch/main/LICENSE-DOCS)
-[![Release](https://img.shields.io/gitea/v/release/jkaindl/lingotuner?gitea_url=https%3A%2F%2Fgit.jkaindl.de&label=release)](https://git.jkaindl.de/jkaindl/lingotuner/releases)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](https://github.com/johannes-kaindl/lingotuner/blob/main/LICENSE)
+[![Docs: CC BY-SA 4.0](https://img.shields.io/badge/docs-CC%20BY--SA%204.0-lightgrey.svg)](https://github.com/johannes-kaindl/lingotuner/blob/main/LICENSE-DOCS)
+[![Release](https://img.shields.io/github/v/release/johannes-kaindl/lingotuner?label=release)](https://github.com/johannes-kaindl/lingotuner/releases)
 ![Platform](https://img.shields.io/badge/platform-Obsidian%201.8.7%2B%20·%20desktop%20%26%20mobile-7c3aed)
 
 Neurodivergent and neurotypical communication styles differ along a few well-described dimensions: how direct a request is, how much context is spelled out, how much social framing surrounds the content, and how literal the language is. LingoTuner is an interpreter between those styles. Select a text, set four dials, add a note if you like, and a local model rewrites the text — same information, different style. A sidebar panel next to your note holds the four sliders, the note field, the streamed result and the four ways out of it.
@@ -29,28 +29,28 @@ Neurodivergent and neurotypical communication styles differ along a few well-des
 - **Obsidian 1.8.7+** (desktop or mobile).
 - **An OpenAI-compatible local server** with a chat model loaded — [LM Studio](https://lmstudio.ai), [Ollama](https://ollama.com) or MLX. New to local LLMs? The **[local LLM setup guide](https://uplink.jkaindl.de/llm-setup)** walks you through server, model and mobile access end to end.
 - **CORS, if the connection test is green but the stream is blocked.** The result is streamed over XHR from the origin `app://obsidian.md`, and a server that answers a plain request may still refuse that. In LM Studio enable CORS in the server settings (`lms server start --bind 0.0.0.0 --cors` sets both at once — a missing flag is reset to its default); for Ollama set `OLLAMA_ORIGINS=app://obsidian.md`. The plugin names this case instead of reporting a generic network error.
-- **A mid-size model, if you care about the result.** The rewrite has to keep every piece of information while changing the style; measured against a local LM Studio, a 35B mixture-of-experts model invented no information, never switched language and never returned the text unchanged, across all 16 dial steps in both languages. Two of those steps (`context:-2`, `social:2`) hit the intended tone but not the concreteness of the reference text — see [`docs/internal/LAB.md`](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/internal/LAB.md). A very small model tends to shorten instead of rephrase.
+- **A mid-size model, if you care about the result.** The rewrite has to keep every piece of information while changing the style; measured against a local LM Studio, a 35B mixture-of-experts model invented no information, never switched language and never returned the text unchanged, across all 16 dial steps in both languages. Two of those steps (`context:-2`, `social:2`) hit the intended tone but not the concreteness of the reference text. A very small model tends to shorten instead of rephrase.
 
 ## Install
 
 ### Catalog (recommended)
 
-**Via [AnySource Sideloader](https://git.jkaindl.de/jkaindl/anysource-sideloader)**, which installs and updates plugins from any git forge. Subscribe to the Order from Traces catalog once under **Settings → AnySource Sideloader → Catalogs → Add**:
+**Via [AnySource Sideloader](https://github.com/johannes-kaindl/anysource-sideloader)**, which installs and updates plugins from any git forge. Subscribe to the Order from Traces catalog once under **Settings → AnySource Sideloader → Catalogs → Add**:
 
 ```
 https://git.jkaindl.de/jkaindl/obsidian-catalog/raw/branch/main/catalog.json
 ```
 
-LingoTuner then appears in the sideloader's plugin list and updates like any other plugin; every download is checksum-verified. To install just this one plugin without the catalog, add its repository URL as a source instead: `https://git.jkaindl.de/jkaindl/lingotuner`.
+LingoTuner then appears in the sideloader's plugin list and updates like any other plugin; every download is checksum-verified. To install just this one plugin without the catalog, add its repository URL as a source instead: `https://github.com/johannes-kaindl/lingotuner`.
 
 ### Manual
 
-Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://git.jkaindl.de/jkaindl/lingotuner/releases) (or the `lingotuner.zip` bundle, which contains exactly those three files) into `<vault>/.obsidian/plugins/lingotuner/`, then enable the plugin under **Settings → Community plugins**.
+Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/johannes-kaindl/lingotuner/releases) (or the `lingotuner.zip` bundle, which contains exactly those three files) into `<vault>/.obsidian/plugins/lingotuner/`, then enable the plugin under **Settings → Community plugins**.
 
 ### From source
 
 ```bash
-git clone https://git.jkaindl.de/jkaindl/lingotuner
+git clone https://github.com/johannes-kaindl/lingotuner
 cd lingotuner
 npm install
 npm run build   # produces main.js

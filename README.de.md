@@ -1,12 +1,12 @@
 # LingoTuner
 
-> [🇬🇧 English](https://git.jkaindl.de/jkaindl/lingotuner/src/branch/main/README.md) · 🇩🇪 Deutsch
+> [🇬🇧 English](https://github.com/johannes-kaindl/lingotuner/blob/main/README.md) · 🇩🇪 Deutsch
 
 **Den Kommunikationsstil eines Textes an vier Reglern nachstellen, mit einem lokalen LLM — direkt oder diplomatisch, explizit oder implizit, sachlich oder sozial, wörtlich oder bildhaft. Nichts verlässt den Rechner.**
 
-[![Lizenz: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](https://git.jkaindl.de/jkaindl/lingotuner/src/branch/main/LICENSE)
-[![Doku: CC BY-SA 4.0](https://img.shields.io/badge/docs-CC%20BY--SA%204.0-lightgrey.svg)](https://git.jkaindl.de/jkaindl/lingotuner/src/branch/main/LICENSE-DOCS)
-[![Release](https://img.shields.io/gitea/v/release/jkaindl/lingotuner?gitea_url=https%3A%2F%2Fgit.jkaindl.de&label=release)](https://git.jkaindl.de/jkaindl/lingotuner/releases)
+[![Lizenz: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](https://github.com/johannes-kaindl/lingotuner/blob/main/LICENSE)
+[![Doku: CC BY-SA 4.0](https://img.shields.io/badge/docs-CC%20BY--SA%204.0-lightgrey.svg)](https://github.com/johannes-kaindl/lingotuner/blob/main/LICENSE-DOCS)
+[![Release](https://img.shields.io/github/v/release/johannes-kaindl/lingotuner?label=release)](https://github.com/johannes-kaindl/lingotuner/releases)
 ![Plattform](https://img.shields.io/badge/platform-Obsidian%201.8.7%2B%20·%20Desktop%20%26%20Mobil-7c3aed)
 
 Neurodivergente und neurotypische Kommunikationsstile unterscheiden sich entlang einiger gut beschriebener Dimensionen: wie direkt eine Bitte ausgesprochen wird, wie viel Kontext ausformuliert ist, wie viel soziale Rahmung den Inhalt umgibt und wie wörtlich die Sprache ist. LingoTuner dolmetscht zwischen diesen Stilen. Text markieren, vier Regler stellen, bei Bedarf eine Anmerkung dazuschreiben — ein lokales Modell schreibt den Text um: dieselbe Information, anderer Stil. Ein Panel in der Seitenleiste trägt die vier Regler, das Anmerkungsfeld, das streamende Ergebnis und die vier Wege hinaus.
@@ -29,28 +29,28 @@ Neurodivergente und neurotypische Kommunikationsstile unterscheiden sich entlang
 - **Obsidian 1.8.7+** (Desktop oder Mobil).
 - **Ein OpenAI-kompatibler lokaler Server** mit geladenem Chat-Modell — [LM Studio](https://lmstudio.ai), [Ollama](https://ollama.com) oder MLX. Neu bei lokalen LLMs? Die **[Anleitung für lokale LLMs](https://uplink.jkaindl.de/llm-setup)** führt durch Server, Modell und Mobilzugriff.
 - **CORS, falls der Verbindungstest grün ist und der Stream trotzdem blockiert.** Das Ergebnis wird per XHR aus dem Ursprung `app://obsidian.md` gestreamt, und ein Server, der eine einfache Anfrage beantwortet, kann genau das ablehnen. In LM Studio CORS in den Server-Einstellungen einschalten (`lms server start --bind 0.0.0.0 --cors` setzt beides zusammen — ein fehlendes Flag wird auf den Default zurückgesetzt); für Ollama `OLLAMA_ORIGINS=app://obsidian.md` setzen. Das Plugin benennt diesen Fall, statt einen allgemeinen Netzwerkfehler zu melden.
-- **Ein mittelgroßes Modell, wenn das Ergebnis zählen soll.** Das Umschreiben muss jede Information halten und dabei den Stil ändern; gemessen gegen ein lokales LM Studio erfand ein 35B-Mixture-of-Experts-Modell über alle 16 Reglerstufen in beiden Sprachen keine Information, wechselte nie die Sprache und gab den Text nie unverändert zurück. Zwei Stufen (`context:-2`, `social:2`) trafen den Ton, aber nicht die Konkretheit des erwarteten Textes — siehe [`docs/internal/LAB.md`](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/internal/LAB.md). Ein sehr kleines Modell kürzt eher, als dass es umformuliert.
+- **Ein mittelgroßes Modell, wenn das Ergebnis zählen soll.** Das Umschreiben muss jede Information halten und dabei den Stil ändern; gemessen gegen ein lokales LM Studio erfand ein 35B-Mixture-of-Experts-Modell über alle 16 Reglerstufen in beiden Sprachen keine Information, wechselte nie die Sprache und gab den Text nie unverändert zurück. Zwei Stufen (`context:-2`, `social:2`) trafen den Ton, aber nicht die Konkretheit des erwarteten Textes. Ein sehr kleines Modell kürzt eher, als dass es umformuliert.
 
 ## Installation
 
 ### Katalog (empfohlen)
 
-**Über den [AnySource Sideloader](https://git.jkaindl.de/jkaindl/anysource-sideloader)**, der Plugins von jeder Git-Forge installiert und aktualisiert. Den Katalog „Order from Traces“ einmal unter **Einstellungen → AnySource Sideloader → Kataloge → Hinzufügen** eintragen:
+**Über den [AnySource Sideloader](https://github.com/johannes-kaindl/anysource-sideloader)**, der Plugins von jeder Git-Forge installiert und aktualisiert. Den Katalog „Order from Traces“ einmal unter **Einstellungen → AnySource Sideloader → Kataloge → Hinzufügen** eintragen:
 
 ```
 https://git.jkaindl.de/jkaindl/obsidian-catalog/raw/branch/main/catalog.json
 ```
 
-LingoTuner erscheint dann in der Plugin-Liste des Sideloaders und aktualisiert sich wie jedes andere Plugin; jeder Download wird per Prüfsumme verifiziert. Wer nur dieses eine Plugin ohne Katalog will, trägt stattdessen die Repository-URL als Quelle ein: `https://git.jkaindl.de/jkaindl/lingotuner`.
+LingoTuner erscheint dann in der Plugin-Liste des Sideloaders und aktualisiert sich wie jedes andere Plugin; jeder Download wird per Prüfsumme verifiziert. Wer nur dieses eine Plugin ohne Katalog will, trägt stattdessen die Repository-URL als Quelle ein: `https://github.com/johannes-kaindl/lingotuner`.
 
 ### Manuell
 
-`main.js`, `manifest.json` und `styles.css` aus dem [letzten Release](https://git.jkaindl.de/jkaindl/lingotuner/releases) (oder das Bündel `lingotuner.zip`, das genau diese drei Dateien enthält) nach `<vault>/.obsidian/plugins/lingotuner/` legen und das Plugin unter **Einstellungen → Community-Plugins** aktivieren.
+`main.js`, `manifest.json` und `styles.css` aus dem [letzten Release](https://github.com/johannes-kaindl/lingotuner/releases) (oder das Bündel `lingotuner.zip`, das genau diese drei Dateien enthält) nach `<vault>/.obsidian/plugins/lingotuner/` legen und das Plugin unter **Einstellungen → Community-Plugins** aktivieren.
 
 ### Aus dem Quellcode
 
 ```bash
-git clone https://git.jkaindl.de/jkaindl/lingotuner
+git clone https://github.com/johannes-kaindl/lingotuner
 cd lingotuner
 npm install
 npm run build   # erzeugt main.js
