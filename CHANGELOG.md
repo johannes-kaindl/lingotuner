@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-26
+
 ### Changed
 - **Chat client from obsidian-kit 0.43.0** (`createChatClient`), replacing the local XHR client. Visible effects:
   - After the first token, a stall of **120 seconds without data** now ends the run with "No answer within 120 seconds". Before, only the wait for the first token was limited (setting *Timeout*), and a stream that went silent later hung forever.
