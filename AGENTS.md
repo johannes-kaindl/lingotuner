@@ -121,6 +121,7 @@ npm run check:pure                # src/core darf `obsidian` nicht importieren
 npm run gate                      # lint + alle Typechecks + test + check:pure + build
 npm run lab:tune                  # Prompt-Lab gegen den lokalen Endpunkt (scripts/tune-lab.ts)
 npm run smoke:gui                 # GUI-Smoke gegen ein laufendes Obsidian (scripts/gui-smoke.ts)
+npm run shots -- --port <p> --only <hero|rounds|settings|dials>   # README-Bilder (Zweitinstanz, Vertrag: docs/images/README.md); npm run shots:check = readme_lint
 npm run release / version-bump / preflight   # delegieren ans zentrale ../tools/release/ (Dach)
 ```
 
