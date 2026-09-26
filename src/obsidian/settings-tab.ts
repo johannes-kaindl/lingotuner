@@ -1,6 +1,7 @@
 import { App, Notice, PluginSettingTab, Setting, type SettingDefinitionItem } from "obsidian";
 import type LingoTunerPlugin from "../main";
 import { t } from "../vendor/kit/i18n";
+import { githubHelpUrls, helpSettingDefinition } from "../vendor/kit-obsidian/help-setting";
 import { renderSettingDefinitions, settingBodyHost, refreshSettingsTab } from "../vendor/kit-obsidian/settings_walker";
 import { buildEndpointList, type EndpointListStrings } from "../vendor/kit-obsidian/endpoint-list";
 import { renderModelPicker } from "../vendor/kit-obsidian/model-picker";
@@ -93,7 +94,17 @@ export class LingoTunerSettingTab extends PluginSettingTab {
         ],
       },
     ];
-    return defs as unknown as SettingDefinitionItem[];
+    // UI-STANDARD §8: die Hilfe-Zeile steht vor jeder Gruppe.
+    const help = helpSettingDefinition({
+      ...githubHelpUrls("lingotuner"),
+      texts: {
+        name: t("set.help.name"),
+        desc: t("set.help.desc"),
+        openDocs: t("set.help.openDocs"),
+        reportIssue: t("set.help.reportIssue"),
+      },
+    });
+    return [help, ...(defs as unknown as SettingDefinitionItem[])];
   }
 
   private endpointStrings(): EndpointListStrings {

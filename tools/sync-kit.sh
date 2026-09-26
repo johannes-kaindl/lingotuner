@@ -285,6 +285,13 @@ hole "$KIT" "$VER" "src/testing/obsidian-mock.ts" "tests/vendor/kit/obsidian-moc
 stamp "tests/vendor/kit/obsidian-mock.ts" "src/testing/obsidian-mock.ts"
 echo "vendored obsidian-kit@$VER/testing/obsidian-mock.ts"
 
+# "vendored_mixed_version" (Einzeldatei-Modus, z. B. help-setting.ts) liegt AUSSERHALB der Sammelliste;
+# das Neuschreiben der VENDOR.json durch die Heredocs unten loeschte den Eintrag still. Vorher sichern,
+# nachher zurueckschreiben.
+for j in src/vendor/kit/VENDOR.json src/vendor/kit-obsidian/VENDOR.json; do
+  [ -f "$j" ] && cp "$j" "$j.mixed.bak" || true
+done
+
 cat > src/vendor/kit/VENDOR.json <<JSON
 {
   "source": "obsidian-kit",
@@ -313,4 +320,17 @@ cat > tests/vendor/kit/VENDOR.json <<JSON
   "note": "Verbatim snapshot. Never hand-edit. Re-vendor via tools/sync-kit.sh."
 }
 JSON
+python3 - <<'PY'
+import json, os
+for pfad in ("src/vendor/kit/VENDOR.json", "src/vendor/kit-obsidian/VENDOR.json"):
+    bak = pfad + ".mixed.bak"
+    if not os.path.exists(bak):
+        continue
+    alt = json.load(open(bak))
+    os.remove(bak)
+    if "vendored_mixed_version" in alt:
+        neu = json.load(open(pfad))
+        neu["vendored_mixed_version"] = alt["vendored_mixed_version"]
+        open(pfad, "w").write(json.dumps(neu, indent=2, ensure_ascii=False) + "\n")
+PY
 echo "VENDOR.json → $VER ($SHA)"

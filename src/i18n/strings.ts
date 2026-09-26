@@ -122,6 +122,10 @@ export const STRINGS = {
     "error.timeout": "No answer within {0} seconds. Check the server or raise the timeout in the settings.",
     "error.overrideFile": "Override file could not be read, shipped text used: {0}",
 
+    "set.help.name": "Help",
+    "set.help.desc": "Getting started, how-tos and troubleshooting",
+    "set.help.openDocs": "Open documentation",
+    "set.help.reportIssue": "Report an issue",
     "set.groupConnection": "Connection",
     "set.groupStyle": "Style",
     "set.groupOutput": "Output",
@@ -389,6 +393,10 @@ export const STRINGS = {
     "error.timeout": "Keine Antwort innerhalb von {0} Sekunden. Server prüfen oder das Zeitlimit in den Einstellungen erhöhen.",
     "error.overrideFile": "Override-Datei nicht lesbar, Auslieferungstext verwendet: {0}",
 
+    "set.help.name": "Hilfe",
+    "set.help.desc": "Erste Schritte, Anleitungen und Fehlersuche",
+    "set.help.openDocs": "Dokumentation öffnen",
+    "set.help.reportIssue": "Problem melden",
     "set.groupConnection": "Verbindung",
     "set.groupStyle": "Stil",
     "set.groupOutput": "Ausgabe",

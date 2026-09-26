@@ -1281,6 +1281,37 @@ async function stelleText(stelle: SettingsStelle): Promise<string> {
 
 const MANAGED_TEXT = ["Endpunkte kommen vom LLM Endpoint Manager", "Endpoints come from the LLM Endpoint Manager"];
 
+/** H · Hilfe-Zeile (UI-STANDARD §8): die ERSTE Zeile des Settings-Tabs traegt einen Text-Knopf und
+ *  den Icon-Knopf (`bug`, Tooltip als Name). Gemessen wird Position und Bedienung, nicht der
+ *  Wortlaut — sprachfrei, damit der Punkt in einer EN- und einer DE-Instanz laeuft. */
+async function pruefeHilfeZeile(cdp: Cdp, port: number): Promise<void> {
+  console.log("\nH · Hilfe-Zeile in den Settings");
+  let stelle: SettingsStelle | null = null;
+  try {
+    stelle = await openSettings(cdp, port);
+    const hilfe = await stelle.cdp.evaluate<{ name: string; knoepfe: number; icon: string | null } | null>(
+      `return ${stelle.el(`(() => {
+        const erste = document.querySelector(".setting-item");
+        if (!erste) return null;
+        return {
+          name: erste.querySelector(".setting-item-name")?.textContent?.trim() ?? "",
+          knoepfe: erste.querySelectorAll("button").length,
+          icon: erste.querySelector(".extra-setting-button")?.getAttribute("aria-label") ?? null,
+        };
+      })()`)};`,
+    );
+    record(
+      "H1 Die Hilfe-Zeile steht als erste Zeile im Tab, mit Text-Knopf und Icon-Knopf",
+      hilfe !== null && hilfe.name !== "" && hilfe.knoepfe === 1 && !!hilfe.icon,
+      hilfe ? `erste Zeile „${hilfe.name}“ · Text-Knoepfe ${hilfe.knoepfe} · Icon „${hilfe.icon ?? "keiner"}“` : "kein Settings-DOM",
+    );
+  } catch (e) {
+    record("H1 Die Hilfe-Zeile steht als erste Zeile im Tab, mit Text-Knopf und Icon-Knopf", false, `Fehler: ${(e as Error).message}`);
+  } finally {
+    if (stelle) closeSettings(cdp, stelle);
+  }
+}
+
 /** M1-M3 (Task-5-Brief): Manager an → Settings zeigen den Baustein statt der lokalen Liste,
  *  ein Lauf geht an den Manager-Endpunkt; Manager aus → beides faellt auf lokal zurueck.
  *  M2/M3-Laeufe nutzen `laufeTune` (bereits fuer Teil C vorhanden) — dieselbe Mutation
@@ -1647,6 +1678,7 @@ async function main(): Promise<void> {
     await pruefePanel(cdp);
     await pruefeLauf(cdp);
     await pruefeManager(cdp, port);
+    await pruefeHilfeZeile(cdp, port);
     await pruefeLab(cdp);
     await pruefeAnfrage(cdp, port);
     await pruefeRundenZeile(cdp);
