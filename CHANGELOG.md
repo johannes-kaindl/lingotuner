@@ -9,10 +9,11 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - The GitHub release now also carries a ready-to-unpack `lingotuner.zip` (the plugin folder with `main.js`, `manifest.json` and `styles.css`) and a `checksums.sha256` file. For a manual install, download the zip and unpack it into `.obsidian/plugins/` instead of creating the folder and saving three files by hand.
+- **Apple Intelligence (on-device) as an endpoint.** With the LLM Endpoint Manager 0.4.0 the endpoint dropdown also offers "Apple Intelligence (on-device)"; a tune then runs through an Apple Shortcut instead of HTTP. Limits: the answer arrives all at once (no stream), is capped at about 4096 tokens, Shortcuts briefly comes to the front, and only one request runs at a time. The Model field stays empty. Failures of the shortcut (timeout, busy, cancelled, error) show their own message instead of an HTTP error. See the new guide "Use the Apple Intelligence endpoint".
 
 ### Changed
 
-- Kit chat client 0.44.0 (no user-visible change).
+- obsidian-kit 0.46.0 and code-kit 0.9.0 (was 0.43.0 and 0.7.0, chat client 0.44.0). Brings the shortcut bridge and transport choice; the endpoint dropdown, model picker and other kit parts are updated with it. A source that uses the Shortcuts transport no longer probes a backend.
 
 ## [0.5.0] — 2026-09-26
 

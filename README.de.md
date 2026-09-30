@@ -104,6 +104,7 @@ Die Antwort wird per XHR (Server-Sent Events) gestreamt, Denk-Ausgaben werden vo
 
 - [Dokumentations-Index](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/README.md) — alle Anleitungen an einem Ort (englisch).
 - [Getting started](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/getting-started.md) — von der Installation bis zum ersten getunten Text (englisch).
+- [Use the Apple Intelligence endpoint](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/use-apple-intelligence.md) — auf dem Gerät über einen Apple-Kurzbefehl tunen, samt Grenzen (englisch).
 - [Troubleshooting](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/troubleshooting.md) — die genaue Meldung, ihre Ursache und die Abhilfe (englisch).
 
 ## Mitwirken

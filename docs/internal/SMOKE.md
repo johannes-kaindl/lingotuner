@@ -114,6 +114,11 @@ Rollbereich geworden; C9/C9b tragen seitdem eine andere Frage, C11/C11b/C9c sind
 | C10 | Zurücksetzen fragt nach und räumt | mit Runden: Klick auf `.lt-reset` öffnet den Bestätigungsdialog; nach dem Bestätigen 0 Runden, kein `.lt-reset`, Leerzustand da | grün (vorher 2 Runden) | 2026-09-11 |
 | C11 | Panel folgt dem Strom | alle 150 ms während des Laufs: steht der untere Rand von `.okit-stream-tail` noch im Sichtfenster des Panels, und wie groß ist `rest` (`scrollHeight − scrollTop − clientHeight`)? | grün (2/2 sichtbar, rest 0 px) | 2026-09-11 |
 | C11b | Hochscrollen im Strom wird respektiert | mitten im Strom künstlich `scrollTop = 0`; danach darf das Kit **nicht** mehr nachziehen | grün (3 Messungen, größter Stand 0 px) | 2026-09-11 |
+| S1 | Fake-Manager liefert den Apple-Endpunkt nur bei Opt-in | `list({capability})` ohne, `list({…, transports:["http","shortcuts"]})` mit Apple — misst den Fake selbst, damit S2 nicht grün wird, ohne dass das Opt-in je gebraucht wurde | grün | 2026-10-01 |
+| S2 | Dropdown zeigt „Apple Intelligence (on-device)“ | Optionen der Endpunkt-Auswahl im Settings-Tab (`transports`-Option des Kit-Bausteins) | grün | 2026-10-01 |
+| S3 | Wahl → Quelle traegt `transport: "shortcuts"` | Dropdown wie ein Nutzer setzen (`change`), dann `isShortcutsEndpoint()`; der Hinweis zu den Grenzen („4096“) steht im Tab | grün | 2026-10-01 |
+| S4 | Lauf öffnet die `shortcuts://`-URL mit dem gefalteten Prompt | `window.open` **vor** dem Klick gestubbt (sonst öffnet die Zweitinstanz die Kurzbefehle-App), im `finally` zurückgebaut; URL beginnt mit `shortcuts://`, trägt den Namen und den Prompt | grün | 2026-10-01 |
+| S5 | Zeitüberschreitung zeigt die Kurzbefehl-Meldung | Kurzbefehl-Frist 3 s, kein Callback: Status `is-error`, Text nennt „Apple Intelligence“, kein „(408)“ | grün | 2026-10-01 |
 
 **Bilanz des letzten Laufs: 29 grün · 0 rot · 1 übersprungen — von 30 Prüfpunkten.**
 (Vorlauf 2026-09-08, vor dem Kit-Umbau: 25 grün · 0 rot · 1 übersprungen von 26.)
@@ -286,6 +291,9 @@ Der Chat-Client aus Kit 0.43.0 wiederholt nach einer Origin-/CORS-Weigerung des 
 | Markierung ersetzen (Rand-Whitespace) | Eine Editor-**Selektion** ließe sich über CDP nur über CodeMirror-Interna setzen. Die Logik selbst ist im Unit-Test abgedeckt (`tests/editor-io.test.ts`, `splitSelectionAffix`); im Smoke bliebe Handarbeit. Eine stillschweigend ausgelassene Prüfung liest sich hinterher wie eine grüne — deshalb steht sie im Protokoll. |
 
 ## Gegenprobe (Pflicht: ein Werkzeug, das nie rot wird, misst nichts)
+
+**S1–S5 (2026-10-01):** ohne die Option `transports: ["http", "shortcuts"]` im Settings-Tab sind S2–S5 **rot** (Dropdown ohne Apple, Quelle bleibt HTTP, `window.open` nie aufgerufen, Status nicht `is-error`), S1 bleibt grün — die Punkte hängen an der Option, nicht am Fake. Ein echter Rundlauf (die Kurzbefehle-App antwortet) ist nur am Gerät möglich und bewusst kein Prüfpunkt: die Protokoll-Rückkehr `obsidian://lingotuner-shortcut` lässt sich im Renderer nicht auslösen (`app.protocolHandlers` fehlt).
+
 
 **2026-09-07, 18:44 CEST.** Gebrochen wurde eine Zeile in `src/obsidian/view-render.ts`:
 

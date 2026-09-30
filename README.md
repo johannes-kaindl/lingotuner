@@ -104,6 +104,7 @@ The answer is streamed over XHR (server-sent events), reasoning output is separa
 
 - [Documentation index](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/README.md) — all guides in one place.
 - [Getting started](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/getting-started.md) — from the install to your first tuned text.
+- [Use the Apple Intelligence endpoint](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/use-apple-intelligence.md) — tune on the device through an Apple Shortcut, with its limits.
 - [Troubleshooting](https://github.com/johannes-kaindl/lingotuner/blob/main/docs/troubleshooting.md) — the exact message, its cause and the fix.
 
 ## Contributing
