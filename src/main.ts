@@ -16,9 +16,10 @@ import { buildMessages, systemPrompt } from "./core/prompt";
 import { loadOverrides } from "./core/examples/overrides";
 import { readiness as readinessOf, type Readiness, type SourceKind } from "./core/source";
 import { streamTune, buildTuneParams, responseFactsFromResult, MODE, type TuneResult } from "./core/llm/client";
-import { classifyNetworkFailure } from "./core/llm/errors";
+import { classifyNetworkFailure, classifyShortcutFailure } from "./core/llm/errors";
 import { createLingoTunerApi, type LingoTunerApi } from "./core/api";
-import { probeEndpoint, listModels, makeChatClient, cachedProbe, CHAT_IDLE_TIMEOUT_MS } from "./obsidian/http";
+import { probeEndpoint, listModels, makeChatClient, chatSetupFor, cachedProbe, CHAT_IDLE_TIMEOUT_MS } from "./obsidian/http";
+import { createShortcutsBridge, type ShortcutsBridge } from "./vendor/kit-obsidian/shortcuts-bridge";
 import type { ChatClient } from "./vendor/kit-obsidian/chat-client";
 import { logToLab } from "./vendor/kit-obsidian/lab-client";
 import { normalizeEndpoint } from "./vendor/kit/endpoint";
@@ -77,6 +78,8 @@ export default class LingoTunerPlugin extends Plugin {
   private labMismatchWarned = false;
   /** Ein Chat-Client je Endpunkt und Zeitlimit: die Weigerung, ohne Stream weiterzumachen, haengt an der Instanz. */
   private chatClient: { key: string; client: ChatClient } | null = null;
+  /** Bruecke zu Apples on-device-Modell (Kurzbefehl) — im Konsumenten gebaut, der Manager-Vertrag exponiert keine. */
+  private shortcutsBridge!: ShortcutsBridge;
 
   async onload(): Promise<void> {
     setLang(pickLang(safeGetLanguage()));
@@ -89,6 +92,7 @@ export default class LingoTunerPlugin extends Plugin {
       console.warn("LingoTuner: request settings dropped", dropped);
     }
     this.tracker = new SelectionTracker(this.app.workspace);
+    this.shortcutsBridge = createShortcutsBridge(this, { protocolAction: "lingotuner-shortcut" });
     // Nicht awaiten: onload darf nicht auf einer Netz-Probe haengen. Setzt activeEndpoint,
     // damit die Endpunkt-Liste in den Einstellungen die aktive Zeile schon VOR dem ersten Lauf kennt.
     void this.resolveEndpoint();
@@ -265,9 +269,14 @@ export default class LingoTunerPlugin extends Plugin {
     });
   }
 
+  /** Kurzbefehl-Endpunkt (Apple Intelligence)? Der Settings-Tab zeigt dazu den Hinweis auf die Grenzen. */
+  isShortcutsEndpoint(): boolean { return this.activeSource?.transport === "shortcuts"; }
+
   private chatClientFor(ep: EndpointConfig): ChatClient {
-    const key = `${normalizeEndpoint(ep.url)}|${this.settings.timeoutSec}`;
-    if (this.chatClient?.key !== key) this.chatClient = { key, client: makeChatClient(this.settings.timeoutSec) };
+    const src = this.activeSource;
+    const sc = src?.transport === "shortcuts" && src.shortcut ? `|shortcuts|${src.shortcut.name}|${src.shortcut.timeoutMs}` : "";
+    const key = `${normalizeEndpoint(ep.url)}|${this.settings.timeoutSec}${sc}`;
+    if (this.chatClient?.key !== key) this.chatClient = { key, client: makeChatClient(this.settings.timeoutSec, src, this.shortcutsBridge) };
     return this.chatClient.client;
   }
 
@@ -314,12 +323,22 @@ export default class LingoTunerPlugin extends Plugin {
     const started = Date.now();
     // Ein Tunen = eine Nutzer-Handlung = eine turnId (apiVersion 4); das Lab klammert damit Aufrufe.
     const turnId = crypto.randomUUID();
-    const timeouts = { firstChunkSec: this.settings.timeoutSec, idleSec: CHAT_IDLE_TIMEOUT_MS / 1000 };
-    let result = await streamTune(this.chatClientFor(ep), {
-      messages, endpoint: ep, model, sentModel, params, timeouts, signal: p.signal, onToken: p.onToken, onReasoning: p.onReasoning,
-    });
+    const viaShortcut = this.activeSource?.transport === "shortcuts";
+    let result: TuneResult;
+    try {
+      const timeouts = { firstChunkSec: chatSetupFor(this.settings.timeoutSec, this.activeSource, this.shortcutsBridge).firstChunkMs / 1000, idleSec: CHAT_IDLE_TIMEOUT_MS / 1000 };
+      result = await streamTune(this.chatClientFor(ep), {
+        messages, endpoint: ep, model, sentModel, params, timeouts, signal: p.signal, onToken: p.onToken, onReasoning: p.onReasoning,
+      });
+    } catch (e) {
+      // Konfigurationsfehler des Transports (Kurzbefehl-Endpunkt ohne Kurzbefehl-Angabe): sichtbar melden, nicht still auf HTTP fallen.
+      result = { ok: false, error: { kind: "shortcut", reason: "error", detail: e instanceof Error ? e.message : String(e) }, partial: "" };
+    }
+    if (viaShortcut && !result.ok && result.error.kind === "http") {
+      result = { ...result, error: classifyShortcutFailure(result.status ?? result.error.status, result.errorText ?? result.error.detail) };
+    }
 
-    if (!result.ok && result.error.kind === "network") {
+    if (!result.ok && result.error.kind === "network" && !viaShortcut) {
       // „Probe gruen, Chat rot" — der Client hat Stream UND Anfrage ohne Stream versucht (Fallback
       // ueber requestUrl); scheitern beide, ist der Endpunkt entweder tot oder verweigert beides.
       const probe = await probeEndpoint(ep, PROBE_TIMEOUT_MS);

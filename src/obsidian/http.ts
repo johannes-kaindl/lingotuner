@@ -1,7 +1,10 @@
 // uebernommen aus obsidian-transmute/src/obsidian/http.ts (probe), 2026-09-07; Chat-Transport seit 2026-09-26 aus obsidian-kit 0.43.0 (chat-client)
 import { requestUrl } from "obsidian";
 import { createChatClient, type ChatClient } from "../vendor/kit-obsidian/chat-client";
-import { requestUrlTransport, xhrSseTransport } from "../vendor/kit-obsidian/chat-transport";
+import { createShortcutsChatTransport, requestUrlTransport, transportFor, xhrSseTransport, type TransportChoice } from "../vendor/kit-obsidian/chat-transport";
+import type { ShortcutsBridge } from "../vendor/kit-obsidian/shortcuts-bridge";
+import type { ClockPort } from "../vendor/kit-obsidian/clock";
+import type { EndpointSourceResult } from "../vendor/kit/endpoint-source";
 import { classifyEndpointStatus, extractModelIds, type EndpointStatus } from "../vendor/kit/endpoint_diagnostics";
 import { normalizeEndpoint } from "../vendor/kit/endpoint";
 import { authHeaders, type EndpointConfig } from "../vendor/kit/endpoint_config";
@@ -13,12 +16,40 @@ import type { BackendId } from "../vendor/kit/sampling-profiles";
  *  `timeoutSec` aus den Einstellungen (Reasoning-Modelle und JIT-Laden brauchen dort Minuten). */
 export const CHAT_IDLE_TIMEOUT_MS = 120_000;
 
-/** EIN Chat-Client je Endpunkt und Zeitlimit: Streaming ueber XHR, bei Origin-/CORS-Weigerung
- *  einmal ohne Stream ueber `requestUrl` — die Weigerung haengt an der Instanz (Kit-Vertrag). */
-export function makeChatClient(firstChunkTimeoutSec: number): ChatClient {
+/** Puffer auf die Kurzbefehl-Frist: die Bruecke meldet ihr Timeout selbst (408), der Client darf
+ *  nicht vorher abbrechen, waehrend sie noch wartet. */
+export const SHORTCUT_CLIENT_SLACK_MS = 10_000;
+
+type SourceTransport = Pick<EndpointSourceResult, "transport" | "shortcut">;
+
+/** Transportwahl und Erst-Chunk-Frist fuer einen aufgeloesten Endpunkt. HTTP: XHR-Stream, bei
+ *  Origin-/CORS-Weigerung einmal ohne Stream ueber `requestUrl` (die Weigerung haengt an der
+ *  Instanz, Kit-Vertrag). Kurzbefehl (Apple Intelligence): one-shot ueber die Bruecke, kein
+ *  HTTP-Fallback; die Frist ist mindestens Kurzbefehl-Frist plus Puffer. Wirft, wenn ein
+ *  Shortcuts-Endpunkt ohne Bruecke oder ohne Kurzbefehl-Angabe ankommt (Konfigurationsfehler). */
+export function chatSetupFor(
+  firstChunkTimeoutSec: number, source: SourceTransport | null, bridge: Pick<ShortcutsBridge, "run"> | null,
+): { choice: TransportChoice; firstChunkMs: number } {
+  const shortcut = source?.shortcut;
+  const choice = transportFor(source ?? {}, {
+    http: xhrSseTransport, httpFallback: requestUrlTransport,
+    ...(bridge && shortcut ? { shortcuts: createShortcutsChatTransport({ bridge, shortcut }) } : {}),
+  });
+  const base = firstChunkTimeoutSec * 1000;
+  const firstChunkMs = source?.transport === "shortcuts" && shortcut ? Math.max(base, shortcut.timeoutMs + SHORTCUT_CLIENT_SLACK_MS) : base;
+  return { choice, firstChunkMs };
+}
+
+/** EIN Chat-Client je Endpunkt, Transport und Zeitlimit. */
+export function makeChatClient(
+  firstChunkTimeoutSec: number, source: SourceTransport | null, bridge: Pick<ShortcutsBridge, "run"> | null,
+  deps: { clock?: ClockPort } = {},
+): ChatClient {
+  const { choice, firstChunkMs } = chatSetupFor(firstChunkTimeoutSec, source, bridge);
   return createChatClient({
-    transport: xhrSseTransport, fallbackTransport: requestUrlTransport,
-    firstChunkTimeoutMs: firstChunkTimeoutSec * 1000, idleTimeoutMs: CHAT_IDLE_TIMEOUT_MS,
+    transport: choice.primary, ...(choice.fallback ? { fallbackTransport: choice.fallback } : {}),
+    firstChunkTimeoutMs: firstChunkMs, idleTimeoutMs: CHAT_IDLE_TIMEOUT_MS,
+    ...(deps.clock ? { clock: deps.clock } : {}),
   });
 }
 
@@ -66,6 +97,7 @@ let backendCache: { url: string; backend: BackendId; at: number } | null = null;
 /** Welches Backend hinter einer URL steckt — 30 s je URL zwischengespeichert (dieselbe Regel
  *  wie der Modelllisten-Cache), bei Aenderung der URL verworfen. Spec § 3.1. */
 export async function cachedProbe(url: string, model: string): Promise<BackendId | null> {
+  if (!/^https?:/i.test(url)) return null; // Sentinel-URL eines Kurzbefehl-Endpunkts (apple-shortcuts://…): kein HTTP-Ziel
   const now = Date.now();
   if (backendCache && backendCache.url === url && now - backendCache.at < BACKEND_CACHE_MS) return backendCache.backend;
   const { backend } = await probeBackend(fetchJsonAdapter, probeBaseUrl(url), model);

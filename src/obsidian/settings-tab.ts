@@ -140,7 +140,7 @@ export class LingoTunerSettingTab extends PluginSettingTab {
   private renderEndpoints(setting: Setting): void {
     const host = settingBodyHost(setting);
     buildEndpointSourceSection({
-      app: this.app, containerEl: host, capability: "chat", caller: "lingotuner",
+      app: this.app, containerEl: host, capability: "chat", caller: "lingotuner", transports: ["http", "shortcuts"],
       choice: () => this.plugin.settings.choice,
       setChoice: async (c) => { this.plugin.settings.choice = c; await this.plugin.saveSettings(); await this.plugin.resolveEndpoint(); },
       local: () => this.plugin.settings.endpoints,
@@ -154,6 +154,7 @@ export class LingoTunerSettingTab extends PluginSettingTab {
       renderLocalList: () => { this.renderLocalEndpointList(host); },
       rerender: () => { this.refreshUi(); },
     });
+    if (this.plugin.isShortcutsEndpoint()) host.createEl("p", { text: t("src.appleHint"), cls: "setting-item-description" });
   }
 
   private renderLocalEndpointList(host: HTMLElement): void {
