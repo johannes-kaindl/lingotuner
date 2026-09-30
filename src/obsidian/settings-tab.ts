@@ -154,7 +154,7 @@ export class LingoTunerSettingTab extends PluginSettingTab {
       renderLocalList: () => { this.renderLocalEndpointList(host); },
       rerender: () => { this.refreshUi(); },
     });
-    if (this.plugin.isShortcutsEndpoint()) host.createEl("p", { text: t("src.appleHint"), cls: "setting-item-description" });
+    if (this.plugin.isShortcutsEndpoint()) new Setting(host).setDesc(t("src.appleHint"));
   }
 
   private renderLocalEndpointList(host: HTMLElement): void {
