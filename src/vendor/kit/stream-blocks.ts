@@ -1,4 +1,4 @@
-// vendored from code-kit@0.7.0, src/ts/pure/stream-blocks.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from code-kit@0.9.0, src/ts/pure/stream-blocks.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /** Where a text that is still arriving can be cut into "finished" and "still running".
  *
  *  The problem it answers: a chat UI streaming a Markdown answer wants to show rendered

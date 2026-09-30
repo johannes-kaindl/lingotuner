@@ -1,14 +1,14 @@
 {
   "sources": {
-    "obsidian-kit": { "ref": "0.43.0" },
-    "code-kit": { "ref": "0.7.0" }
+    "obsidian-kit": { "ref": "0.46.0" },
+    "code-kit": { "ref": "0.9.0" }
   },
   "targets": [
     { "dir": "src/vendor/kit", "source": "code-kit", "from": "src/ts/web", "modules": ["clipboard"] },
     {
       "dir": "src/vendor/kit", "source": "code-kit", "from": "src/ts/pure",
       "modules": [
-        { "name": "sse", "ref": "0.8.0" }, "endpoint", "endpoint_config", "endpoint_diagnostics", "model-choice",
+        "sse", "endpoint", "endpoint_config", "endpoint_diagnostics", "model-choice",
         "model-list-cache", "reasoning", "capabilities", "think-splitter", "think-toggle",
         "timeout", "error_body", "i18n", "settings", "stream-blocks", "sampling-profiles"
       ]
@@ -22,7 +22,7 @@
       "modules": [
         "clipboard", "confirm", "endpoint-list", "model-picker", "settings_walker", "folder-suggest",
         "stream-area", "stable-writer", "endpoint-source", "request-section", "request-session",
-        "thinking-control", "collapsible", { "name": "chat-client", "ref": "0.44.0" }, "chat-transport", "clock", "lab-client", "help-setting"
+        "thinking-control", "collapsible", "chat-client", "chat-transport", "shortcuts-bridge", "clock", "lab-client", "help-setting"
       ],
       "rewrite": [["../pure/", "../kit/"], ["../vendor/code-kit/pure/", "../kit/"], ["../vendor/code-kit/web/", "../kit/"]]
     },

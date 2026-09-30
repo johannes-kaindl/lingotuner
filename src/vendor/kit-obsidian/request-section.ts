@@ -1,11 +1,11 @@
-// vendored from obsidian-kit@0.43.0, src/obsidian/request-section.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.46.0, src/obsidian/request-section.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { Setting, setIcon } from "obsidian";
 import { collapsibleSection, type CollapsibleStorage } from "./collapsible";
 import { copyToClipboard } from "./clipboard";
 import type { RequestSession } from "./request-session";
 import {
   FAMILY_IDS, THINKING_LEVELS, resolveRequestParams, thinkingFor, validateOverride,
-  type BackendId, type FamilyId, type FamilyKey, type FieldExplain, type FieldId, type ModeId,
+  type BackendId, type FamilyId, type FamilyKey, type FieldExplain, type FieldId, type ModeId, type ModelFamilyId,
   type RequestSettings, type ThinkingLevel, type DeviationKind,
 } from "../kit/sampling-profiles";
 
@@ -16,6 +16,9 @@ import {
 export interface RequestSectionState {
   family: FamilyId | null;
   familySource: "manager" | "name" | "none";
+  /** Anzeige-Familie (`EndpointSourceResult.displayFamily`); der Kopf fällt darauf zurück, wenn
+   *  `family` fehlt — als ID, das Plugin übersetzt sie selbst in `strings.head`. */
+  displayFamily?: ModelFamilyId;
   backend: BackendId;
   backendSource: "manager" | "probe" | "none";
   model: string;
@@ -94,7 +97,7 @@ export function buildRequestSection(opts: RequestSectionOptions): void {
 
   // 1. Kopf
   new Setting(body)
-    .setName(st.head(state.family ?? "—", state.familySource, state.backend, state.backendSource))
+    .setName(st.head(state.family ?? state.displayFamily ?? "—", state.familySource, state.backend, state.backendSource))
     .setDesc(state.family ? "" : st.unknownFamily);
   // 2. JIT-Warnung und Alias
   if (state.backend === "lmstudio" && state.defaultModel && state.sentModel !== state.defaultModel) {

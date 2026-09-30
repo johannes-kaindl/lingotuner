@@ -1,10 +1,10 @@
-// vendored from obsidian-kit@0.43.0, src/obsidian/endpoint-source.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.46.0, src/obsidian/endpoint-source.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { Notice, Setting, type App } from "obsidian";
 import { resolveModelChoice, type ModelHintKey } from "../kit/model-choice";
 import type { EndpointConfig } from "../kit/endpoint_config";
 import {
   LLM_ENDPOINT_MANAGER_PLUGIN_ID, isLlmEndpointManagerApi,
-  type Capability, type EndpointChoice, type ImportResult, type LlmEndpointManagerApi,
+  type Capability, type EndpointChoice, type EndpointTransport, type ImportResult, type LlmEndpointManagerApi,
 } from "../kit/endpoint-source";
 import { renderModelPicker } from "./model-picker";
 
@@ -40,6 +40,10 @@ export interface EndpointSourceSectionOptions {
   app: App;
   containerEl: HTMLElement;
   capability: Capability;
+  /** Opt-in: welche Transporte das Dropdown zeigt. Fehlt die Option, bleibt der Manager-Default
+   *  `["http"]` — ein Konsument ohne Kurzbefehl-Weg sieht nie ungefragt einen Apple-Endpunkt.
+   *  Wer `"shortcuts"` anfordert, baut die `ShortcutsBridge` selbst (s. MIGRATION § 0.45.0). */
+  transports?: EndpointTransport[];
   caller: string;
   choice(): EndpointChoice;
   setChoice(c: EndpointChoice): Promise<void>;
@@ -64,7 +68,7 @@ export function buildEndpointSourceSection(opts: EndpointSourceSectionOptions): 
     setting?.open(); setting?.openTabById(LLM_ENDPOINT_MANAGER_PLUGIN_ID);
   }));
 
-  const entries = api.list({ capability: opts.capability });
+  const entries = api.list(opts.transports ? { capability: opts.capability, transports: opts.transports } : { capability: opts.capability });
   new Setting(opts.containerEl).setName(st.pickEndpoint).addDropdown((d) => {
     d.addOption("", st.automatic);
     for (const e of entries) d.addOption(e.id, e.label);
