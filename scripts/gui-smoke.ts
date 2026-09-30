@@ -1456,6 +1456,143 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
   }
 }
 
+const APPLE_ENDPOINT_ID = "fake-apple";
+const APPLE_LABEL = "Apple Intelligence (on-device)";
+const APPLE_SHORTCUT = "Smoke Apple LLM";
+/** Kurz, damit der Timeout-Pfad (S5) in Sekunden laeuft — die Client-Frist richtet sich nach ihr (+10 s). */
+const APPLE_SHORTCUT_TIMEOUT_MS = 3000;
+
+/** Fake-Manager mit ZWEI Endpunkten: einem HTTP-Endpunkt und dem Apple-Endpunkt (Transport
+ *  `shortcuts`). `list(filter)` filtert wie der echte Manager nach `filter.transports` mit Default
+ *  `["http"]` (Spiegel von llm-endpoint-manager/scripts/gui-smoke.ts G2) — S1 misst genau das,
+ *  damit der Fake nicht still alles liefert und S2 gruen wird, ohne dass das Opt-in je gebraucht
+ *  wurde (CORE-TEST-12: ein neues Werkzeug misst im ersten Lauf sich selbst). */
+async function installAppleManager(cdp: Cdp, httpUrl: string): Promise<void> {
+  await cdp.evaluate(`
+    if (!("__smokeVorherManager" in window)) {
+      window.__smokeVorherManager = app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}] ?? null;
+    }
+    const http = { id: "fake-http", label: "Fake HTTP Endpoint", url: ${q(httpUrl)}, provider: "openai", capabilities: ["chat"], defaultModel: ${q(MANAGER_DEFAULT_MODEL)}, enabled: true, hasSecret: false };
+    const shortcut = { name: ${q(APPLE_SHORTCUT)}, timeoutMs: ${APPLE_SHORTCUT_TIMEOUT_MS} };
+    const apple = { id: ${q(APPLE_ENDPOINT_ID)}, label: ${q(APPLE_LABEL)}, url: "apple-shortcuts://on-device", provider: "apple-shortcuts", transport: "shortcuts", shortcut, capabilities: ["chat"], enabled: true, hasSecret: false };
+    const all = [http, apple];
+    const resolved = (e) => e.id === apple.id
+      ? { id: e.id, label: e.label, config: { url: e.url, model: "" }, transport: "shortcuts", shortcut }
+      : { id: e.id, label: e.label, config: { url: e.url, model: ${q(MANAGER_DEFAULT_MODEL)} }, defaultModel: ${q(MANAGER_DEFAULT_MODEL)} };
+    const api = {
+      version: 1,
+      list: (filter) => { const ts = (filter && filter.transports) || ["http"]; return all.filter((e) => ts.includes(e.transport || "http")); },
+      get: (id) => all.find((e) => e.id === id) ?? null,
+      resolve: async () => resolved(http),
+      materialize: async (id) => { const e = all.find((x) => x.id === id); return e ? resolved(e) : { error: "not-found" }; },
+      models: async (id) => (id === http.id ? [${q(MANAGER_DEFAULT_MODEL)}] : []),
+      importEndpoints: async (eps) => ({ added: [], merged: [], skipped: eps.map((e) => e.url) }),
+      on: () => (() => {}),
+    };
+    app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}] = { api };
+    return { ok: true };
+  `);
+}
+
+/** S1–S5 · Apple-Intelligence-Endpunkt (Welle 14): Auswahl im Baustein, Transportwahl, Kurzbefehl-URL,
+ *  Fehlerpfad. Ein echter Rundlauf (Kurzbefehle-App antwortet) ist nur am Geraet moeglich — ehrliche
+ *  Grenze, kein Pruefpunkt; `window.open` ist gestubbt, damit die Zweitinstanz die App nie oeffnet. */
+async function pruefeApple(cdp: Cdp, port: number): Promise<void> {
+  console.log("\nS · Apple-Intelligence-Endpunkt (Kurzbefehl-Transport)");
+  const NAMEN = [
+    "S1 Fake-Manager liefert den Apple-Endpunkt nur bei Opt-in",
+    "S2 Dropdown zeigt „Apple Intelligence (on-device)“",
+    "S3 Wahl → Quelle traegt transport shortcuts",
+    "S4 Lauf oeffnet die shortcuts://-URL mit dem gefalteten Prompt",
+    "S5 Zeitueberschreitung des Kurzbefehls zeigt die Kurzbefehl-Meldung",
+  ];
+  let fake: FakeChatEndpoint | null = null;
+  let stelle: SettingsStelle | null = null;
+  let stubGesetzt = false;
+  try {
+    fake = await startFakeChatEndpoint(MANAGER_DEFAULT_MODEL);
+    await installAppleManager(cdp, fake.url);
+
+    const listen = await cdp.evaluate<{ ohne: string[]; mit: string[] }>(`
+      const api = app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}].api;
+      return { ohne: api.list({ capability: "chat" }).map((e) => e.id), mit: api.list({ capability: "chat", transports: ["http", "shortcuts"] }).map((e) => e.id) };
+    `);
+    record(NAMEN[0]!, listen.ohne.length === 1 && !listen.ohne.includes(APPLE_ENDPOINT_ID) && listen.mit.includes(APPLE_ENDPOINT_ID),
+      `ohne Opt-in ${JSON.stringify(listen.ohne)}, mit Opt-in ${JSON.stringify(listen.mit)}`);
+
+    // S2 — der Baustein bietet den Apple-Endpunkt an (transports-Option im Settings-Tab)
+    stelle = await openSettings(cdp, port);
+    const optionen = await stelle.cdp.evaluate<{ o: string[] | null }>(
+      `return { o: ${stelle.el(`[...root.querySelectorAll("select option")].map((o) => o.textContent || "")`)} };`);
+    const hatApple = (optionen.o ?? []).some((o) => o.includes(APPLE_LABEL));
+    record(NAMEN[1]!, hatApple, `Optionen: ${JSON.stringify(optionen.o ?? [])}`);
+
+    // S3 — Wahl wie ein Nutzer: Dropdown setzen, change ausloesen
+    await stelle.cdp.evaluate(`
+      return ${stelle.el(`(() => {
+        const sel = [...root.querySelectorAll("select")].find((s) => [...s.options].some((o) => (o.textContent || "").includes(${q(APPLE_LABEL)})));
+        if (!sel) return { ok: false };
+        const opt = [...sel.options].find((o) => (o.textContent || "").includes(${q(APPLE_LABEL)}));
+        sel.value = opt.value;
+        sel.dispatchEvent(new Event("change", { bubbles: true }));
+        return { ok: true };
+      })()`)};
+    `);
+    const gewaehlt = await pollUntil<{ transport: string | null }>(cdp, `
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      return p.isShortcutsEndpoint() ? { transport: "shortcuts" } : null;
+    `, 8000, 250);
+    const hinweis = await stelleText(stelle);
+    record(NAMEN[2]!, gewaehlt !== null, gewaehlt !== null
+      ? `isShortcutsEndpoint() wahr; Hinweis zur Grenze im Tab: ${/4096/.test(hinweis) ? "da" : "FEHLT"}`
+      : "Quelle blieb HTTP — die Dropdown-Wahl kam nicht an");
+    closeSettings(cdp, stelle);
+    stelle = null;
+
+    // S4/S5 — ein Lauf. `window.open`-Stub VOR dem Klick, Rueckbau im finally.
+    await cdp.evaluate(`
+      window.__smokeOpenUrls = [];
+      window.__smokeOrigOpen = window.open;
+      window.open = (u) => { window.__smokeOpenUrls.push(String(u)); return null; };
+      return { ok: true };
+    `);
+    stubGesetzt = true;
+    await clickReal(cdp, `document.querySelector(".lt-run")`);
+    const url = await pollUntil<{ u: string }>(cdp, `const u = window.__smokeOpenUrls[0]; return u ? { u } : null;`, 10_000, 250);
+    const dekodiert = url ? decodeURIComponent(url.u) : "";
+    const istKurzbefehl = url !== null && url.u.startsWith("shortcuts://") && dekodiert.includes(APPLE_SHORTCUT);
+    // Der gefaltete Prompt ist System- plus Nutzertext: deutlich mehr als der Kurzbefehl-Name.
+    record(NAMEN[3]!, istKurzbefehl && dekodiert.length > url!.u.indexOf("?") + APPLE_SHORTCUT.length + 40,
+      url ? `${url.u.slice(0, 60)}… (${url.u.length} Zeichen), Name ${dekodiert.includes(APPLE_SHORTCUT) ? "da" : "fehlt"}` : "window.open wurde nicht aufgerufen");
+
+    const ende = await pollUntil<{ ok: boolean }>(cdp, `const s = document.querySelector(".lt-status"); return s && (s.classList.contains("is-ok") || s.classList.contains("is-error")) ? { ok: true } : null;`, 30_000, 500);
+    const meldung = (await text(cdp, ".lt-status-label")) ?? "";
+    const istFehler = ende !== null && (await hasClass(cdp, ".lt-status", "is-error"));
+    record(NAMEN[4]!, istFehler && /Apple[ -]Intelligence/.test(meldung) && !/\(\d{3}\)/.test(meldung),
+      `Status ${istFehler ? "is-error" : "nicht is-error"}, Meldung: ${JSON.stringify(meldung)}`);
+  } catch (e) {
+    for (const n of NAMEN) {
+      if (!checks.some((c) => c.name === n)) skipped(n, `Messung abgebrochen: ${(e as Error).message}`);
+    }
+  } finally {
+    if (stelle) closeSettings(cdp, stelle);
+    if (stubGesetzt) {
+      await cdp.evaluate(`window.open = window.__smokeOrigOpen; delete window.__smokeOrigOpen; delete window.__smokeOpenUrls; return { ok: true };`).catch(() => null);
+    }
+    await removeFakeManager(cdp).catch(() => null);
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      if (!p) return { ok: false };
+      p.settings.choice = {};
+      await p.saveSettings();
+      p.invalidateEndpointCache();
+      await p.resolveEndpoint();
+      return { ok: true };
+    `).catch(() => null);
+    if (fake) await fake.close().catch(() => undefined);
+  }
+}
+
 /** R1 — die Zeile der aktiven Runde laeuft in der Standardbreite der Sidebar nicht ueber (Welle 9).
  *
  *  Gemessen wird an einem ECHTEN Lauf gegen einen Fake-Server (zwei Runden, die zweite mit langer
@@ -1735,6 +1872,7 @@ async function main(): Promise<void> {
     await pruefePanel(cdp);
     await pruefeLauf(cdp);
     await pruefeManager(cdp, port);
+    await pruefeApple(cdp, port);
     await pruefeHilfeZeile(cdp, port);
     await pruefeLab(cdp);
     await pruefeFallback(cdp);
