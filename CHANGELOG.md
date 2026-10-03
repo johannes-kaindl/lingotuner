@@ -36,46 +36,46 @@ All notable changes to this project are documented here. The format follows
 ## [0.3.3] — 2026-09-26
 
 ### Added
-- **Nutzer-Dokumentation.** `docs/README.md` als Index, dazu *Getting started* und *Troubleshooting* (die Meldungen wörtlich aus dem Plugin, je mit Ursache und Abhilfe). Die README verlinkt sie im Abschnitt „Documentation“.
-- **README-Bilder** (Hero, Runden, Einstellungen, Regler), reproduzierbar per `npm run shots`; Aufnahme-Vertrag in `docs/images/README.md`.
+- **User documentation.** `docs/README.md` as an index, plus *Getting started* and *Troubleshooting* (the messages verbatim from the plugin, each with cause and remedy). The README links them in the "Documentation" section.
+- **README images** (hero, rounds, settings, dials), reproducible via `npm run shots`; recording contract in `docs/images/README.md`.
 
 ### Fixed
-- **Die Zeile der aktiven Runde wurde in der Standardbreite der Seitenleiste links abgeschnitten.** Ein Button hält seinen Text auf einer Zeile und zentriert den Überlauf; die Zeile bricht jetzt um. Der GUI-Smoke misst das mit dem neuen Punkt R1 (bei ~300 px, Gegenprobe am alten Stand rot).
+- **The row of the active round was cut off on the left at the default sidebar width.** A button keeps its text on one line and centres the overflow; the row now wraps. The GUI smoke measures this with the new check R1 (at ~300 px, counter-test red on the old state).
 
 ### Changed
-- `docs/LAB.md` und `docs/SMOKE.md` liegen jetzt unter `docs/internal/` (Wartungsmaterial, keine Nutzer-Doku).
+- `docs/LAB.md` and `docs/SMOKE.md` now live under `docs/internal/` (maintenance material, not user documentation).
 
 ## [0.3.2] — 2026-09-25
 
 ### Fixed
-- **Die Aufzeichnung in `llm-lab` war still aus.** Der Lab-Client prüfte `apiVersion 3`, `llm-lab` liefert seit dem 2026-09-03 die Fassung 4 — `readLabApi` gab deshalb `null` zurück, und kein Tunen wurde aufgezeichnet (ohne Fehlermeldung). Der Client spricht jetzt Fassung 4.
+- **The recording in `llm-lab` was silently off.** The Lab client checked for `apiVersion 3`, but `llm-lab` has delivered version 4 since 2026-09-03 — `readLabApi` therefore returned `null`, and no tune was recorded (without an error message). The client now speaks version 4.
 
 ### Added
-- Jeder Tunen-Lauf trägt eine `turnId` in der Lab-Aufzeichnung (ein Tunen = eine Nutzer-Handlung), damit das Lab zusammengehörige Aufrufe klammern kann.
+- Every tune run carries a `turnId` in the Lab recording (one tune = one user action), so that the Lab can bracket related calls.
 
 ## [0.3.1] — 2026-09-24
 
 ### Changed
-- `authorUrl` im Manifest zeigt wieder auf das GitHub-Profil (Rückkehr in den Community Store); keine Funktionsänderung.
+- `authorUrl` in the manifest points to the GitHub profile again (return to the Community Store); no functional change.
 
 ## [0.3.0] — 2026-09-23
 
 ### Changed
 
-- **Sampling-Werte, Denkstufe und Tokenbudget kommen jetzt aus dem Anfrage-Profil (`code-kit`
-  `sampling-profiles`) statt aus einer fest eingetragenen Temperatur.** LingoTuner sendet im
-  Modus `transform`; die bisherige feste Temperatur `0.3` wird zur Modus-Vorgabe `0.2` —
-  **Verhaltenswechsel**, sichtbar im goldenen Request. Der alte Schalter „Denkschritt
-  überspringen" wird einmalig zu einer Denkstufe je Modus migriert (`suppressThinking: true` →
-  aus, `false` → niedrig); das alte Feld wird danach nicht mehr gespeichert.
-- Neuer, aufklappbarer Abschnitt „Anfrage" in den Einstellungen (unter dem Endpunkt-Abschnitt):
-  zeigt Modellfamilie und Backend, welche Felder gesendet werden und warum, erlaubt eigene
-  Werte je Familie, zeigt die letzte gesendete Anfrage und Abweichungen der laufenden Sitzung.
-- Der Denk-Knopf im Panel erkennt die Modellfamilie jetzt über den Endpunkt (LLM Endpoint
-  Manager oder Namensschätzung) statt über eine reine Namensheuristik, und bietet bei Bedarf
-  vier Stufen (aus/niedrig/mittel/hoch) statt nur an/aus.
-- Kein `chat_template_kwargs`/`reasoning_budget` mehr im Anfrage-Body; gpt-oss bekommt nie
-  `reasoning_effort: "none"` (das Modell denkt dabei nachweislich *mehr* als bei `"low"`).
+- **Sampling values, thinking level and token budget now come from the request profile (`code-kit`
+  `sampling-profiles`) instead of a hard-coded temperature.** LingoTuner sends in the mode
+  `transform`; the former fixed temperature `0.3` becomes the mode default `0.2` —
+  **behaviour change**, visible in the golden request. The old switch "Skip thinking step" is
+  migrated once to a thinking level per mode (`suppressThinking: true` → off, `false` → low);
+  the old field is no longer stored afterwards.
+- New, collapsible "Request" section in the settings (below the endpoint section): shows
+  model family and backend, which fields are sent and why, allows own values per family,
+  shows the last request sent and deviations of the running session.
+- The thinking button in the panel now recognises the model family via the endpoint (LLM
+  Endpoint Manager or name guess) instead of a plain name heuristic, and offers four levels
+  (off/low/medium/high) where needed instead of only on/off.
+- No more `chat_template_kwargs`/`reasoning_budget` in the request body; gpt-oss never gets
+  `reasoning_effort: "none"` (the model demonstrably thinks *more* than with `"low"`).
 
 ### Fixed
 
@@ -83,21 +83,21 @@ All notable changes to this project are documented here. The format follows
   state-button contract) — `aria-pressed` was missing entirely. Fixed: `aria-pressed` follows
   the state on every render, icon switches `brain` ↔ `brain-cog` for on/off instead of always
   showing `brain`. Native `disabled` and the tooltip via `think.hint` were already correct.
-- Endpunkt-Liste: Stil für Zusatz- und Schlüsselfelder nachgezogen (Kit 0.37.0).
-- Ein API-Lauf (`quiet: true`) zeigt bei einem fehlgeschlagenen Logbuch-Eintrag keine `Notice`
-  mehr, sondern schreibt wie der Override-Fehler daneben nur nach `console.warn` — ein
-  Fremdaufruf soll dem Nutzer keine unangeforderte Meldung ins Fenster schieben.
-- Der Status-Indikator wird jetzt auch bei einem reinen Patch (`patchPanel`, ohne Voll-Draw)
-  nachgezogen — bislang blieb er stehen, bis der nächste Voll-Draw kam (heute folgenlos, weil
-  jeder Aufrufer ohnehin einen Voll-Draw auslöst, aber keine Eigenschaft der Funktion selbst).
+- Endpoint list: style for additional and key fields brought up to date (kit 0.37.0).
+- An API run (`quiet: true`) no longer shows a `Notice` when a logbook entry fails, but, like
+  the override error, writes only to `console.warn` next to it — a foreign caller should not
+  push an unrequested message into the user's window.
+- The status indicator is now also updated on a pure patch (`patchPanel`, without a full
+  draw) — until now it stayed put until the next full draw arrived (harmless today, because
+  every caller triggers a full draw anyway, but not a property of the function itself).
 
 ## [0.2.0] — 2026-09-15
 
 ### Added
 
-- Bezieht Endpunkte vom LLM Endpoint Manager, wenn installiert (Kit `endpoint-source` 0.37.0);
-  lokale Liste bleibt Rückfall. Neues Settings-Feld `choice` (Wahl gegenüber dem Manager, leer =
-  automatisch).
+- Fetches endpoints from the LLM Endpoint Manager when installed (kit `endpoint-source`
+  0.37.0); the local list remains as a fallback. New settings field `choice` (choice versus
+  the manager, empty = automatic).
 
 ## [0.1.2] — 2026-09-11
 
