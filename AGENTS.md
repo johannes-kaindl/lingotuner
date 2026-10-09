@@ -56,14 +56,14 @@ src/core/                pure, obsidian-frei, Vitest
   prompt.ts / prompt-text.ts  buildMessages + der ausgelieferte Systemteil
   session.ts             Round/Session, selectRound, refineFrom
   source.ts              SourceState, Readiness, Staleness (pure Haelfte)
-  llm/client.ts          streamTune(transport, ...) -> TuneResult
+  llm/client.ts          toTuneResult(Ergebnis der Verbindung) -> TuneResult
   llm/errors.ts          TuneError + classifyNetworkFailure
   llm/resolver.ts        Endpunkt-Wahl aus der Liste
   api.ts                 createLingoTunerApi
   logbook.ts             Abschnitt der Logbuch-Notiz rendern
-src/obsidian/            view · view-render · editor-io · http · settings-tab ·
+src/obsidian/            view · view-render · editor-io · settings-tab ·
                          lab · logbook-io · overrides-io
-src/vendor/kit/          obsidian-kit 0.34.0 + code-kit 0.6.0, pure — nie von Hand aendern
+src/vendor/kit/          obsidian-kit 0.51.2 + code-kit 0.15.0, pure — nie von Hand aendern
 src/vendor/kit-obsidian/ Kit-Module, die `obsidian` importieren — nie von Hand aendern
 src/i18n/strings.ts      EN kanonisch + DE, beide vollstaendig
 src/main.ts
@@ -76,7 +76,7 @@ der Anmerkungsblock mit ausdrücklichem Vorrang → Nutzer-Nachricht mit dem Tex
 Die Anweisungssprache wird per `lang` benannt, nicht geraten.
 
 **Panel und Anbieter-API gehen denselben Ausführungspfad** (`LingoTunerPlugin.run()`): dieselbe
-Endpunkt-Auflösung, derselbe Stream, dasselbe Timeout, dieselbe llm-lab-Meldung. Nur Panel-Zustand
+Endpunkt-Auflösung, derselbe Stream (eine Verbindung `llm`, Kit `createLlmConnection`), dieselben Fristen, dieselbe llm-lab-Meldung. Nur Panel-Zustand
 und Ausgänge hängen am Panel. Ein zweiter Weg neben `run()` gehört **nicht** danebengebaut — genau
 daran ist in `obsidian-transmute` die Anzeige von der Ausführung abgedriftet.
 
@@ -87,7 +87,7 @@ daran ist in `obsidian-transmute` die Anzeige von der Ausführung abgedriftet.
 
 | Baustein | Quelle | Form |
 |---|---|---|
-| `clipboard`, `sse`, `endpoint`, `endpoint_config`, `endpoint_diagnostics`, `model-choice`, `model-list-cache`, `reasoning`, `capabilities`, `think-splitter`, `think-toggle`, `timeout`, `error_body`, `i18n`, `settings`, `stream-blocks` | `obsidian-kit` 0.34.0 / `code-kit` 0.6.0 | vendored `src/vendor/kit/` |
+| `clipboard`, `sse`, `endpoint`, `endpoint_config`, `endpoint_diagnostics`, `model-choice`, `model-list-cache`, `reasoning`, `capabilities`, `think-splitter`, `think-toggle`, `timeout`, `error_body`, `i18n`, `settings`, `stream-blocks`, `sampling-profiles`, `backend-probe`, `redact`, `safe-markdown`, `secrets` | `obsidian-kit` 0.51.2 / `code-kit` 0.15.0 | vendored `src/vendor/kit/` (Liste: `tools/kit-sync.json`) |
 | `buildEndpointList`, `renderModelPicker`, `confirm`, `settings_walker`, `folder-suggest`, `clipboard`, `buildStreamArea`, `createStableWriter` | `obsidian-kit/src/obsidian/` | vendored `src/vendor/kit-obsidian/` |
 | XHR-Stream-Transport | `vault-rag/src/sse.ts` | Übernahme mit Herkunftsstempel |
 | `splitStable` (stabile Vorschau-Blöcke) | erst Übernahme aus `koda-agent`, seit 2026-09-11 vendored aus `code-kit` 0.6.0 | vendored `src/vendor/kit/stream-blocks.ts` |
@@ -200,7 +200,7 @@ erlaubt, stillschweigend abzuweichen nicht.
   Konsolenausgabe. Der Treiber ruft deshalb `app.plugins.setEnable(true)`. Ein `npm run deploy`
   oder ein Reload hilft hier **nicht**.
 - **Ein frisches Profil startet mit der gebündelten Obsidian-Version**, nicht mit der laufenden.
-  Für `minAppVersion 1.8.7` ist das folgenlos; wer die `.asar` ins Testprofil kopiert, hebt die
+  Für `minAppVersion 1.11.4` ist das meist folgenlos (die gebündelte Version liegt darunter: die `.asar` kopieren ist Pflicht); wer die `.asar` ins Testprofil kopiert, hebt die
   Zweitinstanz gezielt an (Rezept in `docs/internal/SMOKE.md`).
 - **„Notiz ersetzen" ersetzt nur den Body — das Frontmatter bleibt.** Ersetzt wird über den
   Editor (also Cmd+Z-fähig), und der Bereich beginnt hinter dem Frontmatter-Block. Wer hier auf
@@ -210,10 +210,11 @@ erlaubt, stillschweigend abzuweichen nicht.
   bestehende Nutzer. Der Knopf „Auslieferungsstand in den Ordner schreiben" ist eine explizite
   Nutzeraktion und überschreibt vorhandene Dateien nicht. Eine kaputte Override-Datei ist eine
   Meldung + Auslieferungsstand, kein Abbruch.
-- **Das Zeitlimit gilt bis zum ersten Content-Token, nicht bis zum Ende.** `onToken` löscht den
-  Timer; eine lange Antwort wird nie abgeschnitten. Die Kehrseite: ein Modell, das minutenlang
-  **denkt**, läuft ins Timeout, weil Reasoning über `onReasoning` läuft und den Timer nicht
-  anfasst — das ist gewollt (der Fall hat mit `thought-only` eine eigene Meldung).
+- **Die Fristen sind fest und kein Setting** (seit dem Verbindungs-Tausch, Kit 0.51.2): bis zum ersten
+  Token 600 s (`JIT_FIRST_CHUNK_TIMEOUT_MS`, ein erst beim Aufruf ladendes Modell braucht Minuten),
+  danach 120 s Stille. Ein Kurzbefehl-Endpunkt hebt die erste Frist auf Kurzbefehl-Frist + 10 s. Ein Modell,
+  das minutenlang **denkt**, zählt als Aktivität (Reasoning ist ein Chunk); eine leere Antwort hat mit
+  `thought-only` eine eigene Meldung.
 - **Ein leerer `content` bei gefülltem `reasoning` ist keine leere Antwort**, sondern ein Modell,
   das sein Token-Budget vollständig ins Denken gesteckt hat (`TuneError.thought-only`).
 - **Ersetzen-Guards sind zwei Fragen, nicht eine:** *live* (dieselbe Editor-Instanz, derselbe
@@ -229,9 +230,9 @@ erlaubt, stillschweigend abzuweichen nicht.
   `findEndpointManager(app)` (Kit `endpoint-source`) liest `app.plugins.plugins["llm-endpoint-manager"].api`
   neu, nie aus einem gemerkten Plugin-Feld. Grund: das Nachbarplugin kann jederzeit installiert,
   aktiviert, deaktiviert oder umkonfiguriert werden — ein gecachtes „Manager da/weg" würde nach
-  einer solchen Änderung falsch bleiben. `resolveEndpoint()` gecacht nur den LOKALEN Pfad
-  (`cachedLocal`, Ersatz für das entfernte `EndpointResolver`); der Manager-Pfad cached sich
-  laut Kit-Vertrag selbst.
+  einer solchen Änderung falsch bleiben. `llm.resolve()` (Kit-Verbindung) merkt nur den LOKALEN Pfad bis
+  `llm.invalidate()`, auch ein Ergebnis ohne Endpunkt (`tune()` fragt deshalb vor der Meldung einmal mit
+  `force` nach); der Manager-Pfad wird nie gemerkt.
 - **`document.textContent` liefert für ein Document-Node per DOM-Spec IMMER `null`** — nur
   Element-/Text-Nodes tragen `textContent`. Gemessen 2026-09-15 beim GUI-Smoke-Ausbau (Abschnitt
   M): ein Treiber-Helfer für das eigene Settings-Fenster (Obsidian ≥1.13) las `root.textContent`
