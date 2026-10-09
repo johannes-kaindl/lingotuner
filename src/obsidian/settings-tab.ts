@@ -115,7 +115,13 @@ export class LingoTunerSettingTab extends PluginSettingTab {
       hintAs: "desc",
       savedSuffix: t("ep.saved"),
       refreshTooltip: t("ep.refreshModels"),
-      onPick: (value) => { this.plugin.settings.model = value; void this.plugin.saveSettings(); },
+      onPick: (value) => {
+        this.plugin.settings.model = value;
+        void this.plugin.saveSettings();
+        // Die gemerkte Aufloesung traegt das alte Modell: verwerfen, sonst laeuft der naechste Lauf damit.
+        this.plugin.llm.invalidate();
+        void this.plugin.llm.resolve().catch(() => undefined);
+      },
       onRefresh: () => { void load(); },
     });
   }

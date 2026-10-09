@@ -121,7 +121,7 @@ export default class LingoTunerPlugin extends Plugin {
         void this.saveSettings();
         // Aufloesung neu ziehen: ohne Invalidierung wuerde die gemerkte lokale Aufloesung das neue Modell ignorieren.
         this.llm.invalidate();
-        void this.llm.resolve().catch(() => undefined);
+        void this.llm.resolve().then(() => { this.panel()?.refresh(); }).catch(() => undefined);
       },
       getFamily: () => this.llm.source().family,
       getThinkingLevel: () => thinkingFor(this.settings.request, MODE),
@@ -211,7 +211,10 @@ export default class LingoTunerPlugin extends Plugin {
 
   /** EIN Ausfuehrungspfad fuer Panel und API: Endpunkt aufloesen → Overrides → Prompt → Stream → Lab → Logbuch. */
   private async tune(p: { text: string; dials: Dials; note: string; signal?: AbortSignal; quiet?: boolean; onToken?: (t: string) => void; onReasoning?: (t: string) => void }): Promise<TuneResult> {
-    const resolved = await this.llm.resolve();
+    let resolved = await this.llm.resolve();
+    // Die Verbindung merkt auch eine lokale Aufloesung OHNE Endpunkt (Server beim Start noch aus). Vor der Meldung
+    // einmal frisch fragen, sonst bleibt „kein Endpunkt“ bis zur naechsten Aenderung der Liste stehen.
+    if (resolved.config === null && !this.managerActive()) resolved = await this.llm.resolve({ force: true });
     if (resolved.config === null) {
       // Im Manager-Fall nennt die Aufloesung einen `reason`-Code (`no-endpoint` | `not-found` | `disabled` |
       // `secret-missing` | `unreachable`). `secret-missing` ist der Fall, der aktiv in die Irre fuehrt: die
