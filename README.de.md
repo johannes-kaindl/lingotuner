@@ -7,7 +7,7 @@
 [![Lizenz: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](https://github.com/johannes-kaindl/lingotuner/blob/main/LICENSE)
 [![Doku: CC BY-SA 4.0](https://img.shields.io/badge/docs-CC%20BY--SA%204.0-lightgrey.svg)](https://github.com/johannes-kaindl/lingotuner/blob/main/LICENSE-DOCS)
 [![Release](https://img.shields.io/github/v/release/johannes-kaindl/lingotuner?label=release)](https://github.com/johannes-kaindl/lingotuner/releases)
-![Plattform](https://img.shields.io/badge/platform-Obsidian%201.8.7%2B%20·%20Desktop%20%26%20Mobil-7c3aed)
+![Plattform](https://img.shields.io/badge/platform-Obsidian%201.11.4%2B%20·%20Desktop%20%26%20Mobil-7c3aed)
 
 Neurodivergente und neurotypische Kommunikationsstile unterscheiden sich entlang einiger gut beschriebener Dimensionen: wie direkt eine Bitte ausgesprochen wird, wie viel Kontext ausformuliert ist, wie viel soziale Rahmung den Inhalt umgibt und wie wörtlich die Sprache ist. LingoTuner dolmetscht zwischen diesen Stilen. Text markieren, vier Regler stellen, bei Bedarf eine Anmerkung dazuschreiben — ein lokales Modell schreibt den Text um: dieselbe Information, anderer Stil. Ein Panel in der Seitenleiste trägt die vier Regler, das Anmerkungsfeld, das streamende Ergebnis und die vier Wege hinaus.
 
@@ -28,7 +28,7 @@ Neurodivergente und neurotypische Kommunikationsstile unterscheiden sich entlang
 
 ## Voraussetzungen
 
-- **Obsidian 1.8.7+** (Desktop oder Mobil).
+- **Obsidian 1.11.4+** (Desktop oder Mobil).
 - **Ein OpenAI-kompatibler lokaler Server** mit geladenem Chat-Modell — [LM Studio](https://lmstudio.ai), [Ollama](https://ollama.com) oder MLX. Neu bei lokalen LLMs? Die **[Anleitung für lokale LLMs](https://uplink.jkaindl.de/llm-setup)** führt durch Server, Modell und Mobilzugriff.
 - **CORS, falls der Verbindungstest grün ist und der Stream trotzdem blockiert.** Das Ergebnis wird per XHR aus dem Ursprung `app://obsidian.md` gestreamt, und ein Server, der eine einfache Anfrage beantwortet, kann genau das ablehnen. In LM Studio CORS in den Server-Einstellungen einschalten (`lms server start --bind 0.0.0.0 --cors` setzt beides zusammen — ein fehlendes Flag wird auf den Default zurückgesetzt); für Ollama `OLLAMA_ORIGINS=app://obsidian.md` setzen. Lehnt der Server den Stream ab, wiederholt das Plugin die Anfrage einmal ohne Stream, das Ergebnis kommt dann auf einmal statt Token für Token. Erst wenn auch das scheitert, benennt es den Fall, statt einen allgemeinen Netzwerkfehler zu melden.
 - **Ein mittelgroßes Modell, wenn das Ergebnis zählen soll.** Das Umschreiben muss jede Information halten und dabei den Stil ändern; gemessen gegen ein lokales LM Studio erfand ein 35B-Mixture-of-Experts-Modell über alle 16 Reglerstufen in beiden Sprachen keine Information, wechselte nie die Sprache und gab den Text nie unverändert zurück. Zwei Stufen (`context:-2`, `social:2`) trafen den Ton, aber nicht die Konkretheit des erwarteten Textes. Ein sehr kleines Modell kürzt eher, als dass es umformuliert.
@@ -83,16 +83,15 @@ Die Ersetzen-Knöpfe bleiben gesperrt, solange die Quelle nicht mehr live ist �
 
 | Einstellung | Wirkung |
 |---|---|
-| Endpunkte | Geordnete Liste OpenAI-kompatibler Server, je mit optionalem API-Schlüssel und Modell-Override. Der erste erreichbare wird genommen; jede Zeile zeigt ihren eigenen Erreichbarkeitsstatus. |
+| Endpunkte | Geordnete Liste OpenAI-kompatibler Server, je mit optionalem API-Schlüssel und Modell-Override. Der erste erreichbare wird genommen; jede Zeile zeigt ihren eigenen Erreichbarkeitsstatus. API-Schlüssel liegen im Schlüsselbund von Obsidian, nicht in der Datendatei des Plugins. |
 | Modell | Live vom Endpunkt gelesen. Leer heißt: der Server nimmt das geladene Modell. |
 | Anfrage | Zeigt Sampling-Werte, Denkstufe und Tokenbudget, die für die aktuelle Modellfamilie und das Backend tatsächlich gesendet werden, mit Überschreibung je Familie, der letzten Anfrage und Abweichungen der laufenden Sitzung. Die Denk-Steuerung im Panel schaltet zwischen aus und der bevorzugten Stufe des Modells; ein Schalter in diesem Abschnitt macht daraus ein Dropdown mit vier Stufen. |
-| Zeitlimit | Wie lange auf das *erste* Token gewartet wird. Sobald der Stream läuft, beendet ihn nur noch ein Stillstand: 120 Sekunden ohne Daten. |
 | Override-Ordner | Optionaler Vault-Ordner mit `system.md` und `<dimension>_<stufe>.md`, die ausgelieferten Prompt-Text ersetzen. Leer heißt Auslieferungsstand. |
 | Gespeicherte Presets | Eigene Reglerstellungen, aus dem Panel gesichert. |
 | Logbuch | Standardmäßig aus. Eingeschaltet hängt es jeden Lauf an eine Monatsnotiz an (Zeit, Modell, Reglerwerte, Anmerkung, Original, Ergebnis). |
 | Ordner für neue Notizen | Wohin **Neue Notiz** den getunten Text legt. Leer heißt Vault-Wurzel. |
 
-<p align="center"><img src="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/settings.png" width="820" alt="Der Einstellungen-Tab von LingoTuner (Oberfläche englisch aufgenommen): die Gruppe Connection mit einem erreichbaren, als aktiv markierten Endpunkt, Modell, Request und Timeout, darunter die Gruppe Style mit dem Override-Ordner"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/settings.png" width="820" alt="Der Einstellungen-Tab von LingoTuner (Oberfläche englisch aufgenommen): die Gruppe Connection mit einem erreichbaren, als aktiv markierten Endpunkt, Modell und Request, darunter die Gruppe Style mit dem Override-Ordner"></p>
 
 ## Funktionsweise
 

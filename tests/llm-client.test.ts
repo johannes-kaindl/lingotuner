@@ -1,63 +1,45 @@
 import { describe, it, expect } from "vitest";
-import { streamTune, type TuneRequest } from "../src/core/llm/client";
+import { toTuneResult } from "../src/core/llm/client";
 import { errorMessageKey, classifyNetworkFailure } from "../src/core/llm/errors";
-import { createChatClient as createKitClient, type ChatClientOptions, type SseTransport } from "../src/vendor/kit-obsidian/chat-client";
+import type { SseTransport } from "../src/vendor/kit-obsidian/chat-client";
+import { DONE, delta, fakeTransport, makeConnection, sse, type Seen } from "./helpers/connection";
 
 const msgs = [{ role: "system" as const, content: "s" }, { role: "user" as const, content: "u" }];
-const ep = { url: "http://127.0.0.1:1234/v1/", apiKey: "k" };
-const timeouts = { firstChunkSec: 60, idleSec: 120 };
 
-/** Node hat kein `window`: eine Uhr ueber die globalen Timer (Kit-Vertrag: der Client bekommt sie injiziert). */
-const nodeClock = {
-  now: () => Date.now(),
-  setTimeout: (fn: () => void, ms: number) => globalThis.setTimeout(fn, ms) as unknown as number,
-  clearTimeout: (id: number) => globalThis.clearTimeout(id as unknown as ReturnType<typeof setTimeout>),
-};
-const createChatClient = (o: Omit<ChatClientOptions, "clock">) => createKitClient({ ...o, clock: nodeClock });
-
-interface Seen { url?: string; body?: Record<string, unknown>; headers?: Record<string, string> }
-
-/** Fake-Transport im Kit-Vertrag: `onChunk` mit data:-Zeilen, aufgeloest mit dem Status. */
-function fakeTransport(chunks: string[], status = 200, seen: Seen = {}): SseTransport {
-  return {
-    postStream: (url, body, headers, onChunk) => {
-      seen.url = url; seen.body = body as Record<string, unknown>; seen.headers = headers;
-      for (const c of chunks) onChunk(c);
-      return Promise.resolve(status);
-    },
-  };
+interface RunOpts {
+  settings?: Parameters<typeof makeConnection>[0]["settings"];
+  fallback?: SseTransport;
+  timeouts?: { idleMs?: number; firstChunkMs?: number };
+  signal?: AbortSignal;
+  onToken?: (t: string) => void;
+  onReasoning?: (t: string) => void;
+  messages?: typeof msgs;
 }
-const sse = (obj: unknown): string => `data: ${JSON.stringify(obj)}\n\n`;
-const delta = (content: string, extra: Record<string, unknown> = {}): string => sse({ model: "m", choices: [{ delta: { content }, ...extra }] });
-const DONE = "data: [DONE]\n\n";
-
-function req(over: Partial<TuneRequest> = {}): TuneRequest {
-  return { messages: msgs, endpoint: ep, model: "", sentModel: "", params: {}, timeouts, ...over };
-}
-const run = (t: SseTransport, over: Partial<TuneRequest> = {}) => streamTune(createChatClient({ transport: t }), req(over));
-
-describe("streamTune", () => {
-  it("sends the resolved params and the sent model, nothing legacy", async () => {
-    const seen: Seen = {};
-    await run(fakeTransport([delta("ok"), DONE], 200, seen), { model: "qwen/qwen3.8-27b", sentModel: "qwen/qwen3.8-27b@4bit", messages: [], params: { temperature: 0.2, top_p: 0.8, reasoning_effort: "none" } });
-    expect(seen.body).toEqual({ model: "qwen/qwen3.8-27b@4bit", messages: [], stream: true, temperature: 0.2, top_p: 0.8, reasoning_effort: "none" });
+/** Ein Tunen ueber die Verbindung des Plugins, dann die Uebersetzung in `TuneResult`. */
+async function run(transport: SseTransport, o: RunOpts = {}) {
+  const llm = makeConnection({ transport, ...(o.settings ? { settings: o.settings } : {}), ...(o.fallback ? { fallback: o.fallback } : {}), ...(o.timeouts ? { timeouts: o.timeouts } : {}) });
+  const r = await llm.complete({ messages: o.messages ?? msgs }, {
+    ...(o.signal ? { signal: o.signal } : {}), ...(o.onToken ? { onToken: o.onToken } : {}), ...(o.onReasoning ? { onReasoning: o.onReasoning } : {}),
   });
+  return toTuneResult(r, r.source.shortcut);
+}
 
-  it("baut URL und Auth-Header, Body traegt genau die uebergebenen Parameter", async () => {
+describe("Tunen ueber die Verbindung", () => {
+  it("sendet das aufgeloeste Modell und nichts Altes", async () => {
     const seen: Seen = {};
-    const r = await run(fakeTransport([delta("ok"), DONE], 200, seen), { model: "qwen", sentModel: "qwen", params: { temperature: 0.2, reasoning_effort: "none" } });
-    expect(r).toMatchObject({ ok: true, text: "ok", reasoning: "", model: "m", truncated: false });
-    expect(seen.url).toBe("http://127.0.0.1:1234/v1/chat/completions");
-    expect(seen.headers?.["Authorization"]).toBe("Bearer k");
-    expect(seen.body).toMatchObject({ model: "qwen", stream: true, messages: msgs, reasoning_effort: "none" });
+    await run(fakeTransport([delta("ok"), DONE], 200, seen), { settings: { model: "qwen/qwen3.8-27b" }, messages: [] });
+    expect(seen.body).toMatchObject({ model: "qwen/qwen3.8-27b", messages: [], stream: true, temperature: 0.2 });
     expect(seen.body).not.toHaveProperty("chat_template_kwargs");
     expect(seen.body).not.toHaveProperty("reasoning_budget");
   });
 
-  it("schickt keine Parameter, die nicht mitgegeben wurden", async () => {
+  it("baut URL und Auth-Header; Ergebnis traegt Text, Modell des Servers und kein truncated", async () => {
     const seen: Seen = {};
-    await run(fakeTransport([delta("ok"), DONE], 200, seen), { params: { temperature: 0.2 } });
-    expect(seen.body).not.toHaveProperty("reasoning_effort");
+    const r = await run(fakeTransport([delta("ok"), DONE], 200, seen));
+    expect(r).toMatchObject({ ok: true, text: "ok", reasoning: "", model: "m", truncated: false });
+    expect(seen.url).toBe("http://127.0.0.1:1234/v1/chat/completions");
+    expect(seen.headers?.["Authorization"]).toBe("Bearer k");
+    expect(seen.body).toMatchObject({ model: "qwen", stream: true, messages: msgs });
   });
 
   it("trennt Inline-<think> in den Reasoning-Kanal und reicht Token durch", async () => {
@@ -81,7 +63,7 @@ describe("streamTune", () => {
     expect(b).toMatchObject({ ok: false, error: { kind: "empty" } });
   });
 
-  it("abgeschnitten ohne Text bleibt thought-only bzw. empty — finishReason bleibt sichtbar", async () => {
+  it("abgeschnitten ohne Text bleibt thought-only — finishReason bleibt sichtbar", async () => {
     const r = await run(fakeTransport([sse({ choices: [{ delta: { reasoning_content: "denk" }, finish_reason: "length" }] }), DONE]));
     expect(r).toMatchObject({ ok: false, error: { kind: "thought-only" }, finishReason: "length" });
   });
@@ -114,19 +96,24 @@ describe("streamTune", () => {
     expect(await run(t)).toMatchObject({ ok: false, error: { kind: "network" } });
   });
 
-  it("Origin-Weigerung: der Client wiederholt einmal ohne Stream ueber den Fallback", async () => {
+  it("Origin-Weigerung: die Verbindung wiederholt einmal ohne Stream ueber den Fallback", async () => {
     const refuse: SseTransport = { postStream: () => { const e = new Error("refused"); e.name = "StreamNetworkError"; return Promise.reject(e); } };
     const full = fakeTransport([JSON.stringify({ model: "m", choices: [{ message: { content: "voll" }, finish_reason: "stop" }] })]);
-    const r = await streamTune(createChatClient({ transport: refuse, fallbackTransport: full }), req());
+    const r = await run(refuse, { fallback: full });
     expect(r).toMatchObject({ ok: true, text: "voll" });
   });
 
-  it("Timeout: Sekunden aus der Frist, die galt (vor dem ersten Chunk = timeoutSec)", async () => {
+  it("Timeout vor dem ersten Chunk nennt die Frist der Verbindung (600 s), danach die Leerlauf-Frist (120 s)", async () => {
     const t: SseTransport = {
       postStream: (_u, _b, _h, _c, signal) => new Promise((_res, rej) => signal.addEventListener("abort", () => { const e = new Error("aborted"); e.name = "AbortError"; rej(e); })),
     };
-    const r = await streamTune(createChatClient({ transport: t, firstChunkTimeoutMs: 20, idleTimeoutMs: 20 }), req({ timeouts: { firstChunkSec: 7, idleSec: 120 } }));
-    expect(r).toMatchObject({ ok: false, error: { kind: "timeout", seconds: 7 } });
+    const r = await run(t, { timeouts: { firstChunkMs: 20, idleMs: 20 } });
+    expect(r).toMatchObject({ ok: false, error: { kind: "timeout", seconds: 600 } });
+    const later: SseTransport = {
+      postStream: (_u, _b, _h, onChunk, signal) => new Promise((_res, rej) => { onChunk(sse({ choices: [{ delta: { reasoning_content: "x" } }] })); signal.addEventListener("abort", () => { const e = new Error("aborted"); e.name = "AbortError"; rej(e); }); }),
+    };
+    const r2 = await run(later, { timeouts: { firstChunkMs: 5_000, idleMs: 20 } });
+    expect(r2).toMatchObject({ ok: false, error: { kind: "timeout", seconds: 120 } });
   });
 
   it("liefert ttftMs, sobald ein Byte ankam (auch Reasoning)", async () => {

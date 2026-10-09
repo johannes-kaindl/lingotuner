@@ -13,7 +13,6 @@ export interface LingoTunerSettings {
   endpoints: EndpointConfig[];
   /** leer = Server entscheidet (modellagnostisch, GET /v1/models liefert die Liste) */
   model: string;
-  timeoutSec: number;
   overrideFolder: string;
   userPresets: UserPreset[];
   lastDials: Dials;
@@ -26,16 +25,9 @@ export interface LingoTunerSettings {
   request: RequestSettings;
 }
 
-export const TIMEOUT_SEC_MIN = 5;
-
-/** Zeitlimit fuer Erreichbarkeits-Probe und Modell-Liste — EINE Zahl fuer Panel, Lauf und
- *  Einstellungen; zwei Kopien liefen sonst beim naechsten Anfassen auseinander. */
-export const PROBE_TIMEOUT_MS = 5000;
-
 export const DEFAULT_SETTINGS: LingoTunerSettings = {
   endpoints: [{ url: "http://127.0.0.1:1234" }],
   model: "",
-  timeoutSec: 60,
   overrideFolder: "",
   userPresets: [],
   lastDials: { ...NEUTRAL },
@@ -63,22 +55,22 @@ function sanitizePresets(raw: unknown): UserPreset[] {
 }
 
 export function loadSettings(raw: unknown): LingoTunerSettings {
-  const merged = mergeSettings(DEFAULT_SETTINGS, raw) as LingoTunerSettings & { suppressThinking?: unknown };
+  const merged = mergeSettings(DEFAULT_SETTINGS, raw) as LingoTunerSettings & { suppressThinking?: unknown; timeoutSec?: unknown };
   const rawList = merged.endpoints as unknown as (string | EndpointConfig)[] | undefined;
   const rawChoice = (merged as { choice?: unknown }).choice;
   const choice: EndpointChoice = rawChoice && typeof rawChoice === "object"
     ? { ...((rawChoice as EndpointChoice).endpointId ? { endpointId: String((rawChoice as EndpointChoice).endpointId) } : {}),
         ...((rawChoice as EndpointChoice).model ? { model: String((rawChoice as EndpointChoice).model) } : {}) }
     : {};
-  // suppressThinking ist Legacy (migriert von loadRequestSettings nach request.thinking.transform)
-  // und darf nicht als Fremdfeld durchgereicht werden — sonst persistiert saveData() es weiter.
-  const { suppressThinking: _legacySuppress, ...clean } = merged;
+  // suppressThinking ist Legacy (migriert von loadRequestSettings nach request.thinking.transform),
+  // timeoutSec entfaellt seit dem Verbindungs-Tausch (die Fristen der Verbindung sind statisch).
+  // Beide duerfen nicht als Fremdfeld durchgereicht werden — sonst persistiert saveData() sie weiter.
+  const { suppressThinking: _legacySuppress, timeoutSec: _legacyTimeout, ...clean } = merged;
   return {
     ...clean,
     endpoints: migrateEndpointList(undefined, rawList),
     lastDials: normalizeDials(merged.lastDials),
     userPresets: sanitizePresets(merged.userPresets),
-    timeoutSec: Math.max(TIMEOUT_SEC_MIN, Number(merged.timeoutSec) || DEFAULT_SETTINGS.timeoutSec),
     choice,
     request: sanitizeRequestSettings(merged.request).settings,
   };

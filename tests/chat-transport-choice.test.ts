@@ -1,61 +1,26 @@
 import { describe, it, expect } from "vitest";
-import { makeChatClient, chatSetupFor, SHORTCUT_CLIENT_SLACK_MS } from "../src/obsidian/http";
-import { streamTune } from "../src/core/llm/client";
+import { toTuneResult } from "../src/core/llm/client";
 import { classifyShortcutFailure, errorMessageKey } from "../src/core/llm/errors";
-import { requestUrlTransport, xhrSseTransport } from "../src/vendor/kit-obsidian/chat-transport";
+import { createChatClient } from "../src/vendor/kit-obsidian/chat-client";
+import { createShortcutsChatTransport } from "../src/vendor/kit-obsidian/chat-transport";
 import type { ShortcutResult, ShortcutRun } from "../src/vendor/kit-obsidian/shortcuts-bridge";
+import { nodeClock } from "./helpers/connection";
 
 const msgs = [{ role: "system" as const, content: "sys" }, { role: "user" as const, content: "usr" }];
 const apple = { url: "apple-shortcuts://on-device" };
-const nodeClock = {
-  now: () => Date.now(),
-  setTimeout: (fn: () => void, ms: number) => globalThis.setTimeout(fn, ms) as unknown as number,
-  clearTimeout: (id: number) => globalThis.clearTimeout(id as unknown as ReturnType<typeof setTimeout>),
-};
-const shortcutSource = (timeoutMs = 30_000) => ({ transport: "shortcuts" as const, shortcut: { name: "Apple LLM", timeoutMs } });
+const SHORTCUT = { name: "Apple LLM", timeoutMs: 30_000 };
 
 function fakeBridge(result: ShortcutResult): { bridge: { run(r: ShortcutRun): Promise<ShortcutResult> }; calls: ShortcutRun[] } {
   const calls: ShortcutRun[] = [];
   return { calls, bridge: { run: (r) => { calls.push(r); return Promise.resolve(result); } } };
 }
 
-describe("chatSetupFor — Transportwahl", () => {
-  it("HTTP-Endpunkt: XHR-Stream mit requestUrl-Fallback, Frist wie eingestellt", () => {
-    const s = chatSetupFor(60, { transport: "http" }, null);
-    expect(s.choice.primary).toBe(xhrSseTransport);
-    expect(s.choice.fallback).toBe(requestUrlTransport);
-    expect(s.firstChunkMs).toBe(60_000);
-  });
-
-  it("ohne Quelle (lokale Liste) gilt HTTP", () => {
-    const s = chatSetupFor(60, null, null);
-    expect(s.choice.primary).toBe(xhrSseTransport);
-  });
-
-  it("Shortcuts-Endpunkt: eigener Transport, kein HTTP-Fallback", () => {
-    const { bridge } = fakeBridge({ ok: true, result: "x", durationMs: 1 });
-    const s = chatSetupFor(60, shortcutSource(), bridge);
-    expect(s.choice.primary).not.toBe(xhrSseTransport);
-    expect(s.choice.fallback).toBeUndefined();
-  });
-
-  it("Client-Frist ist mindestens Kurzbefehl-Frist plus Puffer, nie kuerzer als eingestellt", () => {
-    const { bridge } = fakeBridge({ ok: true, result: "x", durationMs: 1 });
-    expect(chatSetupFor(60, shortcutSource(30_000), bridge).firstChunkMs).toBe(60_000);
-    expect(chatSetupFor(60, shortcutSource(120_000), bridge).firstChunkMs).toBe(120_000 + SHORTCUT_CLIENT_SLACK_MS);
-  });
-
-  it("Shortcuts-Endpunkt ohne Bruecke ist ein Konfigurationsfehler und wirft", () => {
-    expect(() => chatSetupFor(60, shortcutSource(), null)).toThrow();
-  });
-});
-
+// Der Kurzbefehl-Transport selbst gehoert dem Kit; hier steht, was lingotuner daraus macht.
 describe("Anfrage ueber den Kurzbefehl", () => {
-  const run = (bridge: { run(r: ShortcutRun): Promise<ShortcutResult> }, model: string) =>
-    streamTune(
-      makeChatClient(60, shortcutSource(), bridge, { clock: nodeClock }),
-      { messages: msgs, endpoint: apple, model, sentModel: model, params: { temperature: 0.2 }, timeouts: { firstChunkSec: 60, idleSec: 120 } },
-    );
+  const run = async (bridge: { run(r: ShortcutRun): Promise<ShortcutResult> }, model: string) => {
+    const client = createChatClient({ transport: createShortcutsChatTransport({ bridge, shortcut: SHORTCUT }), clock: nodeClock });
+    return toTuneResult(await client.complete({ endpoint: apple, model, messages: msgs, params: { temperature: 0.2 } }), SHORTCUT);
+  };
 
   it.each(["", "Apple Model"])("liefert die Antwort auf einmal, sentModel %j wird vertragen", async (model) => {
     const { bridge, calls } = fakeBridge({ ok: true, result: "Hallo", durationMs: 5 });
@@ -71,6 +36,18 @@ describe("Anfrage ueber den Kurzbefehl", () => {
     if (r.ok) return;
     expect(r.status).toBe(408);
     expect(classifyShortcutFailure(r.status ?? 0, r.errorText)).toEqual({ kind: "shortcut", reason: "timeout", detail: "Kurzbefehl antwortet nicht" });
+  });
+});
+
+describe("toTuneResult — Frist im Timeout-Text", () => {
+  const timeout = { ok: false as const, kind: "timeout" as const, detail: "", partial: "", reasoning: "", timing: { startedAt: 0, endedAt: 1 } };
+  it("ohne Kurzbefehl: erster Chunk 600 s, danach Leerlauf 120 s", () => {
+    expect(toTuneResult(timeout)).toMatchObject({ error: { kind: "timeout", seconds: 600 } });
+    expect(toTuneResult({ ...timeout, timing: { startedAt: 0, firstChunkAt: 1, endedAt: 2 } })).toMatchObject({ error: { kind: "timeout", seconds: 120 } });
+  });
+  it("Kurzbefehl mit langer Frist hebt die Frist des ersten Chunks (Kurzbefehl + 10 s)", () => {
+    expect(toTuneResult(timeout, { timeoutMs: 900_000 })).toMatchObject({ error: { kind: "timeout", seconds: 910 } });
+    expect(toTuneResult(timeout, { timeoutMs: 30_000 })).toMatchObject({ error: { kind: "timeout", seconds: 600 } });
   });
 });
 

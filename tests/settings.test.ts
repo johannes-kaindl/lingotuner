@@ -32,7 +32,8 @@ describe("settings", () => {
     expect(s.endpoints).toEqual([{ url: "http://a:1" }]);
     expect(s.lastDials).toEqual({ ...NEUTRAL, directness: 2 });
     expect(s.userPresets).toEqual([{ name: "Chef", dials: { ...NEUTRAL, social: -2 } }]);
-    expect(s.timeoutSec).toBe(5);
+    // timeoutSec entfaellt (Fristen der Verbindung sind statisch): der Altschluessel wird geladen, aber nicht behalten.
+    expect(s).not.toHaveProperty("timeoutSec");
     expect((s as unknown as { fremd: boolean }).fremd).toBe(true);
   });
 

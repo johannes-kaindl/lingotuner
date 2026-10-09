@@ -1,66 +1,11 @@
-import type { EndpointConfig } from "../../vendor/kit/endpoint_config";
-import type { ChatClient, ChatTiming } from "../../vendor/kit-obsidian/chat-client";
-import {
-  resolveRequestParams,
-  type BackendId, type FamilyId, type FieldId, type ResolvedRequest, type ResponseFacts, type ThinkingLevel,
-} from "../../vendor/kit/sampling-profiles";
-import type { ChatMessage } from "../prompt";
+import { DEFAULT_IDLE_TIMEOUT_MS, JIT_FIRST_CHUNK_TIMEOUT_MS, type ChatResult, type ChatTiming } from "../../vendor/kit-obsidian/chat-client";
+import type { NoEndpointResult } from "../../vendor/kit-obsidian/llm-connection";
+import type { ShortcutTransportConfig } from "../../vendor/kit/endpoint-source";
 import type { TuneError } from "./errors";
 
 /** Modus dieses Plugins in der Sampling-Profile-Tabelle — lingotuner formt Text treu um,
  *  ohne zu erfinden (Spec § 4.1: "transform"). Nur EIN Modus, deshalb hier fest verdrahtet. */
 export const MODE = "transform";
-
-/** Wandelt ein `TuneResult` in die Eingabe fuer `checkResponse` (Spec § 3.3). `null`, wenn
- *  gar keine Server-Antwort vorlag (Abbruch, Netzfehler, Timeout, CORS-Verdacht) — dafuer
- *  hat `checkResponse` keine sinnvolle Aussage. */
-export function responseFactsFromResult(result: TuneResult): ResponseFacts | null {
-  if (result.ok) {
-    return {
-      status: 200, finishReason: result.finishReason ?? null, content: result.text,
-      reasoning: result.reasoning, responseModel: result.model,
-    };
-  }
-  switch (result.error.kind) {
-    case "http":
-      return {
-        status: result.status ?? result.error.status, errorText: result.errorText ?? result.error.detail,
-        finishReason: result.finishReason ?? null, content: "", reasoning: result.reasoning ?? "",
-      };
-    case "thought-only":
-    case "empty":
-      return { status: 200, finishReason: result.finishReason ?? null, content: "", reasoning: result.reasoning ?? "" };
-    default:
-      return null;
-  }
-}
-
-/** Die Request-Bau-Funktion DES PLUGINS (Rezept 8): nur sie kennt lingotuners festen Modus.
- *  Goldene Requests laufen dagegen, nicht gegen resolveRequestParams direkt — sonst pruefte
- *  der Test das Kit statt das Plugin. */
-export function buildTuneParams(input: {
-  family: FamilyId | null;
-  backend: BackendId;
-  thinking: ThinkingLevel;
-  overrides?: Partial<Record<FieldId, number | string>>;
-}): ResolvedRequest {
-  return resolveRequestParams({ family: input.family, mode: MODE, backend: input.backend, thinking: input.thinking, overrides: input.overrides });
-}
-
-export interface TuneRequest {
-  messages: ChatMessage[];
-  endpoint: EndpointConfig;
-  /** Modell, wie es der Nutzer/die Liste kennt (Anzeige, Logbuch). */
-  model: string;
-  /** Modell, wie es tatsaechlich gesendet wird (nach `aliasOf`-Aufloesung). */
-  sentModel: string;
-  params: Record<string, number | string>;
-  /** Fristen, die der Client fuer diesen Lauf traegt — nur fuer den Text „nach N s“ im Timeout-Fehler. */
-  timeouts: { firstChunkSec: number; idleSec: number };
-  signal?: AbortSignal;
-  onToken?: (t: string) => void;
-  onReasoning?: (t: string) => void;
-}
 
 export type TuneResult =
   | { ok: true; text: string; reasoning: string; model: string; truncated: boolean; finishReason?: string; ttftMs?: number }
@@ -71,16 +16,14 @@ function ttftOf(t: ChatTiming): { ttftMs?: number } {
   return t.firstChunkAt !== undefined ? { ttftMs: t.firstChunkAt - t.startedAt } : {};
 }
 
-/** Ein Tunen ueber den Kit-Chat-Client. Der Client liefert Transport, Fristen, Fallback und
- *  Fehlerkoerper; hier bleibt, was nur lingotuner kennt: die Klassen `thought-only`/`empty` und
- *  die Uebersetzung der Kit-Fehlerarten in `TuneError`. */
-export async function streamTune(client: ChatClient, req: TuneRequest): Promise<TuneResult> {
-  const r = await client.complete({
-    endpoint: req.endpoint, model: req.sentModel, messages: req.messages, params: req.params,
-    ...(req.signal ? { signal: req.signal } : {}),
-    ...(req.onToken ? { onToken: req.onToken } : {}),
-    ...(req.onReasoning ? { onReasoning: req.onReasoning } : {}),
-  });
+/** Puffer auf die Kurzbefehl-Frist (Kit `llm-connection`): der Client darf nicht vor der Bruecke abbrechen. */
+const SHORTCUT_CLIENT_SLACK_MS = 10_000;
+
+/** Das Ergebnis der Verbindung (`llm.complete`) als `TuneResult`. Die Verbindung liefert Transport, Fristen,
+ *  Fallback, Schwaerzung und Fehlerkoerper; hier bleibt, was nur lingotuner kennt: die Klassen `thought-only`/
+ *  `empty` und die Uebersetzung der Kit-Fehlerarten in `TuneError`. `shortcut` nennt die Kurzbefehl-Frist des
+ *  Endpunkts (hebt die Frist des ersten Chunks, nur fuer den Text „nach N s“). */
+export function toTuneResult(r: ChatResult | NoEndpointResult, shortcut?: Pick<ShortcutTransportConfig, "timeoutMs">): TuneResult {
   const ttft = ttftOf(r.timing);
   if (r.ok) {
     if (r.content.trim() === "") return emptyResult(r.content, r.reasoning, r.finishReason, ttft);
@@ -89,7 +32,8 @@ export async function streamTune(client: ChatClient, req: TuneRequest): Promise<
   switch (r.kind) {
     case "aborted": return { ok: false, error: { kind: "aborted" }, partial: r.partial, ...ttft };
     case "timeout": {
-      const seconds = r.timing.firstChunkAt === undefined ? req.timeouts.firstChunkSec : req.timeouts.idleSec;
+      const firstChunkMs = Math.max(JIT_FIRST_CHUNK_TIMEOUT_MS, shortcut ? shortcut.timeoutMs + SHORTCUT_CLIENT_SLACK_MS : 0);
+      const seconds = (r.timing.firstChunkAt === undefined ? firstChunkMs : DEFAULT_IDLE_TIMEOUT_MS) / 1000;
       return { ok: false, error: { kind: "timeout", seconds }, partial: r.partial, ...ttft };
     }
     case "network": return { ok: false, error: { kind: "network" }, partial: r.partial, ...ttft };
@@ -103,6 +47,7 @@ export async function streamTune(client: ChatClient, req: TuneRequest): Promise<
         reasoning: r.reasoning, ...(r.status !== undefined ? { status: r.status } : {}),
         ...(r.body !== undefined ? { errorText: r.body } : {}), ...ttft,
       };
+    case "no-endpoint": return { ok: false, error: { kind: "network" }, partial: r.partial };
   }
 }
 

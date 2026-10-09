@@ -4,22 +4,15 @@ import { Notice } from "./vendor/kit/obsidian-mock";
 import { loadSettings } from "../src/core/settings";
 import { NEUTRAL } from "../src/core/dials";
 import "../src/i18n/strings";
+import { fakeConnection } from "./helpers/connection";
 
 // Nachlese 0.1.1-Review (geparkt mit Ruling): `quiet` deckte die Logbuch-Fehler-Notice bei
-// API-Laeufen (main.ts, Logbuch-`catch`) nicht ab — anders als der Override-Fehler direkt
-// darueber (Zeile 237), der bei `quiet: true` schon immer nur `console.warn` schrieb. Diese
-// Datei prueft den nachgezogenen Fix isoliert, ohne den vollen Netzwerk-Pfad zu mocken: das
-// Logbuch-`catch` ist erreichbar, sobald `streamTune` ok liefert und `appendLogEntry` wirft.
-// `tune()` ist privat (nur ueber Panel/API erreichbar) — direkt angesprochen wie in
-// tests/resolve-endpoint-cache.test.ts ueblich (dort `resolveEndpoint`, hier `tune`), statt
-// den vollen Panel-View- oder Api-Aufbau (`onload()`) fuer einen einzelnen catch-Zweig zu
-// mocken.
-vi.mock("../src/core/llm/client", () => ({
-  MODE: "transform",
-  streamTune: vi.fn(() => Promise.resolve({ ok: true, text: "tuned", reasoning: "", model: "m", truncated: false })),
-  buildTuneParams: vi.fn(() => ({ params: {}, explain: [] })),
-  responseFactsFromResult: vi.fn(() => null),
-}));
+// API-Laeufen (main.ts, Logbuch-`catch`) nicht ab — anders als der Override-Fehler davor, der bei
+// `quiet: true` schon immer nur `console.warn` schrieb. Diese Datei prueft den nachgezogenen Fix
+// isoliert, ohne den vollen Netzwerk-Pfad zu mocken: das Logbuch-`catch` ist erreichbar, sobald die
+// Verbindung ein Ergebnis liefert und `appendLogEntry` wirft. `tune()` ist privat (nur ueber
+// Panel/API erreichbar) — direkt angesprochen, statt den vollen Panel-View- oder Api-Aufbau
+// (`onload()`) fuer einen einzelnen catch-Zweig zu mocken.
 vi.mock("../src/obsidian/logbook-io", () => ({
   appendLogEntry: vi.fn(() => Promise.reject(new Error("Logbuch-Fehler"))),
 }));
@@ -37,7 +30,7 @@ async function makePlugin(): Promise<{ tune: (p: TuneParams) => Promise<unknown>
   const Plugin = (await import("../src/main")).default;
   const plugin = new Plugin(makeApp(), {} as unknown as PluginManifest);
   plugin.settings = loadSettings({ endpoints: [{ url: "http://l" }], logbookEnabled: true });
-  vi.spyOn(plugin, "resolveEndpoint").mockResolvedValue({ url: "http://l" });
+  (plugin as unknown as { llm: unknown }).llm = fakeConnection("tuned");
   return plugin as unknown as { tune: (p: TuneParams) => Promise<unknown> };
 }
 

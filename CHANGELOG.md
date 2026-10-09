@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The connection now comes from obsidian-kit 0.51.2** (`createLlmConnection`, with code-kit 0.15.0) instead of a local resolver, chat client and backend probe. Endpoint source, endpoint list, model list, request section and the thinking/sampling profile run through one kit building block. Visible effects:
+  - **The "Timeout (seconds)" setting is gone.** The waits are fixed: up to 600 seconds for the first token (a model that loads on first use can take minutes; the default was 60 seconds), and 120 seconds of silence once an answer has started. The error text no longer suggests raising a setting. An old `timeoutSec` in your data file is dropped on the next save.
+  - **API keys move into Obsidian's keychain.** Keys already stored in the endpoint list are migrated the first time the connection is resolved; afterwards `data.json` no longer carries them. This needs **Obsidian 1.11.4** (the minimum was 1.8.7).
+  - **Secrets are redacted before they are sent.** Tokens, API keys, `Bearer …` values and PEM blocks in your text are replaced by placeholders on the wire and put back into the answer you see. The Lab recording shows what was sent (placeholders), not the originals.
+  - **Model output is rendered defanged.** In the panel, the result preview and the stream area show images as text, escape `<`, and no longer apply code-block formatting (so a model cannot trigger a code-block plugin or load an image with your data in its address). The text that **Replace**, **Copy** and **New note** write is the original.
+  - **A stored endpoint-manager choice only applies while the manager is installed.** Without it, the local model setting always wins; before, an old manager choice could override it.
+  - The endpoint list, the status icons and the deviation notice now use the kit's wording (for example "Test connection", "Try this endpoint first", "Timed out"); the deviation notice ends on "Request" in English quotes.
+  - The copied kit styles gained `.okit-request-status.is-error` (a failed save in the request section turns red).
+
 ## [0.6.1] — 2026-10-03
 
 ### Changed

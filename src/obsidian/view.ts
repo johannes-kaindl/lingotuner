@@ -7,6 +7,7 @@ import type { TuneResult } from "../core/llm/client";
 import type { FamilyId, ThinkingLevel } from "../vendor/kit/sampling-profiles";
 import { patchPanel, renderPanel, structureKey, type PanelHandlers, type PanelModel, type PanelParts, type RunPhase } from "./view-render";
 import { createStableWriter, type StableMarkdownWriter } from "../vendor/kit-obsidian/stable-writer";
+import { neutralizeModelMarkdown } from "../vendor/kit/safe-markdown";
 import { t } from "../vendor/kit/i18n";
 
 export const VIEW_TYPE_LINGOTUNER = "lingotuner-panel";
@@ -261,7 +262,8 @@ export class LingoTunerView extends ItemView {
       // (`area.tailEl`) liegt im Body, und ein `empty()` haengte ihn aus — der naechste
       // Stream schriebe dann in ein Element ausserhalb des Dokuments.
       const block = parts.area.bodyEl.createDiv({ cls: "okit-stream-block" });
-      void this.renderMd(block, this.preview);
+      // Die Vorschau ist Modell-Ausgabe (die ersetzte Notiz bekommt weiter den Originaltext): neutralisiert rendern.
+      void this.renderMd(block, neutralizeModelMarkdown(this.preview));
       parts.area.bodyEl.appendChild(parts.area.tailEl);
     }
     this.stelleCursorHer(merk);

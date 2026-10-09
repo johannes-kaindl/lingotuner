@@ -44,11 +44,11 @@ Each entry starts with what you see — the wording is the plugin's own English 
 
 ## No answer in time
 
-> No answer within {N} seconds. Check the server or raise the timeout in the settings.
+> No answer within {N} seconds. Check the server.
 
-**Cause:** no first token arrived within the timeout (60 seconds by default), or an answer that had started went silent for 120 seconds. Big models can need longer to load.
+**Cause:** no first token arrived within 600 seconds (a model that loads on first use can take minutes), or an answer that had started went silent for 120 seconds.
 
-**Fix:** raise **Timeout (seconds)** in the settings, or load the model in the server before you press **Tune**. The setting only covers the wait for the first token; once streaming has started, only 120 seconds without any data end it.
+**Fix:** check that the server is running and the model is loaded, or load the model in the server before you press **Tune**. The waits are fixed and not a setting.
 
 ## The server rejected the request
 

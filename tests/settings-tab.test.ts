@@ -10,8 +10,7 @@ function fakePlugin() {
   return {
     settings: { ...DEFAULT_SETTINGS, userPresets: [{ name: "Chef", dials: { directness: 1, context: 0, social: 2, semantics: 0 } }] },
     saveSettings: vi.fn(() => Promise.resolve()),
-    resolver: { invalidate: vi.fn(), resolve: vi.fn(() => Promise.resolve(null)) },
-    activeEndpointUrl: () => null,
+    llm: { resolve: vi.fn(() => Promise.resolve({ config: null })), models: vi.fn(() => Promise.resolve({ models: [], reachable: false })), hideSettings: vi.fn(), renderSettings: vi.fn() },
     app: {},
     manifest: { id: "lingotuner" },
   };
@@ -24,17 +23,15 @@ describe("LingoTunerSettingTab", () => {
       .filter((d) => d.type === "group");
     expect(defs).toHaveLength(3);
     const keys = defs.flatMap((g) => g.items.map((i) => i.control?.key).filter((k): k is string => k !== undefined));
-    expect(keys).toEqual(["timeoutSec", "overrideFolder", "logbookEnabled", "logbookFolder", "newNoteFolder"]);
+    expect(keys).toEqual(["overrideFolder", "logbookEnabled", "logbookFolder", "newNoteFolder"]);
   });
 
-  it("setControlValue klemmt das Zeitlimit und speichert", () => {
+  it("hat keine Zeitlimit-Zeile mehr; setControlValue ignoriert den Altschluessel", () => {
     const p = fakePlugin();
     const tab = new LingoTunerSettingTab({} as App, p as never);
     tab.setControlValue("timeoutSec", "2");
-    expect(p.settings.timeoutSec).toBe(5);
-    tab.setControlValue("timeoutSec", "abc");
-    expect(p.settings.timeoutSec).toBe(5);
-    expect(p.saveSettings).toHaveBeenCalledTimes(2);
+    expect(p.settings).not.toHaveProperty("timeoutSec");
+    expect(p.saveSettings).not.toHaveBeenCalled();
   });
 
   it("getControlValue liest die Settings", () => {

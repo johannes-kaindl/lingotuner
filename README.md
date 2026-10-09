@@ -7,7 +7,7 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](https://github.com/johannes-kaindl/lingotuner/blob/main/LICENSE)
 [![Docs: CC BY-SA 4.0](https://img.shields.io/badge/docs-CC%20BY--SA%204.0-lightgrey.svg)](https://github.com/johannes-kaindl/lingotuner/blob/main/LICENSE-DOCS)
 [![Release](https://img.shields.io/github/v/release/johannes-kaindl/lingotuner?label=release)](https://github.com/johannes-kaindl/lingotuner/releases)
-![Platform](https://img.shields.io/badge/platform-Obsidian%201.8.7%2B%20·%20desktop%20%26%20mobile-7c3aed)
+![Platform](https://img.shields.io/badge/platform-Obsidian%201.11.4%2B%20·%20desktop%20%26%20mobile-7c3aed)
 
 Neurodivergent and neurotypical communication styles differ along a few well-described dimensions: how direct a request is, how much context is spelled out, how much social framing surrounds the content, and how literal the language is. LingoTuner is an interpreter between those styles. Select a text, set four dials, add a note if you like, and a local model rewrites the text — same information, different style. A sidebar panel next to your note holds the four sliders, the note field, the streamed result and the four ways out of it.
 
@@ -28,7 +28,7 @@ Neurodivergent and neurotypical communication styles differ along a few well-des
 
 ## Requirements
 
-- **Obsidian 1.8.7+** (desktop or mobile).
+- **Obsidian 1.11.4+** (desktop or mobile).
 - **An OpenAI-compatible local server** with a chat model loaded — [LM Studio](https://lmstudio.ai), [Ollama](https://ollama.com) or MLX. New to local LLMs? The **[local LLM setup guide](https://uplink.jkaindl.de/llm-setup)** walks you through server, model and mobile access end to end.
 - **CORS, if the connection test is green but the stream is blocked.** The result is streamed over XHR from the origin `app://obsidian.md`, and a server that answers a plain request may still refuse that. In LM Studio enable CORS in the server settings (`lms server start --bind 0.0.0.0 --cors` sets both at once — a missing flag is reset to its default); for Ollama set `OLLAMA_ORIGINS=app://obsidian.md`. If the server refuses the stream, the plugin retries once without streaming, so the answer still arrives — all at once instead of token by token. Only when that fails too does it name the case instead of reporting a generic network error.
 - **A mid-size model, if you care about the result.** The rewrite has to keep every piece of information while changing the style; measured against a local LM Studio, a 35B mixture-of-experts model invented no information, never switched language and never returned the text unchanged, across all 16 dial steps in both languages. Two of those steps (`context:-2`, `social:2`) hit the intended tone but not the concreteness of the reference text. A very small model tends to shorten instead of rephrase.
@@ -83,16 +83,15 @@ The replace buttons stay disabled unless the source is still live — same note,
 
 | Setting | What it does |
 |---|---|
-| Endpoints | An ordered list of OpenAI-compatible servers, each with an optional API key and model override. The first reachable one is used; every row shows its own reachability status. |
+| Endpoints | An ordered list of OpenAI-compatible servers, each with an optional API key and model override. The first reachable one is used; every row shows its own reachability status. API keys are kept in Obsidian's keychain, not in the plugin's data file. |
 | Model | Read live from the endpoint. Empty means the server picks whatever model it has loaded. |
 | Request | Shows the sampling values, thinking level and token budget actually sent for the current model family and backend, with per-family overrides, the last request and any deviations for the running session. The thinking control in the panel switches between off and the model's preferred level; a per-family toggle in this section turns it into a four-level dropdown. |
-| Timeout | How long to wait for the *first* token before giving up. Once streaming has started, only a stall cuts it off: 120 seconds without any data. |
 | Override folder | Optional vault folder with `system.md` and `<dimension>_<level>.md` files that replace shipped prompt text. Empty means shipped text. |
 | Saved presets | Your own dial combinations, saved from the panel. |
 | Logbook | Off by default. When on, every run is appended to a monthly note (time, model, dial values, note, original, result). |
 | Folder for new notes | Where **New note** puts the tuned text. Empty means the vault root. |
 
-<p align="center"><img src="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/settings.png" width="820" alt="The LingoTuner settings tab: the Connection group with one reachable endpoint marked active, the Model and Request rows and the timeout, then the Style group with the override folder"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/settings.png" width="820" alt="The LingoTuner settings tab: the Connection group with one reachable endpoint marked active, the Model and Request rows, then the Style group with the override folder"></p>
 
 ## How it works
 

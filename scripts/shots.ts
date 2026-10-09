@@ -116,7 +116,7 @@ async function panelZustand(ws: Cdp): Promise<void> {
   await setPluginSetting(ws, PLUGIN_ID, "endpoints", [{ url: `http://127.0.0.1:${FAKE_PORT}` }]);
   await setPluginSetting(ws, PLUGIN_ID, "model", FAKE_MODEL);
   await setPluginSetting(ws, PLUGIN_ID, "lastDials", { directness: 0, context: 0, social: 0, semantics: 0 });
-  await ws.evaluate(`const p = app.plugins.plugins[${q(PLUGIN_ID)}]; p.invalidateEndpointCache(); await p.resolveEndpoint(); return { ok: true };`);
+  await ws.evaluate(`const p = app.plugins.plugins[${q(PLUGIN_ID)}]; p.llm.invalidate(); await p.llm.resolve(); return { ok: true };`);
 }
 
 async function aufraeumen(ws: Cdp): Promise<void> {
@@ -128,7 +128,7 @@ async function aufraeumen(ws: Cdp): Promise<void> {
       p.settings.model = "";
       p.settings.lastDials = { directness: 0, context: 0, social: 0, semantics: 0 };
       await p.saveSettings();
-      p.invalidateEndpointCache();
+      p.llm.invalidate();
     }
     return { ok: true };
   `).catch(() => { console.log("  ! Aufraeumen fehlgeschlagen — data.json im Aufnahme-Vault pruefen"); });

