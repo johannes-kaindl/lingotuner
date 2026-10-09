@@ -91,7 +91,7 @@ The replace buttons stay disabled unless the source is still live — same note,
 | Logbook | Off by default. When on, every run is appended to a monthly note (time, model, dial values, note, original, result). |
 | Folder for new notes | Where **New note** puts the tuned text. Empty means the vault root. |
 
-<p align="center"><img src="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/settings.png" width="820" alt="The LingoTuner settings tab: the Connection group with one reachable endpoint marked active, the Model and Request rows, then the Style group with the override folder"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/settings.png" width="820" alt="The LingoTuner settings tab: the Connection group with one reachable endpoint marked active, the collapsed Request section and the Model row, then the Style group with the override folder"></p>
 
 ## How it works
 

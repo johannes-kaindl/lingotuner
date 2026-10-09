@@ -91,7 +91,7 @@ Die Ersetzen-Knöpfe bleiben gesperrt, solange die Quelle nicht mehr live ist �
 | Logbuch | Standardmäßig aus. Eingeschaltet hängt es jeden Lauf an eine Monatsnotiz an (Zeit, Modell, Reglerwerte, Anmerkung, Original, Ergebnis). |
 | Ordner für neue Notizen | Wohin **Neue Notiz** den getunten Text legt. Leer heißt Vault-Wurzel. |
 
-<p align="center"><img src="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/settings.png" width="820" alt="Der Einstellungen-Tab von LingoTuner (Oberfläche englisch aufgenommen): die Gruppe Connection mit einem erreichbaren, als aktiv markierten Endpunkt, Modell und Request, darunter die Gruppe Style mit dem Override-Ordner"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/johannes-kaindl/lingotuner/main/docs/images/settings.png" width="820" alt="Der Einstellungen-Tab von LingoTuner (Oberfläche englisch aufgenommen): die Gruppe Connection mit einem erreichbaren, als aktiv markierten Endpunkt, Request (zugeklappt) und Modell, darunter die Gruppe Style mit dem Override-Ordner"></p>
 
 ## Funktionsweise
 
