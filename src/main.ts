@@ -16,7 +16,7 @@ import { classifyNetworkFailure, classifyShortcutFailure } from "./core/llm/erro
 import { createLingoTunerApi, type LingoTunerApi } from "./core/api";
 import { createShortcutsBridge, type ShortcutsBridge } from "./vendor/kit-obsidian/shortcuts-bridge";
 import { createShortcutsChatTransport } from "./vendor/kit-obsidian/chat-transport";
-import { redactMessages } from "./vendor/kit-obsidian/chat-client";
+import { redactExchange } from "./vendor/kit-obsidian/chat-client";
 import { logToLab } from "./vendor/kit-obsidian/lab-client";
 import { SelectionTracker, createTunedNote, replaceCapture } from "./obsidian/editor-io";
 import { vaultOverrideReader } from "./obsidian/overrides-io";
@@ -211,10 +211,7 @@ export default class LingoTunerPlugin extends Plugin {
 
   /** EIN Ausfuehrungspfad fuer Panel und API: Endpunkt aufloesen → Overrides → Prompt → Stream → Lab → Logbuch. */
   private async tune(p: { text: string; dials: Dials; note: string; signal?: AbortSignal; quiet?: boolean; onToken?: (t: string) => void; onReasoning?: (t: string) => void }): Promise<TuneResult> {
-    let resolved = await this.llm.resolve();
-    // Die Verbindung merkt auch eine lokale Aufloesung OHNE Endpunkt (Server beim Start noch aus). Vor der Meldung
-    // einmal frisch fragen, sonst bleibt „kein Endpunkt“ bis zur naechsten Aenderung der Liste stehen.
-    if (resolved.config === null && !this.managerActive()) resolved = await this.llm.resolve({ force: true });
+    const resolved = await this.llm.resolve();
     if (resolved.config === null) {
       // Im Manager-Fall nennt die Aufloesung einen `reason`-Code (`no-endpoint` | `not-found` | `disabled` |
       // `secret-missing` | `unreachable`). `secret-missing` ist der Fall, der aktiv in die Irre fuehrt: die
@@ -270,12 +267,11 @@ export default class LingoTunerPlugin extends Plugin {
 
     // Das Lab bekommt den GESENDETEN Text (Platzhalter), nicht die Originale: das Log soll dem Draht entsprechen.
     // Nachrichten, Antwort und Denkspur laufen durch EINE Schwaerzung, damit derselbe Wert ueberall denselben Platzhalter hat.
-    const answer = result.ok ? result.text : result.partial;
     const thought = result.ok ? result.reasoning : (result.reasoning ?? "");
-    const sentView = redactMessages<ChatMessage>([...messages, { role: "assistant", content: answer }, ...(thought !== "" ? [{ role: "assistant" as const, content: thought }] : [])]).messages;
-    const sentMessages = sentView.slice(0, messages.length);
-    const sentAnswer = sentView[messages.length]?.content ?? answer;
-    const sentThought = thought !== "" ? (sentView[messages.length + 1]?.content ?? thought) : "";
+    const sent = redactExchange<ChatMessage>({ messages, answer: result.ok ? result.text : result.partial, reasoning: thought !== "" ? thought : null });
+    const sentMessages = sent.messages;
+    const sentAnswer = sent.answer;
+    const sentThought = sent.reasoning ?? "";
     const apiKey = src.config?.apiKey;
     const lab = logToLab(this.app, {
       plugin: "lingotuner", feature: "tune", model, endpointUrl: src.config?.url ?? "", messages: sentMessages,

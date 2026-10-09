@@ -36,6 +36,8 @@ export interface ConnOptions {
   backend?: BackendId;
   timeouts?: { idleMs?: number; firstChunkMs?: number };
   notices?: string[];
+  /** Erreichbarkeit der lokalen Zeile (Default: immer erreichbar). */
+  probe?: () => Promise<boolean>;
 }
 
 /** Die Verbindung des Plugins ohne Obsidian: lokale Liste, Probe immer gruen, eigener Transport. */
@@ -51,7 +53,7 @@ export function makeConnection(o: ConnOptions): LlmConnection {
     app, pluginId: "lingotuner", caller: "lingotuner", capability: "chat", mode: MODE, clock: nodeClock,
     getSettings: () => settings,
     persist: (patch) => { Object.assign(settings, patch); return Promise.resolve(); },
-    probe: () => Promise.resolve(true),
+    probe: o.probe ?? (() => Promise.resolve(true)),
     listModels: () => Promise.resolve(["qwen"]),
     backendOf: () => Promise.resolve(o.backend ?? null),
     transports: { http: o.transport, ...(o.fallback ? { httpFallback: o.fallback } : { fallback: "none" as const }) },

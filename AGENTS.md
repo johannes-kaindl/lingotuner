@@ -231,8 +231,7 @@ erlaubt, stillschweigend abzuweichen nicht.
   neu, nie aus einem gemerkten Plugin-Feld. Grund: das Nachbarplugin kann jederzeit installiert,
   aktiviert, deaktiviert oder umkonfiguriert werden — ein gecachtes „Manager da/weg" würde nach
   einer solchen Änderung falsch bleiben. `llm.resolve()` (Kit-Verbindung) merkt nur den LOKALEN Pfad bis
-  `llm.invalidate()`, auch ein Ergebnis ohne Endpunkt (`tune()` fragt deshalb vor der Meldung einmal mit
-  `force` nach); der Manager-Pfad wird nie gemerkt.
+  `llm.invalidate()`; „kein Endpunkt“ (Server beim Start aus) wird seit Kit 0.51.3 nicht gemerkt, der Manager-Pfad nie.
 - **`document.textContent` liefert für ein Document-Node per DOM-Spec IMMER `null`** — nur
   Element-/Text-Nodes tragen `textContent`. Gemessen 2026-09-15 beim GUI-Smoke-Ausbau (Abschnitt
   M): ein Treiber-Helfer für das eigene Settings-Fenster (Obsidian ≥1.13) las `root.textContent`
