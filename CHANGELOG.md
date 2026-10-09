@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-10-09
+
 ### Changed
 
 - **The connection now comes from obsidian-kit 0.51.2** (`createLlmConnection`, with code-kit 0.15.0) instead of a local resolver, chat client and backend probe. Endpoint source, endpoint list, model list, request section and the thinking/sampling profile run through one kit building block. Visible effects:
