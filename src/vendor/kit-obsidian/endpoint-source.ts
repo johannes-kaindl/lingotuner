@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.46.0, src/obsidian/endpoint-source.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.51.2, src/obsidian/endpoint-source.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { Notice, Setting, type App } from "obsidian";
 import { resolveModelChoice, type ModelHintKey } from "../kit/model-choice";
 import type { EndpointConfig } from "../kit/endpoint_config";
@@ -7,6 +7,7 @@ import {
   type Capability, type EndpointChoice, type EndpointTransport, type ImportResult, type LlmEndpointManagerApi,
 } from "../kit/endpoint-source";
 import { renderModelPicker } from "./model-picker";
+import { hydrateLocalEndpoints } from "./endpoint-secrets";
 
 /** Bei JEDEM Aufruf frisch lesen — das Plugin kann jederzeit deaktiviert werden. */
 export function findEndpointManager(app: App): LlmEndpointManagerApi | null {
@@ -48,6 +49,10 @@ export interface EndpointSourceSectionOptions {
   choice(): EndpointChoice;
   setChoice(c: EndpointChoice): Promise<void>;
   local(): EndpointConfig[];
+  /** Plugin-ID der lokalen Liste, wenn ihre Schlüssel im Schlüsselbund liegen
+   *  (`buildEndpointList` mit `app` + `pluginId`): der Import an den Manager trägt dann die
+   *  Schlüssel mit, nicht nur `secretId`s, die der Manager nicht auflösen kann. */
+  pluginId?: string;
   strings: EndpointSourceSectionStrings;
   /** Der heutige Listen-Editor des Konsumenten — wird NUR ohne Manager gerufen. */
   renderLocalList(): void;
@@ -102,7 +107,7 @@ export function buildEndpointSourceSection(opts: EndpointSourceSectionOptions): 
     void api.models(targetId).then((r) => { if ("error" in r) draw([], false); else draw(r, true); }).catch(() => draw([], false));
   }
 
-  const local = opts.local();
+  const local = opts.pluginId ? hydrateLocalEndpoints(opts.app, opts.pluginId, opts.local()) : opts.local();
   if (local.length > 0) {
     new Setting(opts.containerEl).addButton((b) => b.setButtonText(st.importLocal).onClick(() => {
       b.buttonEl.disabled = true;
