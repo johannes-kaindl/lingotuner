@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-10-11
+
 ### Changed
 
 - **The global *Model* setting is gone; each endpoint row carries its own model.** An existing value moves once into the rows that had none. The model dropdown in the panel now writes into the active row (with the LLM Endpoint Manager: into the choice), and "let the server pick" empties it. With the Manager, the panel now shows the model that is actually used, including the Manager's default, instead of only an explicit choice.
