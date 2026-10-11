@@ -11,6 +11,7 @@ All notable changes to this project are documented here. The format follows
 - **The global *Model* setting is gone; each endpoint row carries its own model.** An existing value moves once into the rows that had none. The model dropdown in the panel now writes into the active row (with the LLM Endpoint Manager: into the choice), and "let the server pick" empties it. With the Manager, the panel now shows the model that is actually used, including the Manager's default, instead of only an explicit choice.
 - **The *Model* row in the settings and its *Load models* button are removed** (the endpoint row has its own model field). The model list is still loaded for the panel dropdown.
 - The connection now comes from obsidian-kit 0.53.0 and code-kit 0.21.1. A fenced Mermaid diagram in a model answer that could load remote content is shown as plain text.
+- The connection now masks `Bearer` tokens more broadly (code-kit 0.21.x: from 8 characters, case-insensitive, `=` allowed in the token). Prose such as "Bearer authentication" is sent to the model as `Bearer [redacted-token]` and comes back that way in the answer.
 
 ## [0.7.0] — 2026-10-09
 
