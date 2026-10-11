@@ -11,7 +11,7 @@
         "sse", "endpoint", "endpoint_config", "endpoint_diagnostics", "model-choice",
         "model-list-cache", "reasoning", "capabilities", "think-splitter", "think-toggle",
         "timeout", "error_body", "i18n", "settings", "stream-blocks", "sampling-profiles",
-        "backend-probe", "redact", "safe-markdown", "secrets"
+        "backend-probe", "redact", "safe-markdown", "secrets", "rounds"
       ]
     },
     {

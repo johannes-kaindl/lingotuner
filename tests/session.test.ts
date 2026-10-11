@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { EMPTY_SESSION, addRound, selectRound, activeRound, refineInput, rootRound, rootInput, rootSourceName, type Round } from "../src/core/session";
+import { EMPTY_SESSION, rootRound, rootInput, rootSourceName, type Round } from "../src/core/session";
+import { pushRound as addRound, selectRound, activeRound } from "../src/vendor/kit/rounds";
 import { NEUTRAL } from "../src/core/dials";
 
 const round = (n: number, basedOn: number | null = null): Round => ({
@@ -8,9 +9,8 @@ const round = (n: number, basedOn: number | null = null): Round => ({
 });
 
 describe("session", () => {
-  it("leer: keine aktive Runde, kein Nachschaerf-Input", () => {
+  it("leer: keine aktive Runde", () => {
     expect(activeRound(EMPTY_SESSION)).toBeNull();
-    expect(refineInput(EMPTY_SESSION)).toBeNull();
   });
 
   it("addRound haengt an und macht die neue Runde aktiv", () => {
@@ -24,13 +24,14 @@ describe("session", () => {
     const s = selectRound(addRound(addRound(EMPTY_SESSION, round(1)), round(2, 0)), 0);
     expect(s.active).toBe(0);
     expect(s.rounds).toHaveLength(2);
-    expect(refineInput(s)).toBe("out1");
+    expect(activeRound(s)?.output).toBe("out1");
   });
 
   it("selectRound ignoriert Indizes ausserhalb und liefert dasselbe Objekt", () => {
     const s = addRound(EMPTY_SESSION, round(1));
     expect(selectRound(s, 5)).toBe(s);
     expect(selectRound(s, -1)).toBe(s);
+    expect(selectRound(s, 0.5)).toBe(s);
   });
 
   it("Nachschaerfen nach Rueckwahl haengt hinten an, ohne abzuschneiden", () => {

@@ -1,6 +1,7 @@
 import { Component, ItemView, MarkdownRenderer, Modal, Setting, type App, type WorkspaceLeaf } from "obsidian";
 import { isNoop, presetFor, type Dials, type Dimension, type Level, type Preset } from "../core/dials";
-import { EMPTY_SESSION, activeRound, addRound, rootInput, rootSourceName, selectRound, type Session } from "../core/session";
+import { EMPTY_SESSION, rootInput, rootSourceName, type Session } from "../core/session";
+import { activeRound, pushRound, selectRound } from "../vendor/kit/rounds";
 import { type Readiness, type SourceKind } from "../core/source";
 import { errorMessageKey } from "../core/llm/errors";
 import type { TuneResult } from "../core/llm/client";
@@ -301,7 +302,7 @@ export class LingoTunerView extends ItemView {
     const base = basedOn === null ? (readiness.kind === "ready" ? readiness.text : null) : (activeRound(this.session)?.output ?? null);
     // Der Quellname gehoert zur WURZEL der Kette: beim Lauf aus der Quelle der aktuelle
     // Bereitschafts-Name, beim Nachschaerfen der Name, unter dem die Kette begonnen hat.
-    // VOR addRound lesen — danach zeigt `active` auf die neue Runde.
+    // VOR pushRound lesen — danach zeigt `active` auf die neue Runde.
     const sourceName = basedOn === null
       ? (readiness.kind === "ready" ? readiness.name : null)
       : rootSourceName(this.session);
@@ -377,13 +378,13 @@ export class LingoTunerView extends ItemView {
       this.truncated = result.truncated;
       this.phase = "done";
       this.statusText = t("status.done");
-      this.session = addRound(this.session, { dials: { ...dials }, note: this.note, input: base, output: result.text, model: result.model, at: Date.now(), basedOn, sourceName, aborted: false, truncated: result.truncated });
+      this.session = pushRound(this.session, { dials: { ...dials }, note: this.note, input: base, output: result.text, model: result.model, at: Date.now(), basedOn, sourceName, aborted: false, truncated: result.truncated });
     } else if (result.error.kind === "aborted") {
       this.preview = result.partial;
       this.phase = "aborted";
       this.statusText = t("status.aborted");
       if (result.partial.trim() !== "") {
-        this.session = addRound(this.session, { dials: { ...dials }, note: this.note, input: base, output: result.partial, model: "", at: Date.now(), basedOn, sourceName, aborted: true, truncated: false });
+        this.session = pushRound(this.session, { dials: { ...dials }, note: this.note, input: base, output: result.partial, model: "", at: Date.now(), basedOn, sourceName, aborted: true, truncated: false });
       }
     } else {
       const { key, args } = errorMessageKey(result.error);
