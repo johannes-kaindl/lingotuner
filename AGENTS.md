@@ -168,9 +168,7 @@ und **unmittelbar nach dem Lauf** freigeben — Committen und Doku brauchen den 
 Deklaration nach `UI-STANDARD.md` §1a — von einem verbindlichen §8-Baustein abzuweichen ist
 erlaubt, stillschweigend abzuweichen nicht.
 
-- **Async Modell-Feld** — Grund: Modell-Auswahl im Panel ist ein reines Dropdown ohne
-  Freitext-Fallback (§8 verlangt beides) — das Panel ist der Schnellwechsler, das verbindliche
-  Feld mit Freitext trägt der Settings-Tab über den Kit-Picker.
+- **Async Modell-Feld** — Grund: Die Modell-Auswahl im Panel ist ein reines Dropdown ohne Freitext-Fallback (§8 verlangt beides). Das Panel ist der Schnellwechsler, den Freitext trägt die Modell-Auswahl der Endpunkt-Zeile in den Settings (Kit-`endpoint-list`, bei leerer Liste Freitext).
   — gilt-solange: `src/obsidian/view-render.ts` enthaelt-nicht `renderModelPicker`
 - **Status-Indikator** — Grund: kennt im Panel einen fuenften Zustand „bereit" mit Icon `circle`
   und ohne `is-*`-Klasse (§8 nennt vier Zustaende/Icons) — vor dem ersten Lauf ist weder Erfolg

@@ -54,9 +54,9 @@ Each entry starts with what you see — the wording is the plugin's own English 
 
 > The server rejected the request ({status}): {message}
 
-**Cause:** the server answered with an error, for instance because no model is loaded or the model name in **Model** does not exist there.
+**Cause:** the server answered with an error, for instance because no model is loaded or the model of the endpoint row does not exist there.
 
-**Fix:** load a model in the server, or clear **Model** to let the server pick, or press **Load models** and choose one from the list.
+**Fix:** load a model in the server, or choose "let the server pick" in the panel's model dropdown, or pick another model from the list.
 
 ## Tune does nothing
 

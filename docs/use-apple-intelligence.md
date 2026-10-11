@@ -11,7 +11,7 @@ LingoTuner can send a request to Apple's on-device model instead of a server. Th
 
 1. Open **Settings → LingoTuner**.
 2. In the **Endpoint** dropdown, pick **Apple Intelligence (on-device)**.
-3. Leave the **Model** field empty. The shortcut decides which model answers.
+3. Leave the endpoint row's model empty. The shortcut decides which model answers.
 
 A note below the dropdown repeats the limits. The next tune goes through the shortcut.
 

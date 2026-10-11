@@ -83,8 +83,7 @@ Die Ersetzen-Knöpfe bleiben gesperrt, solange die Quelle nicht mehr live ist �
 
 | Einstellung | Wirkung |
 |---|---|
-| Endpunkte | Geordnete Liste OpenAI-kompatibler Server, je mit optionalem API-Schlüssel und Modell-Override. Der erste erreichbare wird genommen; jede Zeile zeigt ihren eigenen Erreichbarkeitsstatus. API-Schlüssel liegen im Schlüsselbund von Obsidian, nicht in der Datendatei des Plugins. |
-| Modell | Live vom Endpunkt gelesen. Leer heißt: der Server nimmt das geladene Modell. |
+| Endpunkte | Geordnete Liste OpenAI-kompatibler Server, je mit optionalem API-Schlüssel und eigenem Modell (leer heißt: der Server nimmt das geladene Modell; die Modellwahl im Panel schreibt in die aktive Zeile). Der erste erreichbare wird genommen; jede Zeile zeigt ihren eigenen Erreichbarkeitsstatus. API-Schlüssel liegen im Schlüsselbund von Obsidian, nicht in der Datendatei des Plugins. |
 | Anfrage | Zeigt Sampling-Werte, Denkstufe und Tokenbudget, die für die aktuelle Modellfamilie und das Backend tatsächlich gesendet werden, mit Überschreibung je Familie, der letzten Anfrage und Abweichungen der laufenden Sitzung. Die Denk-Steuerung im Panel schaltet zwischen aus und der bevorzugten Stufe des Modells; ein Schalter in diesem Abschnitt macht daraus ein Dropdown mit vier Stufen. |
 | Override-Ordner | Optionaler Vault-Ordner mit `system.md` und `<dimension>_<stufe>.md`, die ausgelieferten Prompt-Text ersetzen. Leer heißt Auslieferungsstand. |
 | Gespeicherte Presets | Eigene Reglerstellungen, aus dem Panel gesichert. |
