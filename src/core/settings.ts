@@ -1,5 +1,5 @@
 import { mergeSettings } from "../vendor/kit/settings";
-import { migrateEndpointList, type EndpointConfig } from "../vendor/kit/endpoint_config";
+import { fillMissingRowModels, migrateEndpointList, type EndpointConfig } from "../vendor/kit/endpoint_config";
 import type { EndpointChoice } from "../vendor/kit/endpoint-source";
 import {
   DEFAULT_REQUEST_SETTINGS, onLevelFor, sanitizeRequestSettings, type RequestSettings,
@@ -11,8 +11,6 @@ export interface UserPreset { name: string; dials: Dials }
 
 export interface LingoTunerSettings {
   endpoints: EndpointConfig[];
-  /** leer = Server entscheidet (modellagnostisch, GET /v1/models liefert die Liste) */
-  model: string;
   overrideFolder: string;
   userPresets: UserPreset[];
   lastDials: Dials;
@@ -27,7 +25,6 @@ export interface LingoTunerSettings {
 
 export const DEFAULT_SETTINGS: LingoTunerSettings = {
   endpoints: [{ url: "http://127.0.0.1:1234" }],
-  model: "",
   overrideFolder: "",
   userPresets: [],
   lastDials: { ...NEUTRAL },
@@ -55,7 +52,7 @@ function sanitizePresets(raw: unknown): UserPreset[] {
 }
 
 export function loadSettings(raw: unknown): LingoTunerSettings {
-  const merged = mergeSettings(DEFAULT_SETTINGS, raw) as LingoTunerSettings & { suppressThinking?: unknown; timeoutSec?: unknown };
+  const merged = mergeSettings(DEFAULT_SETTINGS, raw) as LingoTunerSettings & { suppressThinking?: unknown; timeoutSec?: unknown; model?: unknown };
   const rawList = merged.endpoints as unknown as (string | EndpointConfig)[] | undefined;
   const rawChoice = (merged as { choice?: unknown }).choice;
   const choice: EndpointChoice = rawChoice && typeof rawChoice === "object"
@@ -65,10 +62,12 @@ export function loadSettings(raw: unknown): LingoTunerSettings {
   // suppressThinking ist Legacy (migriert von loadRequestSettings nach request.thinking.transform),
   // timeoutSec entfaellt seit dem Verbindungs-Tausch (die Fristen der Verbindung sind statisch).
   // Beide duerfen nicht als Fremdfeld durchgereicht werden — sonst persistiert saveData() sie weiter.
-  const { suppressThinking: _legacySuppress, timeoutSec: _legacyTimeout, ...clean } = merged;
+  // Das globale Modell (Welle 17) geht einmal in die Zeilen ohne Modell und faellt aus dem Ergebnis, sonst liefe die
+  // Migration bei jedem Start erneut und fuellte eine absichtlich geleerte Zeile wieder.
+  const { suppressThinking: _legacySuppress, timeoutSec: _legacyTimeout, model: legacyModel, ...clean } = merged;
   return {
     ...clean,
-    endpoints: migrateEndpointList(undefined, rawList),
+    endpoints: fillMissingRowModels(migrateEndpointList(undefined, rawList), legacyModel),
     lastDials: normalizeDials(merged.lastDials),
     userPresets: sanitizePresets(merged.userPresets),
     choice,

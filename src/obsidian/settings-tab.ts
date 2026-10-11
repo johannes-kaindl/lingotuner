@@ -3,10 +3,7 @@ import type LingoTunerPlugin from "../main";
 import { t } from "../vendor/kit/i18n";
 import { githubHelpUrls, helpSettingDefinition } from "../vendor/kit-obsidian/help-setting";
 import { renderSettingDefinitions, settingBodyHost, refreshSettingsTab } from "../vendor/kit-obsidian/settings_walker";
-import { renderModelPicker } from "../vendor/kit-obsidian/model-picker";
-import { findEndpointManager } from "../vendor/kit-obsidian/endpoint-source";
 import { installTabRefreshOnOpen } from "../vendor/kit-obsidian/settings_walker";
-import { resolveModelChoice } from "../vendor/kit/model-choice";
 import { writeShippedTexts } from "../core/examples/overrides";
 import { vaultOverrideWriter } from "./overrides-io";
 import { removeUserPreset } from "../core/settings";
@@ -17,8 +14,6 @@ type ItemDef = { name?: string; desc?: string; control?: ControlDef; render?: (s
 type GroupDef = { type?: string; heading?: string; items?: ItemDef[] };
 
 export class LingoTunerSettingTab extends PluginSettingTab {
-  /** Stand der Modell-Liste fuer die eigene Modell-Zeile (die Listen je Endpunkt haelt die Verbindung). */
-  private modelState: { url: string; models: string[]; reachable: boolean } | null = null;
   private cleanupPrevious: () => void = () => {};
   private uninstallRefresh: () => void = () => {};
 
@@ -36,7 +31,6 @@ export class LingoTunerSettingTab extends PluginSettingTab {
         items: [
           // Eigener Host, weil die Verbindung ihren Container bei jedem Neuzeichnen leert (Quelle, Liste, Anfrage in einem Zug).
           { render: (s) => { this.renderConnection(s); } },
-          { name: t("set.model"), desc: t("set.modelDesc"), render: (s) => { this.renderModel(s); } },
         ],
       },
       {
@@ -81,49 +75,6 @@ export class LingoTunerSettingTab extends PluginSettingTab {
     void this.plugin.llm.resolve().then((src) => {
       if (src.transport === "shortcuts" && hintEl.isConnected) new Setting(hintEl).setDesc(t("src.appleHint"));
     }).catch(() => undefined);
-  }
-
-  private renderModel(setting: Setting): void {
-    if (findEndpointManager(this.app)) { setting.setDesc(t("src.modelManaged")); return; }
-    const host = settingBodyHost(setting);
-    const row = new Setting(host).setName(t("set.model")).setDesc(t("set.modelDesc"));
-    const ep = this.plugin.settings.endpoints[0];
-    const url = ep?.url ?? "";
-    const state = this.modelState !== null && this.modelState.url === url ? this.modelState : null;
-    const load = async (): Promise<void> => {
-      if (ep === undefined) return;
-      const r = await this.plugin.llm.models({ force: true });
-      this.modelState = { url, models: r.models, reachable: r.reachable };
-      this.refreshUi();
-    };
-    if (state === null) {
-      row.setDesc(t("set.modelNotLoaded"));
-      row.addButton((b) => b.setButtonText(t("set.modelFetch")).onClick(() => {
-        b.buttonEl.disabled = true;
-        b.setButtonText(t("set.modelFetching"));
-        void load();
-      }));
-      return;
-    }
-    const choice = resolveModelChoice({ reachable: state.reachable, models: state.models, current: this.plugin.settings.model, allowEmpty: true });
-    renderModelPicker({
-      setting: row,
-      choice,
-      ariaLabel: t("set.model"),
-      placeholder: "",
-      hint: choice.hintKey === "" ? "" : t(`set.modelHint.${choice.hintKey}`),
-      hintAs: "desc",
-      savedSuffix: t("ep.saved"),
-      refreshTooltip: t("ep.refreshModels"),
-      onPick: (value) => {
-        this.plugin.settings.model = value;
-        void this.plugin.saveSettings();
-        // Die gemerkte Aufloesung traegt das alte Modell: verwerfen, sonst laeuft der naechste Lauf damit.
-        this.plugin.llm.invalidate();
-        void this.plugin.llm.resolve().catch(() => undefined);
-      },
-      onRefresh: () => { void load(); },
-    });
   }
 
   private renderOverrideWrite(setting: Setting): void {

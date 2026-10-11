@@ -1,7 +1,7 @@
 import { Notice, Plugin, getLanguage, type WorkspaceLeaf } from "obsidian";
 import "./i18n/strings";
 import { getLang, pickLang, setLang, t } from "./vendor/kit/i18n";
-import { findEndpointManager, onEndpointManagerChanged } from "./vendor/kit-obsidian/endpoint-source";
+import { onEndpointManagerChanged } from "./vendor/kit-obsidian/endpoint-source";
 import { copyToClipboard } from "./vendor/kit-obsidian/clipboard";
 import { confirmAction } from "./vendor/kit-obsidian/confirm";
 import { createLlmConnection, type LlmConnection } from "./vendor/kit-obsidian/llm-connection";
@@ -62,6 +62,9 @@ export default class LingoTunerPlugin extends Plugin {
       new Notice(t("request.dropped", String(dropped.length)));
       console.warn("LingoTuner: request settings dropped", dropped);
     }
+    // Das globale Modell ist in die Zeilen gewandert (loadSettings): einmal speichern, damit der Altschluessel
+    // aus der data.json verschwindet.
+    if (typeof raw === "object" && raw !== null && "model" in raw) await this.saveSettings();
     this.tracker = new SelectionTracker(this.app.workspace);
     this.shortcutsBridge = createShortcutsBridge(this, { protocolAction: "lingotuner-shortcut" });
     this.llm = createLlmConnection({
@@ -78,7 +81,6 @@ export default class LingoTunerPlugin extends Plugin {
       getSettings: () => ({
         endpoints: this.settings.endpoints,
         choice: this.settings.choice,
-        model: this.settings.model,
         request: this.settings.request,
       }),
       // Erst in die Settings schreiben, dann speichern: die Endpunkt-Liste liest ihre Zeilen danach zurueck.
@@ -110,19 +112,10 @@ export default class LingoTunerPlugin extends Plugin {
       getDials: () => this.settings.lastDials,
       setDials: (d) => { this.settings.lastDials = { ...d }; void this.saveSettings(); },
       listModels: async () => [...(await this.llm.models({ force: true })).models].sort(),
-      // Review-Fund I2: im Manager-Fall ist `settings.model` nur der `localModel`-Fallback,
-      // den die Aufloesung im Manager-Zweig NIE konsultiert — ein Panel-Modellfeld,
-      // das weiterhin dorthin schreibt, aendert dann kommentarlos nichts. Lesen/Schreiben
-      // routen deshalb ueber die Quelle (Manager da oder nicht), genau wie der Settings-Tab-Baustein (`choice`).
-      getModel: () => (this.managerActive() ? (this.settings.choice.model ?? "") : this.settings.model),
-      setModel: (m) => {
-        if (this.managerActive()) this.settings.choice = { ...this.settings.choice, model: m || undefined };
-        else this.settings.model = m;
-        void this.saveSettings();
-        // Aufloesung neu ziehen: ohne Invalidierung wuerde die gemerkte lokale Aufloesung das neue Modell ignorieren.
-        this.llm.invalidate();
-        void this.llm.resolve().then(() => { this.panel()?.refresh(); }).catch(() => undefined);
-      },
+      // Die Modellwahl gehoert der Verbindung: mit Manager `choice.model`, ohne Manager das Modell der aktiven
+      // Zeile; „Server waehlt“ ist `setModel("")`.
+      getModel: () => this.llm.modelInUse(),
+      setModel: (m) => { void this.llm.setModel(m).then(() => { this.panel()?.refresh(); }).catch(() => undefined); },
       getFamily: () => this.llm.source().family,
       getThinkingLevel: () => thinkingFor(this.settings.request, MODE),
       getThinkingOnLevel: () => onLevelFor(this.settings.request, MODE),
@@ -183,7 +176,6 @@ export default class LingoTunerPlugin extends Plugin {
   async saveSettings(): Promise<void> { await this.saveData(this.settings); }
 
   /** Ist der LLM Endpoint Manager da? Dann entscheidet er (Kit `resolveEndpointSource`: kein lokaler Rueckfall). */
-  private managerActive(): boolean { return findEndpointManager(this.app) !== null; }
 
   private panel(): LingoTunerView | null {
     const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_LINGOTUNER)[0];

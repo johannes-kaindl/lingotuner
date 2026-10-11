@@ -135,13 +135,7 @@ export const STRINGS = {
     "set.groupStyle": "Style",
     "set.groupOutput": "Output",
     "set.model": "Model",
-    "set.modelDesc": "Read live from the endpoint. Leave empty to let the server pick the loaded model.",
-    "set.modelFetch": "Load models",
-    "set.modelFetching": "Loading…",
-    "set.modelNotLoaded": "Model list not loaded yet.",
     "src.appleHint": "Apple Intelligence (on-device) runs through a Shortcut: the answer arrives all at once, not streamed, is limited to about 4096 tokens, and Shortcuts briefly comes to the front. The model is fixed by the shortcut, so leave the model field empty.",
-    "set.modelHint.unreachable": "Endpoint unreachable — type the model name.",
-    "set.modelHint.no-list": "The endpoint returns no model list — type the name.",
     "set.overrideFolder": "Override folder",
     "set.overrideFolderDesc": "Optional vault folder that may replace the shipped system prompt (system.md) and single example pairs (<dimension>_<level>.md). Empty means shipped text.",
     "set.overrideWrite": "Write shipped texts into the folder",
@@ -161,7 +155,6 @@ export const STRINGS = {
     "ep.saved": "saved",
     "ep.refreshModels": "Refresh models",
 
-    "src.modelManaged": "The model is chosen in the endpoint section above while the LLM Endpoint Manager is active.",
 
     "think.button.off": "Thinking off",
     "think.button.on": "Thinking: {0}",
@@ -314,13 +307,7 @@ export const STRINGS = {
     "set.groupStyle": "Stil",
     "set.groupOutput": "Ausgabe",
     "set.model": "Modell",
-    "set.modelDesc": "Wird live vom Endpunkt gelesen. Leer lassen, damit der Server das geladene Modell nimmt.",
-    "set.modelFetch": "Modelle laden",
-    "set.modelFetching": "Lädt…",
-    "set.modelNotLoaded": "Modell-Liste noch nicht geladen.",
     "src.appleHint": "Apple Intelligence (on-device) läuft über einen Kurzbefehl: Die Antwort kommt auf einmal statt im Stream, ist auf etwa 4096 Token begrenzt, und die Kurzbefehle-App springt kurz in den Vordergrund. Das Modell legt der Kurzbefehl fest, das Modellfeld bleibt deshalb leer.",
-    "set.modelHint.unreachable": "Endpunkt nicht erreichbar — Modellnamen eintippen.",
-    "set.modelHint.no-list": "Der Endpunkt gibt keine Modell-Liste heraus — Namen eintippen.",
     "set.overrideFolder": "Override-Ordner",
     "set.overrideFolderDesc": "Optionaler Vault-Ordner, der den ausgelieferten System-Prompt (system.md) und einzelne Beispielpaare (<dimension>_<stufe>.md) ersetzen darf. Leer heißt Auslieferungsstand.",
     "set.overrideWrite": "Auslieferungstexte in den Ordner schreiben",
@@ -340,7 +327,6 @@ export const STRINGS = {
     "ep.saved": "gespeichert",
     "ep.refreshModels": "Modelle neu laden",
 
-    "src.modelManaged": "Das Modell wird oben im Endpunkt-Abschnitt gewählt, solange der LLM Endpoint Manager aktiv ist.",
 
     "think.button.off": "Denken aus",
     "think.button.on": "Denken: {0}",

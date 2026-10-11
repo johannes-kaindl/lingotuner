@@ -52,3 +52,34 @@ describe("settings", () => {
     expect(removeUserPreset(b.list, "CHEF")).toEqual([]);
   });
 });
+
+describe("loadSettings — globales Modell abgeloest (Welle 17)", () => {
+  const row = (extra: object = {}) => ({ url: "http://127.0.0.1:1234", ...extra });
+
+  it("erster Lauf: Altwert wandert in die Zeilen ohne Modell, der Altschluessel verschwindet", () => {
+    const out = loadSettings({ endpoints: [row(), row({ url: "http://b:1" })], model: "alt-modell" });
+    expect(out.endpoints.map((e) => e.model)).toEqual(["alt-modell", "alt-modell"]);
+    expect("model" in out).toBe(false);
+  });
+
+  it("zweiter Lauf aendert nichts: eine vom Nutzer geleerte Zeile bleibt leer", () => {
+    const first = loadSettings({ endpoints: [row()], model: "alt-modell" });
+    first.endpoints[0] = { ...first.endpoints[0]!, model: "" };
+    const second = loadSettings(JSON.parse(JSON.stringify(first)));
+    expect(second.endpoints[0]!.model ?? "").toBe("");
+    expect("model" in second).toBe(false);
+  });
+
+  it("eine Zeile mit eigenem Modell bleibt unveraendert", () => {
+    const out = loadSettings({ endpoints: [row({ model: "eigen" }), row({ url: "http://b:1" })], model: "alt-modell" });
+    expect(out.endpoints.map((e) => e.model)).toEqual(["eigen", "alt-modell"]);
+  });
+
+  it("ohne Altwert bleiben die Zeilen unberuehrt", () => {
+    expect(loadSettings({ endpoints: [row()] }).endpoints).toEqual([row()]);
+  });
+
+  it("Default-Einstellungen tragen kein globales Modell mehr", () => {
+    expect("model" in DEFAULT_SETTINGS).toBe(false);
+  });
+});
