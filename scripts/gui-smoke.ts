@@ -16,7 +16,7 @@
  *   cp ~/Library/Application\ Support/obsidian/obsidian-1.14.0.asar "$UD"/   # aktuelle Version statt gebuendelter
  *   /Applications/Obsidian.app/Contents/MacOS/Obsidian --user-data-dir="$UD" --remote-debugging-port=9341 &
  *   python3 ~/.claude/hooks/obsidian-cdp-lock.py acquire --label lingotuner --intent "GUI-Smoke Zweitinstanz :9341" --exclusive focus --ttl 300
- *   npm run smoke:gui -- --port 9341
+ *   npm run smoke:gui -- --port 9341 --model <id>   (Abschnitt C braucht --model)
  *   python3 ~/.claude/hooks/obsidian-cdp-lock.py release
  *
  * Der `cp` der `.asar` ist keine Kuer: ein frisches Profil startet mit der GEBUENDELTEN
@@ -871,10 +871,18 @@ async function pruefeZuruecksetzen(cdp: Cdp): Promise<void> {
                   : `Rueckfrage kam, danach 0 Runden, .lt-reset weg, Leerzustand da (vorher ${vor.runden} Runden, ${vor.vorschau} Zeichen)`);
 }
 
+/** Modell fuer Abschnitt C: Flag `--model <id>`. Ohne Flag und ohne konfiguriertes Modell misst C nichts. */
+let MODELL_FLAG: string | undefined;
+
 async function pruefeLauf(cdp: Cdp): Promise<void> {
   console.log("\nC · Lauf mit Modell");
   if (!(await endpointReachable())) {
     for (const n of C_NAMEN) skipped(n, `kein Endpunkt auf ${ENDPOINT}`);
+    return;
+  }
+  const vorabModell = (await cdp.evaluate<{ m: string }>(`return { m: app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints[0]?.model ?? "" };`)).m;
+  if (vorabModell === "" && MODELL_FLAG === undefined) {
+    for (const n of C_NAMEN) skipped(n, "kein Modell gewaehlt: --model <id> setzen (die Reihenfolge der Server-Liste ist kein Auswahlkriterium)");
     return;
   }
   const vorher = (await cdp.evaluate<{ t: string }>(`return { t: await app.vault.read(app.vault.getAbstractFileByPath(${q(NOTE)})) };`)).t;
@@ -894,7 +902,8 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
     const konfiguriert = (await cdp.evaluate<{ m: string }>(`return { m: app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints[0]?.model ?? "" };`)).m;
     if (konfiguriert === "") {
       const ids = await modelle();
-      const gewaehlt = ids[0];
+      const gewaehlt = MODELL_FLAG;
+      if (gewaehlt !== undefined && !ids.includes(gewaehlt)) throw new Error(`--model ${gewaehlt} steht nicht in der Liste des Servers (${ids.length} Modelle)`);
       if (gewaehlt !== undefined) {
         modellGeaendert = true;
         modellVorwert = konfiguriert;
@@ -2009,6 +2018,8 @@ async function main(): Promise<void> {
   const port = portArg >= 0 ? Number(argv[portArg + 1]) : 9222;
   const vaultArg = argv.indexOf("--vault");
   const vaultFilter = vaultArg >= 0 ? argv[vaultArg + 1] : REPO_NAME;
+  const modelArg = argv.indexOf("--model");
+  MODELL_FLAG = modelArg >= 0 ? argv[modelArg + 1] : undefined;
 
   const cdp = await attachTo("workspace", port, vaultFilter);
   if (!cdp) throw new Error(`Kein Obsidian-Fenster fuer Vault "${vaultFilter}" auf Port ${port}.`);
