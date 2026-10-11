@@ -37,6 +37,7 @@ function baue(lauf: (req: RunRequest, root: unknown) => void, antwort = "Erster 
     getDials: () => dials,
     setDials: () => { /* egal */ },
     listModels: () => Promise.resolve([]),
+    domGuard: false,
     getModel: () => "",
     setModel: () => { /* egal */ },
     getFamily: () => null,

@@ -23,6 +23,8 @@ export interface RunRequest {
 }
 
 export interface ViewDeps {
+  /** DOM-Waechter des Stream-Schreibers (Kit `createStableWriter`, Default an). Tests mit dem Fake-DOM uebergeben `false`. */
+  domGuard?: boolean;
   readiness(kind: SourceKind, freeText: string): Readiness;
   canReplace(kind: "selection" | "note", sourceText: string): boolean;
   presets(): Preset[];
@@ -102,6 +104,8 @@ export class LingoTunerView extends ItemView {
   onClose(): Promise<void> {
     this.controller?.abort();
     this.controller = null;
+    this.writer?.destroy();
+    this.writer = null;
     this.contentEl.empty();
     return Promise.resolve();
   }
@@ -256,7 +260,8 @@ export class LingoTunerView extends ItemView {
     this.struct = structureKey(m);
     // Je Draw eine neue Area — also auch ein neuer Schreiber. Der alte haelt Zeiger auf DOM,
     // das es nicht mehr gibt.
-    this.writer = createStableWriter({ area: parts.area, render: (el, md) => this.renderMd(el, md) });
+    this.writer?.destroy();
+    this.writer = createStableWriter({ area: parts.area, render: (el, md) => this.renderMd(el, md), domGuard: this.deps.domGuard ?? true });
     if (this.preview !== "") {
       // In einen EIGENEN Block rendern statt den Body zu leeren: der laufende Absatz
       // (`area.tailEl`) liegt im Body, und ein `empty()` haengte ihn aus — der naechste

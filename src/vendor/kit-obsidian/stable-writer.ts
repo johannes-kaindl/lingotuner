@@ -1,6 +1,8 @@
-// vendored from obsidian-kit@0.51.3, src/obsidian/stable-writer.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.53.0, src/obsidian/stable-writer.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { neutralizeModelMarkdown } from "../kit/safe-markdown";
 import { splitStable } from "../kit/stream-blocks";
+import type { ClockPort } from "./clock";
+import { attachDomGuard, settleWithin, DOM_GUARD_DEADLINE_MS, type DomGuard, type DomGuardOptions } from "./dom-guard";
 import type { StreamArea } from "./stream-area";
 
 /**
@@ -49,6 +51,15 @@ import type { StreamArea } from "./stream-area";
  * rendert oder speichert, neutralisiert vorher. Der Fallback bei einem Render-Fehler setzt den
  * Text per `setText` (Text, kein Markdown) und ist damit unkritisch.
  *
+ * ## Zweite Schicht: `domGuard` (Default an seit 0.52.0)
+ *
+ * Ein `MutationObserver` am Body des Bereichs, für die Lebensdauer des Schreibers, mit
+ * `neutralizeRemoteResourcesInTree` im Callback (siehe `dom-guard.ts` für Messung und Restgrenzen). Er wird
+ * VOR dem ersten Rendern angehängt und mit `destroy()` getrennt. Sein Wert liegt bei `raw: true` und bei dem,
+ * was die Regex-Schicht nicht kennt. Mit Observer wird `render()` nie blind abgewartet: ein entferntes `src`
+ * lässt das Versprechen von `MarkdownRenderer.render` hängen, deshalb gilt ein Block nach `renderDeadlineMs`
+ * als fertig (das DOM steht). Tests mit dem Fake-DOM übergeben `domGuard: false`.
+ *
  * Herkunft: `koda-agent/src/obsidian/view.ts` (`streamToken`, 0.8.0), zweite Fassung
  * `lingotuner/src/obsidian/view.ts:247`.
  */
@@ -61,6 +72,13 @@ export interface StableWriterOptions {
   blockCls?: string;
   /** `true` reicht den Roh-Text an `render` (keine Neutralisierung). Nur mit Begründung im Konsumenten. */
   raw?: boolean;
+  /** Zweite Schicht gegen Fernquellen (DOM-Observer). Default `true`; `false` nur im Test mit dem Fake-DOM
+   *  oder mit Begründung im Konsumenten; ein Objekt reicht `localSchemes`/`onRemoved` durch. */
+  domGuard?: boolean | DomGuardOptions;
+  /** Frist je Block, solange der Observer hängt; Default `DOM_GUARD_DEADLINE_MS`. Ohne Observer ohne Wirkung. */
+  renderDeadlineMs?: number;
+  /** Timer für die Frist; Default `realClock`. */
+  clock?: ClockPort;
 }
 
 export interface StableMarkdownWriter {
@@ -77,6 +95,8 @@ export interface StableMarkdownWriter {
    *  Zug — zwei getrennte Resets hätte man irgendwann halb gerufen, und ein zweiter Lauf,
    *  der unter den ersten schreibt, war einer der am 2026-09-07 gemeldeten Fehler. */
   reset(): void;
+  /** Trennt den Observer (`domGuard`). Nach dem Abbau der Ansicht rufen; ohne `domGuard` ohne Wirkung. */
+  destroy(): void;
 }
 
 export function createStableWriter(opts: StableWriterOptions): StableMarkdownWriter {
@@ -86,6 +106,9 @@ export function createStableWriter(opts: StableWriterOptions): StableMarkdownWri
   /** Wie viele Zeichen des Stroms bereits als Markdown gerendert sind. */
   let stableLen = 0;
   let pending: Array<Promise<void>> = [];
+  const guardOpts = opts.domGuard === undefined || opts.domGuard === true ? {} : opts.domGuard === false ? null : opts.domGuard;
+  const guard: DomGuard | null = guardOpts ? attachDomGuard(area.bodyEl, guardOpts) : null;
+  const deadline = opts.renderDeadlineMs ?? DOM_GUARD_DEADLINE_MS;
 
   return {
     area,
@@ -99,7 +122,9 @@ export function createStableWriter(opts: StableWriterOptions): StableMarkdownWri
         const fresh = stable.slice(stableLen);
         stableLen = stable.length;
         const blockEl = area.bodyEl.createDiv({ cls: blockCls });
-        const p = opts.render(blockEl, opts.raw ? fresh : neutralizeModelMarkdown(fresh)).catch(() => { blockEl.setText(fresh); });
+        const rendering = opts.render(blockEl, opts.raw ? fresh : neutralizeModelMarkdown(fresh));
+        // Der Durchgang steht in DERSELBEN Kette vor dem `catch`: eine Ausnahme darin fällt auf `setText`.
+        const p = (guard ? settleWithin(rendering, deadline, opts.clock).then(() => guard.run()) : rendering).catch(() => { blockEl.setText(fresh); });
         pending.push(p);
         // Der laufende Absatz gehört immer ans Ende: `createDiv` hängt den frischen Block
         // hinter den Tail, also wandert der Tail danach wieder dahinter.
@@ -119,6 +144,8 @@ export function createStableWriter(opts: StableWriterOptions): StableMarkdownWri
         await Promise.all(laufend);
       }
     },
+
+    destroy(): void { guard?.disconnect(); },
 
     reset(): void {
       raw = "";

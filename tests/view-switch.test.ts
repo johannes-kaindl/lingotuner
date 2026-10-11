@@ -40,6 +40,7 @@ function baue(over: Partial<ViewDeps> = {}): Aufbau {
     getDials: () => dials.wert,
     setDials: (d) => { dials.wert = { ...d }; },
     listModels: () => Promise.resolve([]),
+    domGuard: false,
     getModel: () => "",
     setModel: () => { /* egal */ },
     getFamily: () => null,
