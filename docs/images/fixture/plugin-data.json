@@ -1,1 +1,1 @@
-{ "endpoints": [{ "url": "http://127.0.0.1:1236" }], "model": "local-model", "overrideFolder": "", "userPresets": [], "lastDials": { "directness": 0, "context": 0, "social": 0, "semantics": 0 }, "logbookEnabled": false, "logbookFolder": "LingoTuner", "newNoteFolder": "" }
+{ "endpoints": [{ "url": "http://127.0.0.1:1236", "model": "local-model" }], "overrideFolder": "", "userPresets": [], "lastDials": { "directness": 0, "context": 0, "social": 0, "semantics": 0 }, "logbookEnabled": false, "logbookFolder": "LingoTuner", "newNoteFolder": "" }

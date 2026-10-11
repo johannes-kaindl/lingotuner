@@ -891,18 +891,15 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
     // curl gegengeprueft). Der Treiber waehlt deshalb selbst eines — aus der Liste des
     // Servers, nie hart verdrahtet: ein Modellname im Repo waere die Modell-Bibliothek eines
     // bestimmten Rechners.
-    const konfiguriert = (await cdp.evaluate<{ m: string }>(`return { m: app.plugins.plugins[${q(PLUGIN_ID)}].settings.model };`)).m;
+    const konfiguriert = (await cdp.evaluate<{ m: string }>(`return { m: app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints[0]?.model ?? "" };`)).m;
     if (konfiguriert === "") {
       const ids = await modelle();
       const gewaehlt = ids[0];
       if (gewaehlt !== undefined) {
         modellGeaendert = true;
         modellVorwert = konfiguriert;
-        await setPluginSetting(cdp, PLUGIN_ID, "model", gewaehlt);
-        // setPluginSetting schreibt nur die Einstellung; der lokale Endpunkt-Cache (`cachedLocal`) und
-        // `activeModel` tragen weiter das alte "" — der Panel-Weg (`setModel`) invalidiert, dieser nicht.
-        // Ohne das ging `model: ""` an LM Studio (400 "Invalid model identifier"): C1 rot seit Welle 6.
-        await cdp.evaluate(`const p = app.plugins.plugins[${q(PLUGIN_ID)}]; p.llm.invalidate(); await p.llm.resolve(); return { ok: true };`);
+        // Der Panel-Weg: `setModel` der Verbindung schreibt das Modell der aktiven Zeile, speichert und loest neu auf.
+        await cdp.evaluate(`const p = app.plugins.plugins[${q(PLUGIN_ID)}]; await p.llm.setModel(${q(gewaehlt)}); return { ok: true };`);
         console.log(`  · Modell fuer diesen Lauf gesetzt: ${gewaehlt} (Einstellung war „Server waehlt", ${ids.length} Modelle geladen)`);
       }
     }
@@ -1049,7 +1046,7 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
     `).catch(() => null);
     if (logbuchAn) await setPluginSetting(cdp, PLUGIN_ID, "logbookEnabled", false).catch(() => null);
     if (denkenAn) await setPluginSetting(cdp, PLUGIN_ID, "suppressThinking", true).catch(() => null);
-    if (modellGeaendert) await setPluginSetting(cdp, PLUGIN_ID, "model", modellVorwert).catch(() => null);
+    if (modellGeaendert) await cdp.evaluate(`const p = app.plugins.plugins[${q(PLUGIN_ID)}]; await p.llm.setModel(${q(modellVorwert)}); return { ok: true };`).catch(() => null);
   }
 }
 
@@ -1309,6 +1306,59 @@ async function pruefeHilfeZeile(cdp: Cdp, port: number): Promise<void> {
     record("H1 Die Hilfe-Zeile steht als erste Zeile im Tab, mit Text-Knopf und Icon-Knopf", false, `Fehler: ${(e as Error).message}`);
   } finally {
     if (stelle) closeSettings(cdp, stelle);
+  }
+}
+
+/** G1/G2: Das globale Modell ist abgeloest (Welle 17). Ein Altwert in der data.json steht nach dem Laden in der
+ *  Endpunkt-Zeile, der Altschluessel ist aus der Datei verschwunden, die Einstellungen kennen weder eine Zeile
+ *  „Model“ noch die Zeilenoption „global model“; die Modellwahl des Panels (`setModel`) schreibt die aktive Zeile,
+ *  „Server waehlt“ leert sie. Gegenprobe: mit dem Build von vor Welle 17 sind beide Punkte rot. */
+async function pruefeGlobalesModell(cdp: Cdp, port: number): Promise<void> {
+  console.log("\nG · Globales Modell abgeloest");
+  const NAME1 = "G1 Altwert wandert in die Zeile, kein globales Modell in den Einstellungen";
+  const NAME2 = "G2 Panel-Modellwahl schreibt in die aktive Zeile, „Server waehlt“ leert sie";
+  const ALTWERT = "smoke-altmodell";
+  const pfad = `.obsidian/plugins/${PLUGIN_ID}/data.json`;
+  const vor = await cdp.evaluate<{ roh: string | null }>(`return { roh: (await app.vault.adapter.exists(${q(pfad)})) ? await app.vault.adapter.read(${q(pfad)}) : null };`);
+  let stelle: SettingsStelle | null = null;
+  try {
+    const roh = vor.roh === null ? {} : (JSON.parse(vor.roh) as Record<string, unknown>);
+    const alt = { ...roh, endpoints: [{ url: "http://127.0.0.1:1234" }], model: ALTWERT };
+    const r = await cdp.evaluate<{ zeilenModell: unknown; altschluessel: boolean }>(`
+      await app.vault.adapter.write(${q(pfad)}, ${q(JSON.stringify(alt))});
+      await app.plugins.disablePlugin(${q(PLUGIN_ID)});
+      await app.plugins.enablePlugin(${q(PLUGIN_ID)});
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      const gespeichert = JSON.parse(await app.vault.adapter.read(${q(pfad)}));
+      return { zeilenModell: p.settings.endpoints[0]?.model, altschluessel: "model" in gespeichert || "model" in p.settings };
+    `);
+    stelle = await openSettings(cdp, port);
+    const namen = await stelle.cdp.evaluate<{ n: string[] | null }>(`return { n: ${stelle.el(`[...root.querySelectorAll(".setting-item-name")].map((x) => (x.textContent ?? "").trim())`)} };`);
+    const text = await stelleText(stelle);
+    const keineOption = !/global model/i.test(text);
+    const keineZeile = !(namen.n ?? []).some((n) => /^model(l)?$/i.test(n));
+    record(NAME1, r.zeilenModell === ALTWERT && !r.altschluessel && keineOption && keineZeile,
+      `Zeilen-Modell „${String(r.zeilenModell)}“ (erwartet „${ALTWERT}“), Altschluessel ${r.altschluessel ? "noch da" : "weg"}, Option „global model“ ${keineOption ? "weg" : "noch da"}, Zeile „Model“ ${keineZeile ? "weg" : "noch da"}`);
+    const panel = await cdp.evaluate<{ gewaehlt: unknown; inUse: string; geleert: unknown; inUseLeer: string }>(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      await p.llm.setModel("panel-wahl-smoke");
+      const gewaehlt = p.settings.endpoints[0]?.model;
+      const inUse = p.llm.modelInUse();
+      await p.llm.setModel("");
+      return { gewaehlt, inUse, geleert: p.settings.endpoints[0]?.model, inUseLeer: p.llm.modelInUse() };
+    `);
+    record(NAME2, panel.gewaehlt === "panel-wahl-smoke" && panel.inUse === "panel-wahl-smoke" && (panel.geleert ?? "") === "",
+      `Zeile nach Wahl „${String(panel.gewaehlt)}“, modelInUse „${panel.inUse}“; nach „Server waehlt“ Zeile „${String(panel.geleert ?? "")}“, modelInUse „${panel.inUseLeer}“`);
+  } catch (e) {
+    record(NAME1, false, `Fehler: ${(e as Error).message}`);
+  } finally {
+    if (stelle) closeSettings(cdp, stelle);
+    await cdp.evaluate(`
+      await app.vault.adapter.write(${q(pfad)}, ${q(vor.roh ?? "{}")});
+      await app.plugins.disablePlugin(${q(PLUGIN_ID)});
+      await app.plugins.enablePlugin(${q(PLUGIN_ID)});
+      return { ok: true };
+    `).catch(() => null);
   }
 }
 
@@ -1981,6 +2031,7 @@ async function main(): Promise<void> {
     await pruefeVerbindung(cdp);
     await pruefeAnfrage(cdp, port);
     await pruefeRundenZeile(cdp);
+    await pruefeGlobalesModell(cdp, port);
     skipped("Markierung ersetzen (Rand-Whitespace)", "Editor-Selektion per CDP ist im Unit-Test abgedeckt (editor-io.test.ts); im Smoke muesste sie ueber CodeMirror gesetzt werden — Handarbeit");
   } finally {
     if (vorherigeDials !== null) {

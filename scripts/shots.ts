@@ -113,8 +113,7 @@ async function panelZustand(ws: Cdp): Promise<void> {
     await new Promise((r) => setTimeout(r, 400));
     return { ok: true };
   `);
-  await setPluginSetting(ws, PLUGIN_ID, "endpoints", [{ url: `http://127.0.0.1:${FAKE_PORT}` }]);
-  await setPluginSetting(ws, PLUGIN_ID, "model", FAKE_MODEL);
+  await setPluginSetting(ws, PLUGIN_ID, "endpoints", [{ url: `http://127.0.0.1:${FAKE_PORT}`, model: FAKE_MODEL }]);
   await setPluginSetting(ws, PLUGIN_ID, "lastDials", { directness: 0, context: 0, social: 0, semantics: 0 });
   await ws.evaluate(`const p = app.plugins.plugins[${q(PLUGIN_ID)}]; p.llm.invalidate(); await p.llm.resolve(); return { ok: true };`);
 }
@@ -125,7 +124,6 @@ async function aufraeumen(ws: Cdp): Promise<void> {
     const p = app.plugins.plugins[${q(PLUGIN_ID)}];
     if (p) {
       p.settings.endpoints = [{ url: "http://127.0.0.1:1234" }];
-      p.settings.model = "";
       p.settings.lastDials = { directness: 0, context: 0, social: 0, semantics: 0 };
       await p.saveSettings();
       p.llm.invalidate();
