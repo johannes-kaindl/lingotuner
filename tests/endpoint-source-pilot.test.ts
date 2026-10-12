@@ -9,10 +9,10 @@ describe("Pilot lingotuner", () => {
     expect(loadSettings({}).choice).toEqual({});
     expect(s.endpoints).toEqual([{ url: "http://l" }]);
   });
-  it("ohne Manager läuft die lokale Liste mit dem lokalen Modell", async () => {
-    const r = await resolveEndpointSource({ manager: null, local: [{ url: "http://l" }], localModel: "lm", capability: "chat", caller: "lingotuner" }, () => Promise.resolve(true));
+  it("ohne Manager läuft die lokale Liste mit dem Zeilen-Modell", async () => {
+    const r = await resolveEndpointSource({ manager: null, local: [{ url: "http://l", model: "lm" }], capability: "chat", caller: "lingotuner" }, () => Promise.resolve(true));
     expect(r).toEqual({
-      kind: "local", config: { url: "http://l" }, model: "lm", sentModel: "lm",
+      kind: "local", config: { url: "http://l", model: "lm" }, model: "lm", sentModel: "lm",
       family: null, familySource: "none", backend: "unknown", backendSource: "none",
     });
   });

@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.53.0, src/obsidian/stable-writer.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.56.0, src/obsidian/stable-writer.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { neutralizeModelMarkdown } from "../kit/safe-markdown";
 import { splitStable } from "../kit/stream-blocks";
 import type { ClockPort } from "./clock";
@@ -95,7 +95,8 @@ export interface StableMarkdownWriter {
    *  Zug — zwei getrennte Resets hätte man irgendwann halb gerufen, und ein zweiter Lauf,
    *  der unter den ersten schreibt, war einer der am 2026-09-07 gemeldeten Fehler. */
   reset(): void;
-  /** Trennt den Observer (`domGuard`). Nach dem Abbau der Ansicht rufen; ohne `domGuard` ohne Wirkung. */
+  /** Trennt den Observer (`domGuard`). Nach dem Abbau der Ansicht rufen; ohne `domGuard` ohne Wirkung. Ein noch rendernder Block
+   *  bekommt vorher seinen letzten Durchgang (seit 0.55.0 trennt `destroy()` erst nach `settled()`, wenn noch etwas läuft). */
   destroy(): void;
 }
 
@@ -109,6 +110,18 @@ export function createStableWriter(opts: StableWriterOptions): StableMarkdownWri
   const guardOpts = opts.domGuard === undefined || opts.domGuard === true ? {} : opts.domGuard === false ? null : opts.domGuard;
   const guard: DomGuard | null = guardOpts ? attachDomGuard(area.bodyEl, guardOpts) : null;
   const deadline = opts.renderDeadlineMs ?? DOM_GUARD_DEADLINE_MS;
+  // Ein Fehler im vorgezogenen Durchgang darf `push` nicht werfen: der Durchgang NACH dem Rendern läuft ohnehin und fällt
+  // bei einem Fehler auf `setText` (fail-closed).
+  const flushGuard = (): void => { try { guard?.flush(); } catch { /* siehe oben */ } };
+
+  async function settledAll(): Promise<void> {
+    // Ein Rendering kann während des Wartens weitere anstoßen; deshalb bis zur Ruhe.
+    while (pending.length > 0) {
+      const laufend = pending;
+      pending = [];
+      await Promise.all(laufend);
+    }
+  }
 
   return {
     area,
@@ -126,26 +139,29 @@ export function createStableWriter(opts: StableWriterOptions): StableMarkdownWri
         // Der Durchgang steht in DERSELBEN Kette vor dem `catch`: eine Ausnahme darin fällt auf `setText`.
         const p = (guard ? settleWithin(rendering, deadline, opts.clock).then(() => guard.run()) : rendering).catch(() => { blockEl.setText(fresh); });
         pending.push(p);
+        // Auch gleich nach dem Anstoßen des Renderns: was dessen synchroner Teil einfügt, wird vor allem Weiteren geprüft.
+        flushGuard();
         // Der laufende Absatz gehört immer ans Ende: `createDiv` hängt den frischen Block
         // hinter den Tail, also wandert der Tail danach wieder dahinter.
         area.bodyEl.appendChild(area.tailEl);
       }
+      // Vor dem Layout-Lesen (`setTail`/`followTail`): sonst starten die Stil-Quellen, bevor der Observer läuft.
+      flushGuard();
       area.setTail(tail);
       area.followTail();
     },
 
     raw(): string { return raw; },
 
-    async settled(): Promise<void> {
-      // Ein Rendering kann während des Wartens weitere anstoßen; deshalb bis zur Ruhe.
-      while (pending.length > 0) {
-        const laufend = pending;
-        pending = [];
-        await Promise.all(laufend);
-      }
-    },
+    settled: settledAll,
 
-    destroy(): void { guard?.disconnect(); },
+    destroy(): void {
+      if (!guard) return;
+      // Ein Block, der noch rendert, bekommt seinen letzten Durchgang: der Observer wird erst getrennt, wenn alles durch ist
+      // (höchstens die Frist `renderDeadlineMs` später). Der Aufrufer muss die Reihenfolge `settled()` → `destroy()` nicht kennen.
+      if (pending.length === 0) { guard.disconnect(); return; }
+      void settledAll().finally(() => { guard.disconnect(); });
+    },
 
     reset(): void {
       raw = "";

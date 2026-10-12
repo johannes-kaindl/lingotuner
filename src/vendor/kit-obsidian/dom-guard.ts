@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.53.0, src/obsidian/dom-guard.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.56.0, src/obsidian/dom-guard.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { MarkdownRenderer, type App, type Component } from "obsidian";
 import { realClock, type ClockPort } from "./clock";
 import { neutralizeRemoteResourcesInTree, type RemovedResource, type RemoteResourcesOptions } from "../kit/remote-resources";
@@ -48,9 +48,21 @@ import { neutralizeRemoteResourcesInTree, type RemovedResource, type RemoteResou
  *
  * ## Restgrenzen
  *
- * - Die Reste oben. Vermutung (nicht geprüft, Backlog-Task im Cockpit): ein erzwungenes Layout im Writer
- *   (`followTail` liest die Höhe) startet die CSS-Abrufe, bevor der Callback läuft.
- * - Mermaid zeichnet in einem Zwischenelement am Dokument, das ein Observer am Container nicht sieht; die Bildform
+ * - Die Reste oben. Ursache gemessen (Welle 17, 2026-10-11, n=1 Lauf): ein erzwungenes Layout im Writer (`followTail`
+ *   liest die Höhe) startete die CSS-Abrufe, bevor der Observer-Callback als Mikroaufgabe lief. Seit 0.54.0 ruft
+ *   `createStableWriter` vor dem Layout-Lesen `flush()` (`takeRecords()` plus Durchgang, synchron): von 139 ladenden
+ *   Fällen lecken 66 (0.53.0) → 3 bis 4 (`video poster` ×2, SVG `feImage` ×1 bis ×2; `feImage` in einem `filter` flackert
+ *   zwischen Läufen und leckt auch in 0.53.0). Sie laden bei der Elementerzeugung, dafür ist der Observer in jedem Arm zu spät,
+ *   und die Regex-Schicht deckt sie. `style`-Attribut, SVG-Paint und `background` sind zu. 30 `keep` unverändert. Nicht
+ *   auswertbar: `iframe relative`, `iframe app scheme` (lassen den Renderer hängen) und `frame in frameset` (wirft im
+ *   Renderer), in allen Armen.
+ * - Der Durchgang im Observer und in `flush()` läuft **inkrementell** über die berührten Teilbäume (hinzugefügte Elemente,
+ *   Elemente mit geändertem Attribut, das Eltern-Element eines geänderten Textes), nicht über den ganzen Container: ein
+ *   Durchgang je Batch über den ganzen Body wäre über eine Antwort hinweg quadratisch. Gemessen (Renderer, 2 000 `push`
+ *   mit einer Mikroaufgabe dazwischen, wachsendes Markdown): Gesamtzeit 20 KB 490 → 153 ms und 100 KB 3,2 → 1,3 s gegenüber
+ *   0.53.0, Summe der `push`-Zeiten 115 → 115 ms (20 KB) und 530 → 480 ms (100 KB). Der volle Durchgang bleibt nach jedem
+ *   gerenderten Block (`run()`), als Rückfall.
+ - Mermaid zeichnet in einem Zwischenelement am Dokument, das ein Observer am Container nicht sieht; die Bildform
  *   `A@{ img: "https://…" }` lädt Mermaid 11 per `new Image()` außerhalb jedes Baums. **Mermaid ist deshalb nur
  *   gedeckt, wenn die erste Schicht `neutralizeModelMarkdown` ist** (sie lässt keine Fences stehen). Wer im
  *   `raw`-Pfad selbst `neutralizeRemoteResources` nimmt, lässt Mermaid-Fences durch (`A@{ img: … }` und
@@ -77,8 +89,12 @@ export interface DomGuardOptions extends RemoteResourcesOptions {
 }
 
 export interface DomGuard {
-  /** Ein Durchgang jetzt (zusätzlich zu denen im Observer), z. B. nach dem Rendern. */
+  /** Ein Durchgang über den ganzen Container jetzt (zusätzlich zu den inkrementellen im Observer), z. B. nach dem Rendern. */
   run(): void;
+  /** Holt die wartenden Mutationen ab (`observer.takeRecords()`) und fährt jetzt, SYNCHRON, einen Durchgang über die berührten Teilbäume (nicht über den ganzen Container). Vor jedes
+   *  Layout-Lesen (`followTail`, `setTail`) legen: der Observer-Callback läuft als Mikroaufgabe erst danach, und das Layout
+   *  stößt die Abrufe der Stil-Quellen an (gemessen in Obsidian 1.14.4, Task „dom-guard — takeRecords …“: 66 → 3 bis 4 von 139). */
+  flush(): void;
   /** Trennt den Observer. Danach tut `run()` nichts mehr. */
   disconnect(): void;
 }
@@ -89,16 +105,39 @@ export function attachDomGuard(el: HTMLElement, opts: DomGuardOptions = {}): Dom
   const MO = opts.observer ?? el.ownerDocument?.defaultView?.MutationObserver ?? (typeof window === "undefined" ? undefined : window.MutationObserver);
   if (!MO) throw new Error("domGuard braucht ein DOM mit MutationObserver — in Tests mit dem Fake-DOM `domGuard: false` übergeben.");
   let active = true;
-  const pass = (): void => {
-    if (!active) return;
-    const { removed } = neutralizeRemoteResourcesInTree(el, opts.localSchemes ? { localSchemes: opts.localSchemes } : {});
+  const neutralize = (root: ParentNode): void => {
+    const { removed } = neutralizeRemoteResourcesInTree(root, opts.localSchemes ? { localSchemes: opts.localSchemes } : {});
     if (removed.length > 0) opts.onRemoved?.(removed);
   };
-  const observer = new MO(pass);
+  const pass = (): void => {
+    if (!active) return;
+    neutralize(el);
+  };
+  // Inkrementell: nur die Teilbäume, die die Mutationen berührt haben. Ein Durchgang über den ganzen Body je Batch wäre über eine
+  // Antwort hinweg quadratisch (jeder `push` ändert den Tail). Wurzeln: hinzugefügte Elemente, Elemente mit geänderten Attributen,
+  // der Eltern-Knoten eines geänderten/hinzugefügten Textes (ein `<style>` liest den Text) — außer dem Container selbst.
+  const passRecords = (records: readonly MutationRecord[]): void => {
+    if (!active || records.length === 0) return;
+    const roots = new Set<Element>();
+    const addParent = (n: Node | null): void => { const pe = n?.parentElement; if (pe && pe !== el) roots.add(pe); };
+    for (const r of records) {
+      if (r.type === "attributes") { if (r.target.nodeType === 1 && r.target !== el) roots.add(r.target as Element); else if (r.target === el) { pass(); return; } }
+      else if (r.type === "characterData") addParent(r.target);
+      else for (const n of Array.from(r.addedNodes)) { if (n.nodeType === 1) roots.add(n as Element); else addParent(n); }
+    }
+    for (const root of roots) {
+      if (!el.contains(root)) continue;   // schon entfernt
+      let covered = false;
+      for (let a = root.parentElement; a && a !== el; a = a.parentElement) if (roots.has(a)) { covered = true; break; }
+      if (!covered) neutralize(root);
+    }
+  };
+  const observer = new MO((records: MutationRecord[]) => passRecords(records));
   observer.observe(el, { childList: true, subtree: true, attributes: true, characterData: true });
   pass();
   return {
     run: pass,
+    flush(): void { passRecords(observer.takeRecords()); },
     disconnect(): void { active = false; observer.disconnect(); },
   };
 }

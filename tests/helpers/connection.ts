@@ -32,7 +32,8 @@ export interface ConnOptions {
   transport: SseTransport;
   /** Fallback-Transport (Origin-Weigerung), sonst keiner. */
   fallback?: SseTransport;
-  settings?: Partial<LlmConnectionSettings>;
+  /** `model` ist das Zeilen-Modell der Standard-Zeile (ein globales Modell gibt es seit obsidian-kit 0.55.0 nicht mehr). */
+  settings?: Partial<LlmConnectionSettings> & { model?: string };
   backend?: BackendId;
   timeouts?: { idleMs?: number; firstChunkMs?: number };
   notices?: string[];
@@ -42,11 +43,11 @@ export interface ConnOptions {
 
 /** Die Verbindung des Plugins ohne Obsidian: lokale Liste, Probe immer gruen, eigener Transport. */
 export function makeConnection(o: ConnOptions): LlmConnection {
+  const { model: rowModel, ...rest } = o.settings ?? {};
   const settings: LlmConnectionSettings = {
-    endpoints: [{ url: "http://127.0.0.1:1234/v1/", apiKey: "k" }],
-    model: "qwen",
+    endpoints: [{ url: "http://127.0.0.1:1234/v1/", apiKey: "k", model: rowModel ?? "qwen" }],
     request: DEFAULT_SETTINGS.request,
-    ...o.settings,
+    ...rest,
   };
   const app = { plugins: { plugins: {} } } as unknown as App;
   return createLlmConnection({
