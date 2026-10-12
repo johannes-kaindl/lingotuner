@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Vendored `obsidian-kit` 0.59.0 (was 0.57.0). You will notice three things:
+- Settings, endpoint list: the "move up" and "remove endpoint" buttons stay together in one line instead of the bin dropping alone into a second line; the key and model fields are a little narrower and the address stays fully visible.
+- Result area: the result now follows the stream to the end even when a large block (a table, a code block, a long paragraph) arrives in one piece, as long as you are at the bottom. If you scroll up, it still does not pull you back down.
+- Settings, "Request" section: for a model whose family is not known yet it now reads "not detected yet" plus a hint that this is normal for a freshly added endpoint and that the LLM Endpoint Manager keeps family and backend; the sampling fields read "not sent yet — waiting for the model family". Nothing changes in what is sent.
+- Nothing else is visible: kit 0.58.0 only adds a test helper.
+
 ### Fixed
 - The right-hand label of a tuning slider (for example "diplomatisch" on the Directness slider in German) no longer runs into the right edge of a narrow sidebar: the labels keep their width and the slider itself gives way.
 

@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.57.0, src/obsidian/stable-writer.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.59.0, src/obsidian/stable-writer.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { neutralizeModelMarkdown } from "../kit/safe-markdown";
 import { splitStable } from "../kit/stream-blocks";
 import type { ClockPort } from "./clock";
@@ -127,28 +127,33 @@ export function createStableWriter(opts: StableWriterOptions): StableMarkdownWri
     area,
 
     push(text: string): void {
-      raw += text;
-      const { stable, tail } = splitStable(raw);
-      if (stable.length > stableLen) {
-        // Nur der NEU stabil gewordene Teil wird gerendert — bereits Gezeichnetes bleibt
-        // unangetastet. Das ist der Unterschied zum Voll-Rerender.
-        const fresh = stable.slice(stableLen);
-        stableLen = stable.length;
-        const blockEl = area.bodyEl.createDiv({ cls: blockCls });
-        const rendering = opts.render(blockEl, opts.raw ? fresh : neutralizeModelMarkdown(fresh));
-        // Der Durchgang steht in DERSELBEN Kette vor dem `catch`: eine Ausnahme darin fällt auf `setText`.
-        const p = (guard ? settleWithin(rendering, deadline, opts.clock).then(() => guard.run()) : rendering).catch(() => { blockEl.setText(fresh); });
-        pending.push(p);
-        // Auch gleich nach dem Anstoßen des Renderns: was dessen synchroner Teil einfügt, wird vor allem Weiteren geprüft.
+      // „Unten?“ wird VOR dem Anfügen gemessen (`withFollow`): ein fertiger Block (Absatz,
+      // Tabelle, Code) kommt in einem Zug und kann die Höhe um mehr als die Folge-Schwelle
+      // wachsen lassen — nach dem Wachsen gemessen galt der Nutzer als hochgescrollt, der
+      // Bereich folgte nach dem ersten Absatz nicht mehr (Welle 20, kuro, 294 und 352 px).
+      area.withFollow(() => {
+        raw += text;
+        const { stable, tail } = splitStable(raw);
+        if (stable.length > stableLen) {
+          // Nur der NEU stabil gewordene Teil wird gerendert — bereits Gezeichnetes bleibt
+          // unangetastet. Das ist der Unterschied zum Voll-Rerender.
+          const fresh = stable.slice(stableLen);
+          stableLen = stable.length;
+          const blockEl = area.bodyEl.createDiv({ cls: blockCls });
+          const rendering = opts.render(blockEl, opts.raw ? fresh : neutralizeModelMarkdown(fresh));
+          // Der Durchgang steht in DERSELBEN Kette vor dem `catch`: eine Ausnahme darin fällt auf `setText`.
+          const p = (guard ? settleWithin(rendering, deadline, opts.clock).then(() => guard.run()) : rendering).catch(() => { blockEl.setText(fresh); });
+          pending.push(p);
+          // Auch gleich nach dem Anstoßen des Renderns: was dessen synchroner Teil einfügt, wird vor allem Weiteren geprüft.
+          flushGuard();
+          // Der laufende Absatz gehört immer ans Ende: `createDiv` hängt den frischen Block
+          // hinter den Tail, also wandert der Tail danach wieder dahinter.
+          area.bodyEl.appendChild(area.tailEl);
+        }
+        // Vor dem Layout-Lesen (`setTail`): sonst starten die Stil-Quellen, bevor der Observer läuft.
         flushGuard();
-        // Der laufende Absatz gehört immer ans Ende: `createDiv` hängt den frischen Block
-        // hinter den Tail, also wandert der Tail danach wieder dahinter.
-        area.bodyEl.appendChild(area.tailEl);
-      }
-      // Vor dem Layout-Lesen (`setTail`/`followTail`): sonst starten die Stil-Quellen, bevor der Observer läuft.
-      flushGuard();
-      area.setTail(tail);
-      area.followTail();
+        area.setTail(tail);
+      });
     },
 
     raw(): string { return raw; },
