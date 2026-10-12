@@ -2,7 +2,8 @@ import { mergeSettings } from "../vendor/kit/settings";
 import { fillMissingRowModels, migrateEndpointList, type EndpointConfig } from "../vendor/kit/endpoint_config";
 import type { EndpointChoice } from "../vendor/kit/endpoint-source";
 import {
-  DEFAULT_REQUEST_SETTINGS, onLevelFor, sanitizeRequestSettings, type RequestSettings,
+  DEFAULT_REQUEST_SETTINGS, foldLegacyThinking, sanitizeRequestSettings,
+  type LegacyRequestMigration, type RequestSettings,
 } from "../vendor/kit/sampling-profiles";
 import { MODE } from "./llm/client";
 import { BUILTIN_PRESETS, NEUTRAL, normalizeDials, userPresetId, type Dials, type Preset } from "./dials";
@@ -75,20 +76,9 @@ export function loadSettings(raw: unknown): LingoTunerSettings {
   };
 }
 
-export interface RequestLoadResult { request: RequestSettings; dropped: string[] }
-
-/** Saeubert den persistierten `request`-Block und migriert das alte `suppressThinking`
- *  einmalig nach `request.thinking.transform` — nur wenn dort noch nichts explizit gesetzt
- *  ist (Rezept 3). `dropped` wird vom Aufrufer gemeldet (Notice + console.warn), nicht
- *  verworfen (CORE-DATA-01). */
-export function loadRequestSettings(raw: unknown): RequestLoadResult {
-  const r = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const { settings, dropped } = sanitizeRequestSettings(r.request);
-  if (typeof r.suppressThinking === "boolean" && settings.thinking[MODE] === undefined) {
-    settings.thinking[MODE] = r.suppressThinking ? "off" : onLevelFor(settings, MODE);
-  }
-  return { request: settings, dropped };
-}
+/** Das alte `suppressThinking` (vor den Profilen) wandert einmalig nach `request.thinking[MODE]`; die Regel
+ *  steht im Kit (`foldLegacyThinking`), hier nur Feldname und Modus. Das Altfeld loescht `loadSettings`. */
+export const LEGACY_REQUEST_MIGRATIONS: readonly LegacyRequestMigration[] = [(raw, request) => foldLegacyThinking(request, MODE, raw.suppressThinking)];
 
 export function allPresets(s: Pick<LingoTunerSettings, "userPresets">): Preset[] {
   return [

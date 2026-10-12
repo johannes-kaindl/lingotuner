@@ -5,8 +5,8 @@ import { onEndpointManagerChanged } from "./vendor/kit-obsidian/endpoint-source"
 import { copyToClipboard } from "./vendor/kit-obsidian/clipboard";
 import { confirmAction } from "./vendor/kit-obsidian/confirm";
 import { createLlmConnection, type LlmConnection } from "./vendor/kit-obsidian/llm-connection";
-import { thinkingFor, onLevelFor } from "./vendor/kit/sampling-profiles";
-import { DEFAULT_SETTINGS, allPresets, loadRequestSettings, loadSettings, upsertUserPreset, type LingoTunerSettings } from "./core/settings";
+import { loadRequestSettings, onLevelFor, thinkingFor } from "./vendor/kit/sampling-profiles";
+import { DEFAULT_SETTINGS, LEGACY_REQUEST_MIGRATIONS, allPresets, loadSettings, upsertUserPreset, type LingoTunerSettings } from "./core/settings";
 import { type Dials } from "./core/dials";
 import { buildMessages, type ChatMessage } from "./core/prompt";
 import { loadOverrides } from "./core/examples/overrides";
@@ -56,7 +56,7 @@ export default class LingoTunerPlugin extends Plugin {
     setLang(pickLang(safeGetLanguage()));
     const raw: unknown = await this.loadData();
     this.settings = loadSettings(raw);
-    const { request, dropped } = loadRequestSettings(raw);
+    const { request, dropped } = loadRequestSettings(raw, LEGACY_REQUEST_MIGRATIONS);
     this.settings.request = request;
     if (dropped.length > 0) {
       new Notice(t("request.dropped", String(dropped.length)));

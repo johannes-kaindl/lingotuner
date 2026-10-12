@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_SETTINGS, loadSettings, loadRequestSettings, allPresets, upsertUserPreset, removeUserPreset } from "../src/core/settings";
+import { DEFAULT_SETTINGS, LEGACY_REQUEST_MIGRATIONS, loadSettings, allPresets, upsertUserPreset, removeUserPreset } from "../src/core/settings";
+import { loadRequestSettings as loadKit } from "../src/vendor/kit/sampling-profiles";
 import { NEUTRAL } from "../src/core/dials";
 
 describe("settings", () => {
@@ -11,12 +12,12 @@ describe("settings", () => {
   });
 
   it("loadRequestSettings migriert suppressThinking einmalig nach request.thinking.transform, Feld ist danach weg", () => {
-    const a = loadRequestSettings({ suppressThinking: true });
+    const a = loadKit({ suppressThinking: true }, LEGACY_REQUEST_MIGRATIONS);
     expect(a.request.thinking.transform).toBe("off");
-    const b = loadRequestSettings({ suppressThinking: false });
+    const b = loadKit({ suppressThinking: false }, LEGACY_REQUEST_MIGRATIONS);
     expect(b.request.thinking.transform).toBe("low");
     // Ist request.thinking.transform schon explizit gesetzt, migriert die Legacy nicht mehr drueber.
-    const c = loadRequestSettings({ suppressThinking: true, request: { thinking: { transform: "high" } } });
+    const c = loadKit({ suppressThinking: true, request: { thinking: { transform: "high" } } }, LEGACY_REQUEST_MIGRATIONS);
     expect(c.request.thinking.transform).toBe("high");
     expect(loadSettings({ suppressThinking: true }) as unknown as { suppressThinking?: unknown }).not.toHaveProperty("suppressThinking");
   });
