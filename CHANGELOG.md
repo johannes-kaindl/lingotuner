@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.9.2] — 2026-10-12
+
 ### Changed
 - Vendored `obsidian-kit` 0.59.1 (was 0.57.0). You will notice three things:
 - Settings, endpoint list: the "move up" and "remove endpoint" buttons stay together, and the address and the model ID stay fully visible at normal width; in a narrow window the block of model and buttons moves as a whole into a second line, right-aligned.
