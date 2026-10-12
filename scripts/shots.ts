@@ -21,7 +21,6 @@
  * Ende zurueck.
  */
 
-import { execFileSync } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import { argv, cwd, exit } from "node:process";
 
@@ -303,10 +302,6 @@ async function main(): Promise<void> {
 
   let fake: Fake | null = null;
   try {
-    if (process.platform === "darwin") {
-      try { execFileSync("osascript", ["-e", 'tell application "Obsidian" to activate']); await sleep(1200); }
-      catch { console.log("  (Hinweis: osascript activate schlug fehl)"); }
-    }
     await requireVisible(ws);
 
     const sprache = await ws.evaluate<{ lang: string }>(`return { lang: window.moment ? window.moment.locale() : "?" };`);
