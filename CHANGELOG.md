@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Vendored `obsidian-kit` 0.57.0 (was 0.56.0) and `code-kit` 0.24.0 (was 0.23.0). Nothing changes for you: the shortcut-failure classification (Apple Intelligence shortcut errors) now comes from the kit and behaves identically.
+
+### Fixed
+- The panel's model dropdown no longer cuts off its first entry. "Server picks the model" was clipped to "Server picks the r" in a narrow sidebar (German: "Server wählt das Mode" at standard width); the entry now reads "— (server picks)" / "— (Server wählt)", the same wording as the endpoint rows in the settings.
+
 ## [0.9.0] — 2026-10-12
 
 ### Changed

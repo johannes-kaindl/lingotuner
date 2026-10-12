@@ -242,7 +242,7 @@ Gemessen wird beides: dass der Dialog kommt **und** dass danach wirklich geräum
 
 ### Modellwahl: warum der Treiber sie seit dem 2026-09-07 selbst trifft
 
-Das Fixture stellt „Server wählt das Modell" ein (`model: ""`). Das trägt nur, solange dort
+Das Fixture stellt „— (Server wählt)" (leeres Modell) ein (`model: ""`). Das trägt nur, solange dort
 **genau ein** Modell geladen ist. Am Abend des 2026-09-07 waren es neun, und LM Studio
 antwortete mit `400` — auf `model: ""` mit „Invalid model identifier", auf ein **fehlendes**
 Feld mit „Multiple models are loaded". Beide Nutzlast-Formen sind per `curl` gegengeprüft
