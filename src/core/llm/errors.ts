@@ -1,3 +1,5 @@
+import { classifyShortcutFailure as classifyKitShortcutFailure, type ShortcutFailure } from "../../vendor/kit/shortcut-failure";
+
 export type TuneError =
   | { kind: "http"; status: number; detail: string }
   | { kind: "network" }
@@ -7,8 +9,6 @@ export type TuneError =
   | { kind: "aborted" }
   | { kind: "timeout"; seconds: number }
   | { kind: "shortcut"; reason: ShortcutFailure; detail: string };
-
-export type ShortcutFailure = "error" | "cancel" | "timeout" | "busy" | "unsupported";
 
 export function errorMessageKey(e: TuneError): { key: string; args: string[] } {
   switch (e.kind) {
@@ -30,20 +30,9 @@ export function classifyNetworkFailure(probeReachable: boolean): TuneError {
   return probeReachable ? { kind: "cors-suspected" } : { kind: "network" };
 }
 
-const SHORTCUT_BY_STATUS: Record<number, ShortcutFailure> = { 408: "timeout", 429: "busy", 499: "cancel", 501: "unsupported" };
-const SHORTCUT_REASONS: readonly string[] = ["error", "cancel", "timeout", "busy"];
-
-/** Fehlerbild des Kurzbefehl-Transports (Kit `createShortcutsChatTransport`): die Bruecke meldet
- *  Status und einen JSON-Koerper `{ error: { message, reason } }`. Der Grund im Koerper gilt vor
- *  dem Status; ohne lesbaren Koerper entscheidet der Status, der Rest ist „error". */
+/** Fehlerbild des Kurzbefehl-Transports (Kit `createShortcutsChatTransport`): die Klassifizierung
+ *  (Grund im Koerper vor dem Status, sonst Status, sonst „error") kommt aus dem Kit; hier wird
+ *  daraus der `TuneError` gebaut. */
 export function classifyShortcutFailure(status: number, errorText: string | undefined): TuneError & { kind: "shortcut" } {
-  let message = errorText ?? "";
-  let reason: string | undefined;
-  try {
-    const e = (JSON.parse(errorText ?? "") as { error?: { message?: unknown; reason?: unknown } }).error;
-    if (typeof e?.message === "string") message = e.message;
-    if (typeof e?.reason === "string") reason = e.reason;
-  } catch { /* kein JSON: Rohtext bleibt als Detail */ }
-  const known = reason !== undefined && SHORTCUT_REASONS.includes(reason) ? (reason as ShortcutFailure) : undefined;
-  return { kind: "shortcut", reason: known ?? SHORTCUT_BY_STATUS[status] ?? "error", detail: message };
+  return { kind: "shortcut", ...classifyKitShortcutFailure(status, errorText) };
 }
