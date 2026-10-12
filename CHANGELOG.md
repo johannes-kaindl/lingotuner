@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-10-12
+
 ### Changed
 - Vendored `obsidian-kit` 0.57.0 (was 0.56.0) and `code-kit` 0.24.0 (was 0.23.0). Nothing changes for you: the shortcut-failure classification (Apple Intelligence shortcut errors) now comes from the kit and behaves identically.
 
