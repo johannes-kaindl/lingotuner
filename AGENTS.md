@@ -54,16 +54,15 @@ src/core/                pure, obsidian-frei, Vitest
   examples/{de,en}.ts     je 16 Vorher/Nachher-Paare (4 Dimensionen x 4 Stufen != 0)
   examples/overrides.ts   Parser Datei -> PromptOverrides (Datei-IO injiziert)
   prompt.ts / prompt-text.ts  buildMessages + der ausgelieferte Systemteil
-  session.ts             Round/Session, selectRound, refineFrom
+  session.ts             Round, Session = Rounds<Round> (Verlauf/Auswahl: code-kit rounds), Wurzel-Helfer
   source.ts              SourceState, Readiness, Staleness (pure Haelfte)
   llm/client.ts          toTuneResult(Ergebnis der Verbindung) -> TuneResult
   llm/errors.ts          TuneError + classifyNetworkFailure
-  llm/resolver.ts        Endpunkt-Wahl aus der Liste
   api.ts                 createLingoTunerApi
   logbook.ts             Abschnitt der Logbuch-Notiz rendern
 src/obsidian/            view · view-render · editor-io · settings-tab ·
                          lab · logbook-io · overrides-io
-src/vendor/kit/          obsidian-kit 0.51.2 + code-kit 0.15.0, pure — nie von Hand aendern
+src/vendor/kit/          obsidian-kit 0.56.0 + code-kit 0.23.0, pure — nie von Hand aendern
 src/vendor/kit-obsidian/ Kit-Module, die `obsidian` importieren — nie von Hand aendern
 src/i18n/strings.ts      EN kanonisch + DE, beide vollstaendig
 src/main.ts
