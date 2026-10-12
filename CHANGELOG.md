@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The connection now comes from obsidian-kit 0.56.0 and code-kit 0.23.0.** Visible effects:
+  - **Context length per endpoint row.** Below a reachable row with a model the settings show "Context: loaded N · max M tokens" (only "max M" while the model is not loaded; nothing when the server names no number). It is read from LM Studio (`/api/v0/models`) or Ollama (`/api/show`), each attempt with a 5-second limit.
+  - **The model dropdown of a row offers "— (Server picks)" again.** Choosing it removes the row's model, so the server decides (an endpoint that rejects an empty model name, such as a hosted provider, then answers with its own error).
+  - **Long streamed answers render faster and leak less.** The guard that keeps model output from loading remote content now works incrementally: far less work for long answers, and fewer cases that still load something (for example `video poster`, SVG `feImage`).
+  - **Closing the panel while an answer is still rendering no longer cuts off the last guard pass** (the writer waits for the running block before it detaches).
+  - **The `<think>` stripping that checks every answer is linear.** A degenerate answer with tens of thousands of `<think>` tags used to freeze for seconds.
+  - The wording of the status icons and input hints in the endpoint list is now the kit's (English and German).
+- **The round history comes from code-kit `rounds`** (the same building block as the other plugins). Nothing changes for you; selecting a round outside the list or by a non-integer index is ignored, and nothing is cut off when you step back and tune again.
+- **`loadRequestSettings` comes from code-kit.** The old *suppress thinking* switch still migrates once into the request profile (a stored level wins; `true` becomes "off", `false` the on-level); only the old field name and mode stay in the plugin.
+
+### Fixed
+
+- The GUI smoke no longer picks the first model of the server's list for the run section; it takes `--model <id>` (without it that section is reported as skipped, not failed).
+
 ## [0.8.0] — 2026-10-11
 
 ### Changed
