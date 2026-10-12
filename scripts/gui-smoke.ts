@@ -43,12 +43,11 @@
  * Typen: `tsconfig.scripts.json` (im `gate` ueber `npm run typecheck:scripts`).
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { cwd } from "node:process";
 
-import { Cdp, attachTo, bereiteInstanzVor, clickReal, closeExtraLeaves, notices, pollUntil, requireVisible, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
+import { Cdp, attachTo, bereiteInstanzVor, clickReal, closeExtraLeaves, entferneFakeManager, installFakeManager as installZentralFakeManager, notices, pollUntil, requireVisible, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
+import { startLlmStub, type AntwortSpec } from "../../tools/obsidian-cdp/llm-stub.js";
 import { createBilanz, parseArgs, runDriver } from "../../tools/obsidian-cdp/bilanz.js";
 import { buildVault, requireEigenerBuild, stagingVaultDir } from "../../tools/obsidian-cdp/vault.js";
 
@@ -58,7 +57,8 @@ const VIEW_TYPE = "lingotuner-panel";
 const REPO_ROOT = cwd();
 const FIXTURE_DIR = join(REPO_ROOT, "fixtures/vault");
 const NOTE = "Mail-Entwurf.md";
-const ENDPOINT = "http://127.0.0.1:1234";
+/** Endpunkt fuer Abschnitt C: mit `--model` der echte Server auf :1234, sonst die URL des zentralen Stubs (`pruefeLauf` setzt sie). */
+let ENDPOINT = "http://127.0.0.1:1234";
 const LOGBOOK_FOLDER = "LingoTuner";
 // Task 5 (Pilot LLM Endpoint Manager): der Manager-Abschnitt (M1-M3) ist optional und
 // braucht weder das echte Manager-Plugin noch einen echten LLM-Server — Muster aus
@@ -103,6 +103,7 @@ const PUNKTE = [
   "C6 Logbuch anlegen und anhaengen",
   "C7 Ersetzen-Ziel sperrt bei geaenderter Quelle",
   "C8 Gedanken-Block waehrend des Streams",
+  "C8b Gedanken-Text waechst waehrend des Streams",
   "C9 jedes Bedienelement ist erreichbar (natuerliche Hoehe)",
   "C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)",
   "C9c Gegenprobe: ohne Rollbalken wird etwas unerreichbar",
@@ -393,11 +394,19 @@ async function pruefePanel(cdp: Cdp): Promise<void> {
  *  laufenden Absatzes noch im Sichtfenster des Panels, und wie gross ist dabei `rest`
  *  (`scrollHeight - scrollTop - clientHeight`)? Die Zahlen gehen in den Bericht; die
  *  Kit-Session leitet daraus ab, ob `followTail` kuenftig gegen `rootEl` messen soll. */
+interface FolgeStand { scrollTop: number; ueberlauf: number }
 interface FolgeMessung {
   fertig: boolean; werte: number[]; sichtbar: number; gesamt: number; unten: number;
-  /** Scroll-Stand NACH einem kuenstlichen Hochscrollen mitten im Strom (C11b). Leer, wenn
-   *  der Lauf vorher endete — dann ist die zweite Haelfte schlicht nicht gemessen. */
-  nachStoerung: number[];
+  /** Groesster Ueberlauf (`scrollHeight - clientHeight`) des Panels waehrend des Laufs. */
+  maxUeberlauf: number;
+  /** Die Stoerung (`scrollTop = 0`), ausgeloest, sobald der Ueberlauf `STOER_UEBERLAUF` erreichte; `null` = nie ausgeloest
+   *  (der Strom lief vorher aus) — dann ist C11b „nichts gemessen" (CORE-TEST-22). */
+  stoerung: { ueberlauf: number; scrollTopVorher: number; scrollTopNachher: number } | null;
+  /** Folgemessungen NACH der Stoerung und VOR dem Schluss-Draw: nur sie bewerten C11b. */
+  nachStoerung: FolgeStand[];
+  /** Messungen NACH dem Schluss-Draw (`view.ts` leert die Wurzel und baut neu auf): getrennt aufgezeichnet, nicht bewertet —
+   *  der Lauf entscheidet damit zwischen „die Folge-Regel zieht nach" und „der Schluss-Draw setzt zurueck". */
+  nachSchluss: FolgeStand[];
 }
 
 /** Messtakt von C11/C11b. 300 ms waren zu grob: die Antwort auf die Fixture-Notiz ist unter
@@ -405,26 +414,33 @@ interface FolgeMessung {
  *  die Aufloesung, nicht die Aussage. */
 const TAKT_MS = 150;
 
-/** `stoereBei` ist die Zahl der Messungen VOR dem kuenstlichen Hochscrollen. Sie stand auf 3,
- *  und am 2026-09-11 fiel C11b deshalb aus: die Antwort war nach drei Messungen fertig, die
- *  Stoerung kam nie. 2 misst frueher, nicht anders — mehr Spielraum gibt ein Lauf von unter
- *  zwei Sekunden nicht her. */
-async function laufeMitFolgeMessung(cdp: Cdp, maxMs: number, stoereBei = 2): Promise<FolgeMessung> {
+/** Gueltigkeitsbedingung von C11b: Die Stoerung loest erst aus, wenn das Panel um mindestens so viele Pixel ueberlaeuft
+ *  (`scrollHeight - clientHeight`, gemessen VOR `scrollTop = 0`). Herleitung: Die Folge-Schwelle `followThreshold` des Kits
+ *  betraegt 40 px (`stream-area.ts`, kein Konsument ueberschreibt sie), dazu 40 px Spielraum. Bei weniger Ueberlauf steht
+ *  `scrollTop = 0` ohnehin innerhalb der Schwelle, und ein Folgen waere von „nichts bewegt sich" nicht zu unterscheiden. */
+const STOER_UEBERLAUF = 80;
+
+/** Toleranz fuer „der Stand blieb stehen" (Rundung von `scrollTop`). Ein Nachziehen der Folge-Regel springt um mindestens den Ueberlauf. */
+const STAND_TOLERANZ_PX = 2;
+
+async function laufeMitFolgeMessung(cdp: Cdp, maxMs: number): Promise<FolgeMessung> {
   const werte: number[] = [];
-  const nachStoerung: number[] = [];
+  const nachStoerung: FolgeStand[] = [];
+  const nachSchluss: FolgeStand[] = [];
   let sichtbar = 0;
   let gesamt = 0;
   let unten = 0;
-  let gestoert = false;
+  let maxUeberlauf = 0;
+  let stoerung: FolgeMessung["stoerung"] = null;
   const bis = Date.now() + maxMs;
   for (;;) {
-    const m = await cdp.evaluate<{ fertig: boolean; hat: boolean; rest: number; tailSichtbar: boolean; unten: number; scrollTop: number }>(`
+    const m = await cdp.evaluate<{ fertig: boolean; hat: boolean; rest: number; tailSichtbar: boolean; unten: number; scrollTop: number; ueberlauf: number }>(`
       const s = document.querySelector(".lt-status");
       const p = document.querySelector(".lt-panel");
       const area = document.querySelector(".okit-stream");
       const tail = document.querySelector(".okit-stream-tail");
       const fertig = !!s && (s.classList.contains("is-ok") || s.classList.contains("is-error"));
-      if (!p || !tail || !area) return { fertig, hat: false, rest: 0, tailSichtbar: false, unten: 0, scrollTop: 0 };
+      if (!p || !tail || !area) return { fertig, hat: false, rest: 0, tailSichtbar: false, unten: 0, scrollTop: 0, ueberlauf: 0 };
       const pr = p.getBoundingClientRect();
       const tr = tail.getBoundingClientRect();
       const ar = area.getBoundingClientRect();
@@ -438,24 +454,40 @@ async function laufeMitFolgeMessung(cdp: Cdp, maxMs: number, stoereBei = 2): Pro
         tailSichtbar: tr.bottom <= pr.bottom + 1,
         unten,
         scrollTop: Math.round(p.scrollTop),
+        ueberlauf: Math.round(p.scrollHeight - p.clientHeight),
       };
     `);
     if (m.hat) {
       gesamt += 1;
       unten = m.unten;
-      if (gestoert) nachStoerung.push(m.scrollTop);
+      maxUeberlauf = Math.max(maxUeberlauf, m.ueberlauf);
+      if (stoerung !== null) { if (!m.fertig) nachStoerung.push({ scrollTop: m.scrollTop, ueberlauf: m.ueberlauf }); }
       else {
         werte.push(m.rest);
         if (m.tailSichtbar) sichtbar += 1;
       }
     }
-    if (m.fertig) return { fertig: true, werte, sichtbar, gesamt, unten, nachStoerung };
-    if (Date.now() > bis) return { fertig: false, werte, sichtbar, gesamt, unten, nachStoerung };
-    // Die HAND DES NUTZERS, kuenstlich: mitten im Strom nach oben scrollen. Das Kit darf
-    // danach nicht mehr nachziehen — sonst reisst es jeden zurueck, der den Anfang liest.
-    if (!gestoert && gesamt >= stoereBei) {
-      await cdp.evaluate(`const p = document.querySelector(".lt-panel"); if (p) p.scrollTop = 0; return { ok: true };`);
-      gestoert = true;
+    if (m.fertig) {
+      // Nach dem Schluss-Draw (Wurzel leeren, neu aufbauen, Fokus) fehlt der Tail: der Stand kommt direkt vom Panel, nicht ueber `hat`.
+      if (stoerung !== null) {
+        await new Promise((r) => setTimeout(r, 400));
+        nachSchluss.push(await cdp.evaluate<FolgeStand>(`const p = document.querySelector(".lt-panel"); return { scrollTop: p ? Math.round(p.scrollTop) : -1, ueberlauf: p ? Math.round(p.scrollHeight - p.clientHeight) : -1 };`));
+      }
+      return { fertig: true, werte, sichtbar, gesamt, unten, maxUeberlauf, stoerung, nachStoerung, nachSchluss };
+    }
+    if (Date.now() > bis) return { fertig: false, werte, sichtbar, gesamt, unten, maxUeberlauf, stoerung, nachStoerung, nachSchluss };
+    // Die HAND DES NUTZERS, kuenstlich: mitten im Strom nach oben scrollen — erst, wenn die Gueltigkeitsbedingung steht
+    // (Ueberlauf >= STOER_UEBERLAUF, gemessen VOR dem Setzen). Das Kit darf danach nicht mehr nachziehen — sonst reisst es
+    // jeden zurueck, der den Anfang liest. Ueberlauf und scrollTop vor und nach dem Setzen werden mitgeschrieben.
+    if (stoerung === null && m.hat && m.ueberlauf >= STOER_UEBERLAUF) {
+      stoerung = await cdp.evaluate<{ ueberlauf: number; scrollTopVorher: number; scrollTopNachher: number }>(`
+        const p = document.querySelector(".lt-panel");
+        if (!p) return { ueberlauf: 0, scrollTopVorher: 0, scrollTopNachher: 0 };
+        const ueberlauf = Math.round(p.scrollHeight - p.clientHeight);
+        const scrollTopVorher = Math.round(p.scrollTop);
+        p.scrollTop = 0;
+        return { ueberlauf, scrollTopVorher, scrollTopNachher: Math.round(p.scrollTop) };
+      `);
     }
     await new Promise((r) => setTimeout(r, TAKT_MS));
   }
@@ -490,9 +522,11 @@ async function pruefeGedanken(cdp: Cdp): Promise<void> {
   const bereit = await pollUntil<{ ok: boolean }>(cdp, `const b = document.querySelector(".lt-run"); return b && !b.disabled ? { ok: true } : null;`, 5000, 250);
   if (bereit === null) {
     nichtGemessen("C8 Gedanken-Block waehrend des Streams", `Vorbedingung fehlt: .lt-run ist nicht bedienbar (Quelle: ${(await text(cdp, ".lt-source-line")) ?? "?"})`);
+    nichtGemessen("C8b Gedanken-Text waechst waehrend des Streams", "C8 war nicht messbar (.lt-run nicht bedienbar)");
     return;
   }
   await setPluginSetting(cdp, PLUGIN_ID, "suppressThinking", false);
+  setzeStubModus("denken");
   await clickReal(cdp, `document.querySelector(".lt-run")`);
   const beob = await pollUntil<{ block: boolean; laenge: number }>(cdp, `
     const s = document.querySelector(".lt-status");
@@ -501,11 +535,25 @@ async function pruefeGedanken(cdp: Cdp): Promise<void> {
     if (s && !s.classList.contains("is-checking")) return { block: false, laenge: 0 };
     return null;
   `, 60_000, 250);
+  // C8b — der Denk-Text WAECHST im Strom (der Block steht nicht nur da): erst die Laenge jetzt, dann eine groessere, solange noch gestreamt wird.
+  if (beob?.block === true) {
+    const a = (await cdp.evaluate<{ n: number }>(`const pre = document.querySelector(".okit-stream-reasoning pre"); return { n: pre ? pre.textContent.length : 0 };`)).n;
+    const b = await pollUntil<{ n: number; laeuft: boolean }>(cdp, `
+      const pre = document.querySelector(".okit-stream-reasoning pre");
+      const s = document.querySelector(".lt-status");
+      const n = pre ? pre.textContent.length : 0;
+      return n > ${a} ? { n, laeuft: !!s && s.classList.contains("is-checking") } : null;
+    `, 5000, 150);
+    record("C8b Gedanken-Text waechst waehrend des Streams", b !== null && b.laeuft, b === null ? `die Laenge blieb in 5 s bei ${a} Zeichen` : `${a} → ${b.n} Zeichen, .lt-status stand dabei ${b.laeuft ? "auf is-checking" : "NICHT mehr auf is-checking"}`);
+  } else {
+    nichtGemessen("C8b Gedanken-Text waechst waehrend des Streams", "C8 hat keinen Gedanken-Block waehrend des Streams beobachtet — ohne Block gibt es nichts, das wachsen koennte");
+  }
   // Abbrechen: waehrend des Streams TRAEGT `.lt-run` die Abbrechen-Rolle.
   if (await hasClass(cdp, ".lt-status", "is-checking")) {
     await clickReal(cdp, `document.querySelector(".lt-run")`);
     await pollUntil<{ ok: boolean }>(cdp, `const s = document.querySelector(".lt-status"); return s && !s.classList.contains("is-checking") ? { ok: true } : null;`, 20_000, 500);
   }
+  setzeStubModus("kurz");
   const danach = (await count(cdp, ".okit-stream-reasoning")) > 0;
   if (beob?.block === true) {
     record("C8 Gedanken-Block waehrend des Streams", true, `.okit-stream-reasoning stand mit ${beob.laenge} Zeichen da, waehrend .lt-status auf is-checking stand`);
@@ -533,6 +581,7 @@ const C_AUSGAENGE = [
   "C2 Kopieren freigegeben", "C3 Notiz ersetzen schreibt Body", "C4 Neue Notiz entsteht",
   "C6 Logbuch anlegen und anhaengen", "C7 Ersetzen-Ziel sperrt bei geaenderter Quelle",
   "C8 Gedanken-Block waehrend des Streams",
+  "C8b Gedanken-Text waechst waehrend des Streams",
   "C9 jedes Bedienelement ist erreichbar (natuerliche Hoehe)",
   "C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)",
   "C9c Gegenprobe: ohne Rollbalken wird etwas unerreichbar",
@@ -934,8 +983,69 @@ async function pruefeZuruecksetzen(cdp: Cdp): Promise<void> {
 /** Modell fuer Abschnitt C: Flag `--model <id>`. Ohne Flag und ohne konfiguriertes Modell misst C nichts. */
 let MODELL_FLAG: string | undefined;
 
+/** Antworten des zentralen Stubs in Abschnitt C. `lang`: genug Absaetze, dass das Panel zur Stoerzeit um mehr als `STOER_UEBERLAUF`
+ *  ueberlaeuft und danach noch Stuecke kommen; `kurz`: ein Dreizeiler (die uebrigen Laeufe); `denken`: langer Denk-Text, dann das Ergebnis (C8, wird abgebrochen). */
+type StubModus = "lang" | "kurz" | "denken";
+const STUB_MODELL = "stub-modell";
+const STUB_TAKT_MS = 200;
+const STUB_LANG = Array.from({ length: 36 }, (_, i) => `${i === 0 ? "" : "\n\n"}Absatz ${i + 1}: Der Entwurf bleibt in der Sache gleich, klingt aber ruhiger und laesst dem Empfaenger mehr Raum.`);
+const STUB_KURZ = ["Hallo Sam,", "\n\nkannst du mir den Bericht bis Freitag schicken?", "\n\nDanke, Jo"];
+function stubAntwort(modus: StubModus): AntwortSpec {
+  // Tokengross (laenge 8, kurzer Takt), nicht absatzgross: ein Push ueber die 40-px-Folge-Schwelle beendet im Kit 0.57.0 das Folgen
+  // (Befund kuro-w20, Rundschreiben 3) — dann misst die Kontrolle „folgt ohne Stoerung“ die Stueckgroesse statt den Bereich.
+  // `--stub-stuecke absatz` fuehrt die absatzgrossen Stuecke (B2: auf dem alten Pin rot, ab Kit 0.59.0 gruen).
+  if (modus === "lang") return STUB_STUECKE === "absatz" ? { stuecke: STUB_LANG, model: STUB_MODELL } : { text: STUB_LANG.join(""), laenge: 8, takt: 20, model: STUB_MODELL };
+  if (modus === "denken") return { reasoning: "Ich wäge Ton und Länge gegeneinander ab. ".repeat(40), laenge: 24, text: STUB_KURZ.join(""), model: STUB_MODELL };
+  return { stuecke: STUB_KURZ, model: STUB_MODELL };
+}
+let stubModus: StubModus = "kurz";
+/** Schaltet die Antwort des Stubs um; ohne Stub (`--model`, echter Server) ohne Wirkung. */
+let stubAktiv = false;
+function setzeStubModus(m: StubModus): void { if (stubAktiv) stubModus = m; }
+/** `--stub-laenge kurz` fuer die Gegenprobe der Gueltigkeitsbedingung von C11b (kurze Antwort → „nichts gemessen"). */
+let STUB_LAENGE: StubModus = "lang";
+/** Stueckgroesse der langen Antwort: `token` (Default) oder `absatz`. */
+let STUB_STUECKE: "token" | "absatz" = "token";
+
+/** Abschnitt C. Ohne `--model` gegen den zentralen LLM-Stub (Welle 20), mit `--model <id>` gegen den echten Server auf :1234
+ *  (in Welle 20 nicht gefahren: LM Studio und Ollama laufen aus). */
 async function pruefeLauf(cdp: Cdp): Promise<void> {
   console.log("\nC · Lauf mit Modell");
+  if (MODELL_FLAG !== undefined) { await pruefeLaufKern(cdp); return; }
+  const echterEndpunkt = ENDPOINT;
+  const stub = await startLlmStub({ models: [STUB_MODELL], takt: STUB_TAKT_MS, nachlaufMs: 3 * STUB_TAKT_MS, antwort: () => stubAntwort(stubModus) });
+  const vorher = (await cdp.evaluate<{ eps: unknown }>(`return { eps: app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints };`)).eps;
+  try {
+    stubAktiv = true;
+    stubModus = "kurz";
+    ENDPOINT = stub.url;
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.settings.endpoints = [{ url: ${q(stub.url)}, model: ${q(STUB_MODELL)} }];
+      await p.saveSettings();
+      p.llm.invalidate();
+      await p.llm.resolve();
+      return { ok: true };
+    `);
+    console.log(`  · Abschnitt C laeuft gegen den zentralen LLM-Stub (${stub.url}, Takt ${STUB_TAKT_MS} ms), nicht gegen ${echterEndpunkt}`);
+    await pruefeLaufKern(cdp);
+  } finally {
+    stubAktiv = false;
+    ENDPOINT = echterEndpunkt;
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      if (!p) return { ok: false };
+      p.settings.endpoints = ${JSON.stringify(vorher)};
+      await p.saveSettings();
+      p.llm.invalidate();
+      await p.llm.resolve();
+      return { ok: true };
+    `).catch(() => null);
+    await stub.stop();
+  }
+}
+
+async function pruefeLaufKern(cdp: Cdp): Promise<void> {
   if (!(await endpointReachable())) {
     for (const n of C_NAMEN) nichtGemessen(n, `kein Endpunkt auf ${ENDPOINT}`);
     return;
@@ -982,6 +1092,7 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
     logbuchAn = true;
 
     // --- Lauf 1: Stream, Animation, Ausgaenge -------------------------------------
+    setzeStubModus(STUB_LAENGE); // VOR dem Klick: die Antwort wird mit der Anfrage gewaehlt
     await clickReal(cdp, `document.querySelector(".lt-run")`);
     // C5 waehrend des Streams messen: danach steht die Klasse auf is-ok und die Frage ist weg.
     const anim = await pollUntil<{ a: string; reduced: boolean }>(cdp, `
@@ -1007,6 +1118,7 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
     // Der Endzustands-Poll misst zugleich C11 — ein zweiter Lauf nur fuers Scrollverhalten
     // kostete Minuten und saehe dasselbe.
     const folge = await laufeMitFolgeMessung(cdp, 120_000);
+    setzeStubModus("kurz");
     const done = folge.fertig ? { ok: true } : null;
     if (folge.werte.length === 0) {
       nichtGemessen("C11 Panel folgt dem Strom", "waehrend des Laufs stand nie ein laufender Absatz im DOM — ohne Tail ist die Frage nicht messbar");
@@ -1016,12 +1128,21 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
       record("C11 Panel folgt dem Strom", anteil >= 0.8,
         `Tail sichtbar in ${folge.sichtbar}/${folge.werte.length} Messungen à ${TAKT_MS} ms (${Math.round(anteil * 100)} %) · rest median ${median(folge.werte)} px, min ${Math.min(...folge.werte)}, max ${Math.max(...folge.werte)} · unter dem Stream-Bereich ${folge.unten} px`);
       // Die andere Haelfte derselben Schwelle: wer hochscrollt, will lesen, nicht folgen.
-      if (folge.nachStoerung.length === 0) {
-        nichtGemessen("C11b Hochscrollen im Strom wird respektiert", `der Lauf endete vor der Stoerung (nur ${folge.werte.length} Messungen à ${TAKT_MS} ms) — nicht messbar`);
+      // Gueltigkeit (CORE-TEST-22): ohne Stoerung (Ueberlauf blieb unter STOER_UEBERLAUF) oder mit weniger als zwei Messungen
+      // zwischen Stoerung und Schluss-Draw ist nichts gemessen — nicht rot. Bewertet wird `scrollTop` nach der Stoerung gegen
+      // `scrollTop` zur Stoerungszeit (direkt nach dem Setzen), nicht gegen eine Schwellen-Zahl; die Messungen NACH dem Schluss-Draw zaehlen nicht.
+      const nameB = "C11b Hochscrollen im Strom wird respektiert";
+      const st = folge.stoerung;
+      if (st === null) {
+        nichtGemessen(nameB, `Gueltigkeit nicht erreicht: der Ueberlauf des Panels blieb bei hoechstens ${folge.maxUeberlauf} px (Bedingung: >= ${STOER_UEBERLAUF} px, Folge-Schwelle 40 px + 40 px Spielraum), die Stoerung loeste nie aus — der Strom lief vorher aus`);
+      } else if (folge.nachStoerung.length < 2) {
+        nichtGemessen(nameB, `nach der Stoerung (Ueberlauf ${st.ueberlauf} px) kamen nur ${folge.nachStoerung.length} Messung(en) vor dem Schluss-Draw (Bedingung: mindestens 2) — nicht messbar`);
       } else {
-        const max = Math.max(...folge.nachStoerung);
-        record("C11b Hochscrollen im Strom wird respektiert", max < 40,
-          `nach kuenstlichem scrollTop=0: ${folge.nachStoerung.length} Messungen, groesster Stand ${max} px`);
+        const stande = folge.nachStoerung.map((x) => x.scrollTop);
+        const max = Math.max(...stande);
+        const schluss = folge.nachSchluss.length === 0 ? "keine" : folge.nachSchluss.map((x) => x.scrollTop).join("/");
+        record(nameB, max <= st.scrollTopNachher + STAND_TOLERANZ_PX,
+          `Stoerung bei Ueberlauf ${st.ueberlauf} px, scrollTop ${st.scrollTopVorher} → ${st.scrollTopNachher}; danach ${stande.length} Messungen ${stande.join("/")} (Ueberlauf ${folge.nachStoerung.at(-1)?.ueberlauf ?? 0} px), groesster Stand ${max} px; nach dem Schluss-Draw: ${schluss}`);
       }
     }
     if (getippt) await messeB11(cdp);
@@ -1139,46 +1260,15 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
  *  (`req.on("data"/"end")`), BEVOR geantwortet wird — nicht nebenlaeufig dazu, sonst waere
  *  `lastModel()` ein Race gegen die eigene Antwort. */
 interface FakeChatEndpoint { url: string; close: () => Promise<void>; chatCalls: () => number; lastModel: () => string | null }
+/** Duenne Huelle ueber den zentralen Stub (`startLlmStub`): die Pruefpunkte lesen weiter `chatCalls()`/`lastModel()`.
+ *  `lastModel()` kommt aus dem Mitschnitt; der Stub liest den Body vollstaendig, bevor er antwortet (kein Race, Review-Fund I5). */
 async function startFakeChatEndpoint(modelId: string): Promise<FakeChatEndpoint> {
-  let chatCalls = 0;
-  let lastModel: string | null = null;
-  const server: Server = createServer((req, res) => {
-    // Der Renderer laeuft unter der Origin app://obsidian.md — ohne CORS-Header blockt der
-    // Browser den Preflight (OPTIONS) und die eigentliche Anfrage sieht der Server nie.
-    // Gemessen 2026-09-15: ohne diesen Block blieb chatCalls() bei 0, obwohl der Server lief.
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
-    if (req.url?.includes("/v1/models") === true) {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ data: [{ id: modelId, object: "model" }] }));
-      return;
-    }
-    if (req.method === "POST" && req.url?.includes("/v1/chat/completions") === true) {
-      let body = "";
-      req.on("data", (chunk: Buffer) => { body += chunk.toString("utf8"); });
-      req.on("end", () => {
-        chatCalls += 1;
-        try { lastModel = (JSON.parse(body) as { model?: unknown }).model as string ?? null; } catch { lastModel = null; }
-        res.writeHead(200, { "Content-Type": "text/event-stream" });
-        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "ok" }, finish_reason: null }], model: modelId })}\n\n`);
-        res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }], model: modelId })}\n\n`);
-        res.write("data: [DONE]\n\n");
-        res.end();
-      });
-      return;
-    }
-    res.writeHead(404);
-    res.end();
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const port = (server.address() as AddressInfo).port;
+  const stub = await startLlmStub({ models: [modelId], standard: { text: "ok", model: modelId } });
   return {
-    url: `http://127.0.0.1:${port}`,
-    close: () => new Promise<void>((resolve) => { server.close(() => { resolve(); }); }),
-    chatCalls: () => chatCalls,
-    lastModel: () => lastModel,
+    url: stub.url,
+    close: () => stub.stop(),
+    chatCalls: () => stub.zaehler().chat,
+    lastModel: () => (stub.letzte("chat")?.json as { model?: string } | null)?.model ?? null,
   };
 }
 
@@ -1202,30 +1292,18 @@ async function startFakeChatEndpoint(modelId: string): Promise<FakeChatEndpoint>
  *  Manager) folgenlos; sobald der echte Manager in diesem Vault deployt wird, verhindert das
  *  einen Smoke-Lauf, der dessen Registrierung fuer den Rest der Sitzung zerstoert. */
 async function installFakeManager(cdp: Cdp, url: string): Promise<void> {
-  await cdp.evaluate(`
-    // Nur EINMAL sichern: ein zweiter installFakeManager()-Aufruf ohne removeFakeManager()
-    // dazwischen (kommt hier nicht vor, aber die Invariante soll nicht stillschweigend
-    // brechen) wuerde sonst die eigene Fake-Instanz als "vorher" ueberschreiben.
-    if (!("__smokeVorherManager" in window)) {
-      window.__smokeVorherManager = app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}] ?? null;
-    }
-    const ep = { id: "fake-mgr-ep", label: "Fake Manager Endpoint", url: ${q(url)}, provider: "openai", capabilities: ["chat"], defaultModel: ${q(MANAGER_DEFAULT_MODEL)}, enabled: true, hasSecret: false };
-    const api = {
-      version: 1,
-      list: (filter) => [ep],
-      get: (id) => (id === ep.id ? ep : null),
-      resolve: async (capability, opts) => ({ id: ep.id, label: ep.label, config: { url: ${q(url)}, model: ${q(MANAGER_DEFAULT_MODEL)} }, defaultModel: ${q(MANAGER_DEFAULT_MODEL)} }),
-      materialize: async (id, opts) => (id === ep.id ? { id: ep.id, label: ep.label, config: { url: ${q(url)}, model: ${q(MANAGER_DEFAULT_MODEL)} }, defaultModel: ${q(MANAGER_DEFAULT_MODEL)} } : { error: "not-found" }),
-      models: async (id) => (id === ep.id ? [${q(MANAGER_DEFAULT_MODEL)}] : { error: "not-found" }),
-      importEndpoints: async (eps, capability) => ({ added: [], merged: [], skipped: eps.map((e) => e.url) }),
-      on: (event, cb) => (() => {}),
-    };
-    app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}] = { api };
-    return { ok: true };
-  `);
+  await installZentralFakeManager(cdp, {
+    pluginId: MANAGER_PLUGIN_ID,
+    endpunkte: [{ id: "fake-mgr-ep", label: "Fake Manager Endpoint", url, models: [MANAGER_DEFAULT_MODEL], defaultModel: MANAGER_DEFAULT_MODEL, configModel: "default" }],
+  });
 }
 
-/** Entfernt die Fake-API — Analog zu `app.plugins.disablePlugin()` (der Brief nennt beides
+/** Entfernt den zentralen Fake-Manager und stellt den vorgefundenen Slot wieder her (auch auf dem Abbruchpfad aufrufbar). */
+async function removeFakeManager(cdp: Cdp): Promise<void> {
+  await entferneFakeManager(cdp, { pluginId: MANAGER_PLUGIN_ID });
+}
+
+/** Abbau des lokalen Apple-Managers (`installAppleManager`): sein Transport (`shortcuts`, `list` mit `transports`-Filter) ist im zentralen Fake-Manager nicht ausdrueckbar, das Paar bleibt deshalb lokal — Meldung an den Master, Welle 20. Entfernt die Fake-API — Analog zu `app.plugins.disablePlugin()` (der Brief nennt beides
  *  als gleichwertig fuer M3). `findEndpointManager()` liest bei JEDEM Aufruf frisch aus
  *  `app.plugins.plugins`, ein `changed`-Ereignis ist fuer die Abwesenheit nicht noetig — der
  *  naechste `llm.resolve()`/Settings-Rebuild sieht sie ohnehin sofort.
@@ -1234,7 +1312,7 @@ async function installFakeManager(cdp: Cdp, url: string): Promise<void> {
  *  statt ihn zu loeschen — s. Kommentar dort. Idempotent: ein Aufruf ohne vorheriges
  *  `installFakeManager()` (z. B. im `finally`-Pfad nach einem fruehen Abbruch) findet
  *  `"__smokeVorherManager" in window` als `false` und loescht dann einfach, wie zuvor. */
-async function removeFakeManager(cdp: Cdp): Promise<void> {
+async function entferneAppleManager(cdp: Cdp): Promise<void> {
   await cdp.evaluate(`
     if ("__smokeVorherManager" in window) {
       const vorher = window.__smokeVorherManager;
@@ -1698,7 +1776,7 @@ async function pruefeApple(cdp: Cdp, port: number): Promise<void> {
     if (stubGesetzt) {
       await cdp.evaluate(`window.open = window.__smokeOrigOpen; delete window.__smokeOrigOpen; delete window.__smokeOpenUrls; return { ok: true };`).catch(() => null);
     }
-    await removeFakeManager(cdp).catch(() => null);
+    await entferneAppleManager(cdp).catch(() => null);
     await cdp.evaluate(`
       const p = app.plugins.plugins[${q(PLUGIN_ID)}];
       if (!p) return { ok: false };
@@ -1830,25 +1908,9 @@ async function pruefeLab(cdp: Cdp): Promise<void> {
 async function pruefeFallback(cdp: Cdp): Promise<void> {
   console.log("\nF · Origin-Weigerung → Anfrage ohne Stream");
   const NAME = "F1 Ohne CORS-Freigabe kommt das Ergebnis ueber den Fallback ohne Stream";
-  let posts = 0;
-  let streamFlag: unknown = "nie gesehen";
-  const server: Server = createServer((req, res) => {
-    if (req.url?.includes("/v1/models") === true) { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ data: [{ id: "fb-model", object: "model" }] })); return; }
-    if (req.method === "POST" && req.url?.includes("/v1/chat/completions") === true) {
-      let body = "";
-      req.on("data", (c: Buffer) => { body += c.toString("utf8"); });
-      req.on("end", () => {
-        posts += 1;
-        try { streamFlag = (JSON.parse(body) as { stream?: unknown }).stream; } catch { streamFlag = "kein JSON"; }
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ model: "fb-model", choices: [{ message: { content: "fallback ok" }, finish_reason: "stop" }] }));
-      });
-      return;
-    }
-    res.writeHead(404); res.end();
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  // Bewusst ohne CORS (`cors: false`): der Preflight ist 404, der XHR des Renderers scheitert, `requestUrl` nicht.
+  const stub = await startLlmStub({ cors: false, models: ["fb-model"], standard: { text: "fallback ok", model: "fb-model" } });
+  const url = stub.url;
   let vorher: unknown = null;
   try {
     vorher = (await cdp.evaluate<{ eps: unknown }>(`return { eps: app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints };`)).eps;
@@ -1862,6 +1924,8 @@ async function pruefeFallback(cdp: Cdp): Promise<void> {
     `);
     const ok = await laufeTune(cdp);
     const ergebnis = ok ? await text(cdp, ".okit-stream-body") : null;
+    const posts = stub.zaehler().chat;
+    const streamFlag: unknown = posts === 0 ? "nie gesehen" : (stub.letzte("chat")?.json as { stream?: unknown } | null)?.stream ?? "kein JSON";
     record(NAME, ok && posts === 1 && streamFlag === false,
       `Lauf ${ok ? "ok" : `fehlgeschlagen (${(await text(cdp, ".lt-status")) ?? "?"})`}, POST ohne Preflight-Freigabe: ${posts}, stream im Body: ${JSON.stringify(streamFlag)}, Ergebnis ${JSON.stringify(ergebnis?.slice(0, 40) ?? null)}`);
   } finally {
@@ -1876,7 +1940,7 @@ async function pruefeFallback(cdp: Cdp): Promise<void> {
         return { ok: true };
       `).catch(() => null);
     }
-    await new Promise<void>((resolve) => { server.close(() => { resolve(); }); });
+    await stub.stop();
   }
 }
 
@@ -1893,34 +1957,21 @@ async function pruefeVerbindung(cdp: Cdp): Promise<void> {
   ];
   const GEHEIM = "smoke0123456789abcdefghij";
   const KEY = `sk-smoke-${Date.now().toString(36)}-0123456789`;
-  const gesehen: { bodies: string[]; auths: string[] } = { bodies: [], auths: [] };
   let antwort: (user: string) => string = () => "ok";
-  const server: Server = createServer((req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
-    if (req.url?.includes("/v1/models") === true) { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ data: [{ id: "v-model", object: "model" }] })); return; }
-    if (req.method === "POST" && req.url?.includes("/v1/chat/completions") === true) {
-      let body = "";
-      req.on("data", (c: Buffer) => { body += c.toString("utf8"); });
-      req.on("end", () => {
-        gesehen.bodies.push(body);
-        gesehen.auths.push(String(req.headers["authorization"] ?? ""));
-        let user = "";
-        try { user = (JSON.parse(body) as { messages: { role: string; content: string }[] }).messages.filter((m) => m.role === "user").map((m) => m.content).join("\n"); } catch { user = ""; }
-        res.writeHead(200, { "Content-Type": "text/event-stream" });
-        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: antwort(user) }, finish_reason: null }], model: "v-model" })}\n\n`);
-        res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }], model: "v-model" })}\n\n`);
-        res.write("data: [DONE]\n\n");
-        res.end();
-      });
-      return;
-    }
-    res.writeHead(404); res.end();
+  // Der Stub zeichnet auf, WAS auf den Draht ging (Body, Authorization); die Antwort spiegelt den Platzhalter, den er sah.
+  const stub = await startLlmStub({
+    models: ["v-model"],
+    standard: { text: "ok", model: "v-model" },
+    antwort: (anfrage) => {
+      const msgs = (anfrage.json as { messages?: { role: string; content: string }[] } | null)?.messages ?? [];
+      return { text: antwort(msgs.filter((m) => m.role === "user").map((m) => m.content).join("\n")), model: "v-model" };
+    },
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const gesehen = {
+    get bodies(): string[] { return stub.anfragen().filter((a) => a.route === "chat").map((a) => a.body); },
+    get auths(): string[] { return stub.anfragen().filter((a) => a.route === "chat").map((a) => String(a.header["authorization"] ?? "")); },
+  };
+  const url = stub.url;
   let vorher: unknown = null;
   const datei = ".obsidian/plugins/lingotuner/data.json";
   try {
@@ -1978,7 +2029,7 @@ async function pruefeVerbindung(cdp: Cdp): Promise<void> {
         return { ok: true };
       `).catch(() => null);
     }
-    await new Promise<void>((resolve) => { server.close(() => { resolve(); }); });
+    await stub.stop();
   }
 }
 
@@ -2081,10 +2132,15 @@ async function main(): Promise<void> {
   }
   const vaultFilter = args.value("vault") ?? REPO_NAME;
   MODELL_FLAG = args.value("model");
+  if (args.value("stub-laenge") === "kurz") STUB_LAENGE = "kurz";
+  if (args.value("stub-stuecke") === "absatz") STUB_STUECKE = "absatz";
 
   const cdp = await attachTo("workspace", port, vaultFilter);
   if (!cdp) throw new Error(`Kein Obsidian-Fenster fuer Vault "${vaultFilter}" auf Port ${port}.`);
   const warnungen: string[] = [];
+  // CORE-TEST-21: der Manager-Slot gehoert nach dem Lauf wieder so, wie er davor war (Fake-Manager zentral und lokal, auch bei Abbruch).
+  const slotZustand = async (): Promise<string> => (await cdp.evaluate<{ s: string }>(`const m = app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}]; return { s: !m ? "keiner" : m.__fakeManager || m.api?.__fakeManager ? "fake" : "echt" };`)).s;
+  const slotVorher = await slotZustand();
   try {
     await cdp.mitschnitt((z) => { if (/error|exception/i.test(z)) warnungen.push(`Renderer: ${z}`); });
     await requireVisible(cdp);
@@ -2109,6 +2165,9 @@ async function main(): Promise<void> {
     if (vorherigeDials !== null) {
       await setPluginSetting(cdp, PLUGIN_ID, "lastDials", vorherigeDials).catch(() => null);
     }
+    const slotNachher = await slotZustand().catch(() => "unlesbar");
+    console.log(`Fake-Manager-Abbau: Slot vorher ${slotVorher}, nachher ${slotNachher}`);
+    if (slotNachher !== slotVorher) { warnungen.push(`Manager-Slot nach dem Lauf nicht wiederhergestellt: vorher ${slotVorher}, nachher ${slotNachher}`); process.exitCode = 1; }
     const n = await closeExtraLeaves(cdp).catch(() => 0);
     console.log(`\nAufgeraeumt: ${n} zusaetzliche Leaves geschlossen. Notices: ${await notices(cdp).catch(() => "?")}`);
     cdp.close();

@@ -21,10 +21,10 @@
  * Ende zurueck.
  */
 
-import { createServer, type Server } from "node:http";
 import { argv, cwd, exit } from "node:process";
 
 import { Cdp, attachTo, clickReal, pollUntil, requireVisible, setAppConfig, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
+import { startLlmStub, type LlmStub } from "../../tools/obsidian-cdp/llm-stub.js";
 import { boxAround, capture, setWindowSize, writeShot, type Rect } from "../../tools/obsidian-cdp/shot.js";
 import { buildVault, stagingVaultDir } from "../../tools/obsidian-cdp/vault.js";
 
@@ -59,43 +59,18 @@ const ANSWERS = {
 
 interface Fake { setAnswer: (a: readonly string[]) => void; close: () => Promise<void> }
 
+/** Duenne Huelle ueber den zentralen Stub (`startLlmStub`, Welle 20): fester Port wie bisher, ein Stueck je Absatz ohne Takt. */
 async function startFakeModel(): Promise<Fake> {
-  let answer: readonly string[] = ANSWERS.clarity;
-  const server: Server = createServer((req, res) => {
-    // Der Renderer laeuft unter app://obsidian.md — ohne CORS-Header sieht der Server nie eine Anfrage.
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
-    if (req.url?.includes("/v1/models") === true) {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ data: [{ id: FAKE_MODEL, object: "model" }] }));
-      return;
-    }
-    if (req.method === "POST" && req.url?.includes("/v1/chat/completions") === true) {
-      req.on("data", () => undefined);
-      req.on("end", () => {
-        res.writeHead(200, { "Content-Type": "text/event-stream" });
-        const send = (delta: object, finish: string | null): void => {
-          res.write(`data: ${JSON.stringify({ choices: [{ delta, finish_reason: finish }], model: FAKE_MODEL })}\n\n`);
-        };
-        answer.forEach((absatz, i) => { send({ content: (i === 0 ? "" : "\n\n") + absatz }, null); });
-        send({}, "stop");
-        res.write("data: [DONE]\n\n");
-        res.end();
-      });
-      return;
-    }
-    res.writeHead(404);
-    res.end();
-  });
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", (e) => { reject(new Error(`Port ${FAKE_PORT} nicht bindbar: ${(e as Error).message}`)); });
-    server.listen(FAKE_PORT, "127.0.0.1", resolve);
-  });
+  const stuecke = (a: readonly string[]): string[] => a.map((absatz, i) => (i === 0 ? "" : "\n\n") + absatz);
+  let stub: LlmStub;
+  try {
+    stub = await startLlmStub({ port: FAKE_PORT, models: [FAKE_MODEL], takt: 0, standard: { stuecke: stuecke(ANSWERS.clarity), model: FAKE_MODEL } });
+  } catch (e) {
+    throw new Error(`Port ${FAKE_PORT} nicht bindbar: ${(e as Error).message}`);
+  }
   return {
-    setAnswer: (a) => { answer = a; },
-    close: () => new Promise<void>((r) => { server.close(() => { r(); }); }),
+    setAnswer: (a) => { stub.setzeAntwort(() => ({ stuecke: stuecke(a), model: FAKE_MODEL })); },
+    close: () => stub.stop(),
   };
 }
 
@@ -174,7 +149,10 @@ async function tune(ws: Cdp, selector = ".lt-run"): Promise<void> {
     const s = document.querySelector(".lt-status");
     return s && s.classList.contains("is-ok") ? { ok: true } : null;
   `, 30_000, 300);
-  if (fertig === null) throw new Error("Lauf wird nicht fertig (Status nie is-ok)");
+  if (fertig === null) {
+    const st = await ws.evaluate<{ cls: string; label: string }>(`const s = document.querySelector(".lt-status"); const l = document.querySelector(".lt-status-label"); return { cls: s ? s.className : "kein .lt-status", label: l ? l.textContent : "" };`);
+    throw new Error(`Lauf wird nicht fertig (Status nie is-ok): ${st.cls} · „${st.label}"`);
+  }
   await sleep(500);
 }
 
