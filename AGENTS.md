@@ -86,7 +86,7 @@ daran ist in `obsidian-transmute` die Anzeige von der Ausführung abgedriftet.
 
 | Baustein | Quelle | Form |
 |---|---|---|
-| `clipboard`, `sse`, `endpoint`, `endpoint_config`, `endpoint_diagnostics`, `model-choice`, `model-list-cache`, `reasoning`, `capabilities`, `think-splitter`, `think-toggle`, `timeout`, `error_body`, `i18n`, `settings`, `stream-blocks`, `sampling-profiles`, `backend-probe`, `redact`, `safe-markdown`, `secrets` | `obsidian-kit` 0.51.2 / `code-kit` 0.15.0 | vendored `src/vendor/kit/` (Liste: `tools/kit-sync.json`) |
+| `clipboard`, `sse`, `endpoint`, `endpoint_config`, `endpoint_diagnostics`, `model-choice`, `model-list-cache`, `reasoning`, `capabilities`, `think-splitter`, `think-toggle`, `timeout`, `error_body`, `i18n`, `settings`, `stream-blocks`, `sampling-profiles`, `backend-probe`, `redact`, `safe-markdown`, `secrets`, `rounds`, `model-context`, `embeddings-client` | `obsidian-kit` 0.56.0 / `code-kit` 0.23.0 | vendored `src/vendor/kit/` (Liste: `tools/kit-sync.json`) |
 | `buildEndpointList`, `renderModelPicker`, `confirm`, `settings_walker`, `folder-suggest`, `clipboard`, `buildStreamArea`, `createStableWriter` | `obsidian-kit/src/obsidian/` | vendored `src/vendor/kit-obsidian/` |
 | XHR-Stream-Transport | `vault-rag/src/sse.ts` | Übernahme mit Herkunftsstempel |
 | `splitStable` (stabile Vorschau-Blöcke) | erst Übernahme aus `koda-agent`, seit 2026-09-11 vendored aus `code-kit` 0.6.0 | vendored `src/vendor/kit/stream-blocks.ts` |
