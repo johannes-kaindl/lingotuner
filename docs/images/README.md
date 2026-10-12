@@ -11,7 +11,7 @@ Skill `readme-shots` (global). Treiber `scripts/shots.ts`, Brücke importiert au
 
 ## Das Modell ist eine Attrappe
 
-Der Treiber startet auf Port 1236 einen Fake-Server, der einen festen, redaktionell gewählten Text streamt (Modellname `local-model`). Die Bilder zeigen dadurch immer dasselbe Ergebnis, unabhängig davon, was auf dem Rechner geladen ist; der echte LM-Studio-Port 1234 bleibt unberührt. Endpunkt und Modell setzt der Treiber selbst und stellt sie am Ende zurück (`http://127.0.0.1:1234`, Modell leer, Regler neutral).
+Der Treiber startet auf Port 1236 den zentralen LLM-Stub (`tools/obsidian-cdp/llm-stub.ts`), der einen festen, redaktionell gewählten Text streamt (Modellname `local-model`). Die Bilder zeigen dadurch immer dasselbe Ergebnis, unabhängig davon, was auf dem Rechner geladen ist; der echte LM-Studio-Port 1234 bleibt unberührt. Endpunkt und Modell setzt der Treiber selbst und stellt sie am Ende zurück (`http://127.0.0.1:1234`, Modell leer, Regler neutral).
 
 ## Bildvertrag
 
