@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-10-12
+
 ### Changed
 
 - **The connection now comes from obsidian-kit 0.56.0 and code-kit 0.23.0.** Visible effects:
