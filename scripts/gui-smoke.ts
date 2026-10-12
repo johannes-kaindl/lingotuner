@@ -5,28 +5,34 @@
  * (Stream + Ausgaenge). C wird UEBERSPRUNGEN und benannt, wenn auf :1234 kein Endpunkt
  * antwortet — nie still gruen (CORE-TEST-19).
  *
- * ## Zweitinstanz (der richtige Ort fuer diesen Lauf — eigenes Profil, eigener Port)
+ * ## Zweitinstanz (der richtige Ort fuer diesen Lauf — eigenes Profil, eigener Port, Pflicht-`--port`)
  *
  *   echo "$STAGING_VAULTS_DIR"                                         # muss gesetzt sein (~/.zshenv)
- *   npm run build && npm run smoke:gui -- --setup                      # Vault aus fixtures/vault/
+ *   npm run build && npm run smoke:gui -- --setup                      # Vault aus fixtures/vault/ (deployt auch ../llm-lab)
  *   UD=/tmp/obs-test-lingotuner; mkdir -p "$UD"
- *   lsof -nP -iTCP:9341 -sTCP:LISTEN && echo "Port belegt — anderen nehmen"
- *   # Vault registrieren (Obsidian liest obsidian.json nur beim Start):
- *   node -e 'const p=process.env.STAGING_VAULTS_DIR+"/lingotuner";require("fs").writeFileSync(process.argv[1]+"/obsidian.json",JSON.stringify({vaults:{lingotuner:{path:p,ts:Date.now(),open:true}}}))' "$UD"
- *   cp ~/Library/Application\ Support/obsidian/obsidian-1.14.0.asar "$UD"/   # aktuelle Version statt gebuendelter
- *   /Applications/Obsidian.app/Contents/MacOS/Obsidian --user-data-dir="$UD" --remote-debugging-port=9341 &
- *   python3 ~/.claude/hooks/obsidian-cdp-lock.py acquire --label lingotuner --intent "GUI-Smoke Zweitinstanz :9341" --exclusive focus --ttl 300
- *   npm run smoke:gui -- --port 9341 --model <id>   (Abschnitt C braucht --model)
+ *   pgrep -f "user-data-dir=$UD"                                       # leer, sonst auf ein anderes Profil ausweichen
+ *   lsof -nP -iTCP:<port> -sTCP:LISTEN                                 # leer
+ *   cp ~/Library/Application\ Support/obsidian/obsidian-*.asar "$UD"/   # aktuelle Version statt gebuendelter
+ *   # $UD/obsidian.json: Vault ($STAGING_VAULTS_DIR/lingotuner) und "language":"en" eintragen (Obsidian liest die Datei nur beim Start)
+ *   /Applications/Obsidian.app/Contents/MacOS/Obsidian --user-data-dir="$UD" --remote-debugging-port=<port> &
+ *   python3 ~/.claude/hooks/obsidian-cdp-lock.py acquire --label lingotuner --intent "GUI-Smoke" --exclusive focus --port <port> --ttl 300
+ *   npm run smoke:gui -- --port <port> --model <id>   (Abschnitt C braucht --model; ohne ist er „nichts gemessen", Exit 1)
  *   python3 ~/.claude/hooks/obsidian-cdp-lock.py release
  *
- * Der `cp` der `.asar` ist keine Kuer: ein frisches Profil startet mit der GEBUENDELTEN
- * Obsidian-Version, und die Versionsnummer im Dateinamen ist der Stand des REGULAEREN
- * Profils — sie gehoert vor dem Kopieren nachgesehen (`ls ~/Library/Application\ Support/obsidian/*.asar`),
- * sonst laeuft ein `|| true` still ins Leere.
+ * Vertrauensdialog und Restricted Mode eines frischen Profils erledigt der Treiber selbst
+ * (`bereiteInstanzVor`); je Messlauf ein frischer Prozess, der erste Lauf nach der Profilanlage ist
+ * ein Aufwaermlauf. Es gibt keinen Standardport: ohne `--port` bricht der Treiber mit Exit 2 ab.
  *
- * Der Lock ist die Eintrittskarte des Guards (auch fuer die Zweitinstanz); `release` gehoert
- * direkt hinter den Lauf. Die regulaere Instanz auf 9222 wird nicht angefasst — beendet wird
- * die Zweitinstanz ueber ihre PID, nie ueber `pkill`/`killall`/`quit app`.
+ * ## Bilanz
+ *
+ * Vier Zustaende (CORE-TEST-19): gruen · rot · uebersprungen · nichts gemessen. `PUNKTE` ist der
+ * Nenner. „Uebersprungen" heisst nur: in dieser Lage nicht anwendbar (`prefers-reduced-motion`,
+ * per Hand abgedeckte Markierung). Fehlt die Vorbedingung (kein Modell, Quelle nicht waehlbar,
+ * Messung abgebrochen), ist der Punkt „nichts gemessen" und der Lauf endet mit Exit 1.
+ *
+ * Der Lock ist die Eintrittskarte des Guards (auch fuer die Zweitinstanz); `release` gehoert direkt
+ * hinter den Lauf. Die regulaere Instanz wird nicht angefasst — beendet wird die Zweitinstanz ueber
+ * ihre PID, nie ueber `pkill`/`killall`/`quit app`.
  *
  * Gemessen wird im eigenen Staging-Vault (`$STAGING_VAULTS_DIR/lingotuner`, aufgeloest ueber
  * `stagingVaultDir()`), nie im Arbeits-Vault. Wo dieses Verzeichnis liegt, sagt die Umgebung —
@@ -42,7 +48,8 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { cwd } from "node:process";
 
-import { Cdp, attachTo, clickReal, closeExtraLeaves, notices, pollUntil, requireVisible, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
+import { Cdp, attachTo, bereiteInstanzVor, clickReal, closeExtraLeaves, notices, pollUntil, requireVisible, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
+import { createBilanz, parseArgs, runDriver } from "../../tools/obsidian-cdp/bilanz.js";
 import { buildVault, requireEigenerBuild, stagingVaultDir } from "../../tools/obsidian-cdp/vault.js";
 
 const REPO_NAME = "lingotuner";
@@ -67,17 +74,79 @@ const MANAGER_DEFAULT_MODEL = "smoke-manager-model";
 // Fake-Server eine Anfrage sah.
 const LOCAL_FALLBACK_MODEL = "smoke-local-model";
 
-type Zustand = "gruen" | "rot" | "uebersprungen";
-interface Check { name: string; zustand: Zustand; detail: string }
-const checks: Check[] = [];
+/** Soll-Liste aller Pruefpunkte = der Nenner der Bilanz (CORE-TEST-19), aus einem vollstaendigen
+ *  Lauf abgeleitet. Ein Punkt, der hier steht und nie aufgezeichnet wird, zaehlt als „nichts
+ *  gemessen"; ein Name, der hier fehlt, laesst `createBilanz` werfen (Abbruch, Exit 2). */
+const PUNKTE = [
+  "A1 Plugin geladen",
+  "A2 Befehle registriert",
+  "A3 Panel oeffnet",
+  "B1 drei Quellen-Chips",
+  "B2 vier Regler",
+  "B3 vier Preset-Chips",
+  "B4 Notiz als Quelle erkannt",
+  "B5 Noop sperrt Tunen",
+  "B6 Regler gibt Tunen frei",
+  "B7 Preset zeigt (angepasst)",
+  "B8 Textfeld-Quelle zeigt Textarea",
+  "B10 Tippen ins Textfeld behaelt den Fokus",
+  "B9 Lesemodus blockiert die Quelle",
+  "C5 is-checking animiert",
+  "C11 Panel folgt dem Strom",
+  "C11b Hochscrollen im Strom wird respektiert",
+  "C1 Stream liefert Ergebnis",
+  "B11 Tippen ueberlebt das Ende eines Laufs",
+  "B11b Tippen im Quelltextfeld ueberlebt das Ende eines Laufs",
+  "C2 Kopieren freigegeben",
+  "C3 Notiz ersetzen schreibt Body",
+  "C4 Neue Notiz entsteht",
+  "C6 Logbuch anlegen und anhaengen",
+  "C7 Ersetzen-Ziel sperrt bei geaenderter Quelle",
+  "C8 Gedanken-Block waehrend des Streams",
+  "C9 jedes Bedienelement ist erreichbar (natuerliche Hoehe)",
+  "C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)",
+  "C9c Gegenprobe: ohne Rollbalken wird etwas unerreichbar",
+  "C9d Quell-Textfeld und Regler erreichbar (Quelle Textfeld)",
+  "C10 Zuruecksetzen fragt nach und raeumt",
+  "M1 Settings zeigen den Manager statt der lokalen Liste",
+  "M2 Lauf nutzt den Manager-Endpunkt und das Default-Modell",
+  "M2b Manager-Lauf nutzt gewaehltes Modell, nicht den Endpunkt-Default (C1)",
+  "M3 Manager aus → lokale Liste in Settings und im Lauf",
+  "S1 Fake-Manager liefert den Apple-Endpunkt nur bei Opt-in",
+  "S2 Dropdown zeigt „Apple Intelligence (on-device)“",
+  "S3 Wahl → Quelle traegt transport shortcuts",
+  "S4 Lauf oeffnet die shortcuts://-URL mit dem gefalteten Prompt",
+  "S5 Zeitueberschreitung des Kurzbefehls zeigt die Kurzbefehl-Meldung",
+  "H1 Die Hilfe-Zeile steht als erste Zeile im Tab, mit Text-Knopf und Icon-Knopf",
+  "L1 Ein Tunen erzeugt eine Lab-Aufzeichnung mit turnId (apiVersion 4)",
+  "F1 Ohne CORS-Freigabe kommt das Ergebnis ueber den Fallback ohne Stream",
+  "V1 Token geht als Platzhalter an den Server, im Ergebnis steht das Original",
+  "V2 Schluessel steht nicht mehr in data.json, der Server bekommt ihn trotzdem",
+  "V3 Antwort mit Code-Block-Prozessor und Bild rendert als Text",
+  "N1 Abschnitt Anfrage laesst sich aufklappen",
+  "N2 Eigener Wert wird gesetzt und wieder zurueckgesetzt",
+  "N3 Denk-Knopf im Panel schaltet um",
+  "N4 Stufenwahl im Chat zeigt ein Dropdown",
+  "R1 Runden-Zeile laeuft bei ~300 px nicht ueber",
+  "G1 Altwert wandert in die Zeile, kein globales Modell in den Einstellungen",
+  "G2 Panel-Modellwahl schreibt in die aktive Zeile, „Server waehlt“ leert sie",
+  "Markierung ersetzen (Rand-Whitespace)",
+] as const;
+
+const bilanz = createBilanz({ punkte: PUNKTE });
 function record(name: string, passed: boolean, detail: string): void {
-  checks.push({ name, zustand: passed ? "gruen" : "rot", detail });
-  console.log(`${passed ? "  ✓" : "  ✗"} ${name} — ${detail}`);
+  bilanz.record(name as (typeof PUNKTE)[number], passed, detail);
 }
+/** „In dieser Lage nicht anwendbar" (Systemeinstellung, per Hand abgedeckt) — zaehlt als uebersprungen. */
 function skipped(name: string, reason: string): void {
-  checks.push({ name, zustand: "uebersprungen", detail: reason });
-  console.log(`  · ${name} — übersprungen: ${reason}`);
+  bilanz.skipped(name as (typeof PUNKTE)[number], reason);
 }
+/** Der Gegenstand wurde nicht erreicht (Vorbedingung fehlt, Messung abgebrochen, kein Modell) —
+ *  „nichts gemessen", Exit 1. Vorher stand das als „uebersprungen" da und liess den Lauf gruen enden. */
+function nichtGemessen(name: string, reason: string): void {
+  bilanz.unmeasured(name as (typeof PUNKTE)[number], reason);
+}
+const aufgezeichnet = (name: string): boolean => bilanz.eintraege().some((p) => p.name === name);
 
 const q = (s: string): string => JSON.stringify(s);
 
@@ -198,21 +267,12 @@ async function setzeAusgangszustand(cdp: Cdp): Promise<unknown> {
 
 async function pruefeGrundlage(cdp: Cdp, vaultName: string): Promise<void> {
   console.log("\nA · Grundlage");
-  let geladen = (await cdp.evaluate<{ g: boolean }>(`return { g: Boolean(app.plugins.plugins[${q(PLUGIN_ID)}]) };`)).g;
-  let frei = "";
-  if (!geladen && vaultName === REPO_NAME) {
-    // Frisches Profil = Restricted Mode: jede Einzelpruefung gibt Entwarnung, nur plugins ist leer.
-    frei = (await cdp.evaluate<{ s: string }>(`
-      try {
-        if (app.plugins.setEnable) await app.plugins.setEnable(true);
-        await app.plugins.enablePluginAndSave(${q(PLUGIN_ID)});
-        await new Promise((r) => setTimeout(r, 1200));
-        return { s: app.plugins.plugins[${q(PLUGIN_ID)}] ? "freigeschaltet" : "Aufruf ohne Wirkung" };
-      } catch (e) { return { s: "Fehler: " + (e && e.message ? e.message : String(e)) }; }
-    `)).s;
-    geladen = (await cdp.evaluate<{ g: boolean }>(`return { g: Boolean(app.plugins.plugins[${q(PLUGIN_ID)}]) };`)).g;
-  }
-  record("A1 Plugin geladen", geladen, geladen ? `Vault ${vaultName}${frei ? ` (${frei})` : ""}` : `app.plugins.plugins.${PLUGIN_ID} fehlt — ${frei || "kein Freischaltversuch (fremder Vault)"}`);
+  // Frisches Profil: Vertrauensdialog bestaetigen, Restricted Mode aufheben, Plugins laden (jede
+  // Einzelpruefung gibt dort Entwarnung, nur `plugins` ist leer). Wirft nicht; der Hinweis kommt in A1.
+  const instanz = await bereiteInstanzVor(cdp, { pluginIds: [PLUGIN_ID, LAB_PLUGIN_ID], nurVault: REPO_NAME, sprache: "en" });
+  const geladen = (await cdp.evaluate<{ g: boolean }>(`return { g: Boolean(app.plugins.plugins[${q(PLUGIN_ID)}]) };`)).g;
+  const frei = instanz.hinweis;
+  record("A1 Plugin geladen", geladen, geladen ? `Vault ${vaultName} (${frei})` : `app.plugins.plugins.${PLUGIN_ID} fehlt — ${frei}`);
   if (!geladen) throw new Error("Ohne geladenes Plugin ist jeder weitere Punkt gegenstandslos.");
 
   const cmds = (await cdp.evaluate<{ c: string[] }>(`return { c: ["open-panel","tune-selection"].filter((id) => Boolean(app.commands.commands[${q(PLUGIN_ID)} + ":" + id])) };`)).c;
@@ -302,7 +362,7 @@ async function pruefePanel(cdp: Cdp): Promise<void> {
   // Textarea wurde als DOM-Knoten ersetzt, der Fokus fiel auf `<body>` — der Nutzer verlor
   // bei jedem Tastendruck den Cursor.
   if (ta === null) {
-    skipped("B10 Tippen ins Textfeld behaelt den Fokus", "ohne .lt-freetext (B8 rot) ist der Punkt gegenstandslos");
+    nichtGemessen("B10 Tippen ins Textfeld behaelt den Fokus", "ohne .lt-freetext (B8 rot) ist der Punkt gegenstandslos");
   } else {
     await tippeInsTextfeld(cdp);
     record("B10 Tippen ins Textfeld behaelt den Fokus", ...(await messeFokus(cdp)));
@@ -429,7 +489,7 @@ async function pruefeGedanken(cdp: Cdp): Promise<void> {
   await cdp.evaluate(`app.workspace.trigger("active-leaf-change"); return { ok: true };`);
   const bereit = await pollUntil<{ ok: boolean }>(cdp, `const b = document.querySelector(".lt-run"); return b && !b.disabled ? { ok: true } : null;`, 5000, 250);
   if (bereit === null) {
-    skipped("C8 Gedanken-Block waehrend des Streams", `Vorbedingung fehlt: .lt-run ist nicht bedienbar (Quelle: ${(await text(cdp, ".lt-source-line")) ?? "?"})`);
+    nichtGemessen("C8 Gedanken-Block waehrend des Streams", `Vorbedingung fehlt: .lt-run ist nicht bedienbar (Quelle: ${(await text(cdp, ".lt-source-line")) ?? "?"})`);
     return;
   }
   await setPluginSetting(cdp, PLUGIN_ID, "suppressThinking", false);
@@ -456,9 +516,9 @@ async function pruefeGedanken(cdp: Cdp): Promise<void> {
     // Eine Modelleigenschaft zu melden, wo ein Endpunktfehler vorlag, ist genau die Sorte
     // Skip-Grund, gegen die CORE-TEST-19 steht.
     if (await hasClass(cdp, ".lt-status", "is-error")) {
-      skipped("C8 Gedanken-Block waehrend des Streams", `Lauf gescheitert, bevor ein Gedanke kam: ${(await text(cdp, ".lt-status-label")) ?? "?"}`);
+      nichtGemessen("C8 Gedanken-Block waehrend des Streams", `Lauf gescheitert, bevor ein Gedanke kam: ${(await text(cdp, ".lt-status-label")) ?? "?"}`);
     } else {
-      skipped("C8 Gedanken-Block waehrend des Streams", "das gewaehlte Modell lieferte keinen Gedankenstrom (kein reasoning_content) — ohne einen ist der Punkt nicht messbar");
+      nichtGemessen("C8 Gedanken-Block waehrend des Streams", "das gewaehlte Modell lieferte keinen Gedankenstrom (kein reasoning_content) — ohne einen ist der Punkt nicht messbar");
     }
   } else {
     record("C8 Gedanken-Block waehrend des Streams", false, ".okit-stream-reasoning erschien ERST nach dem Lauf — das ist der gemeldete Fehler 3");
@@ -530,8 +590,8 @@ async function pruefeUeberdeckung(cdp: Cdp): Promise<void> {
     return { scrollH: p.scrollHeight, clientH: p.clientHeight };
   `);
   if (gefuellt.scrollH <= gefuellt.clientH + 8) {
-    skipped("C9 jedes Bedienelement ist erreichbar (natuerliche Hoehe)", `Vorbedingung fehlt: das Panel laeuft nicht ueber (scrollHeight ${gefuellt.scrollH} <= clientHeight ${gefuellt.clientH})`);
-    skipped("C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)", "ohne ueberlaufendes Panel gegenstandslos");
+    nichtGemessen("C9 jedes Bedienelement ist erreichbar (natuerliche Hoehe)", `Vorbedingung fehlt: das Panel laeuft nicht ueber (scrollHeight ${gefuellt.scrollH} <= clientHeight ${gefuellt.clientH})`);
+    nichtGemessen("C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)", "ohne ueberlaufendes Panel gegenstandslos");
   } else {
     await messeErreichbarkeit(cdp, "C9 jedes Bedienelement ist erreichbar (natuerliche Hoehe)", gefuellt);
 
@@ -549,7 +609,7 @@ async function pruefeUeberdeckung(cdp: Cdp): Promise<void> {
       return { ok: true, vorher, hoehe: Math.round(document.querySelector(".lt-panel").getBoundingClientRect().height) };
     `);
     if (!kurz.ok) {
-      skipped("C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)", "kein .workspace-leaf ueber dem Panel gefunden");
+      nichtGemessen("C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)", "kein .workspace-leaf ueber dem Panel gefunden");
     } else {
       const masse = await cdp.evaluate<{ scrollH: number; clientH: number }>(`
         const p = document.querySelector(".lt-panel");
@@ -667,7 +727,7 @@ async function gegenprobeErreichbarkeit(cdp: Cdp): Promise<void> {
       p.style.overflow = "hidden";
       return { ok: true };
     `)).ok;
-    if (!gesetzt) { skipped(name, "kein .lt-panel im DOM"); return; }
+    if (!gesetzt) { nichtGemessen(name, "kein .lt-panel im DOM"); return; }
     await new Promise((r) => setTimeout(r, 300));
     // DIESELBE Menge wie C9/C9b, nur ohne Scrollen — sonst sichert die Gegenprobe einen
     // Punkt ab, den sie gar nicht misst.
@@ -766,7 +826,7 @@ async function pruefeB11bFreetext(cdp: Cdp): Promise<void> {
   const klick = await waehleQuelle(cdp, 2);
   const da = await pollUntil<{ ok: boolean }>(cdp, `return document.querySelector(".lt-freetext") ? { ok: true } : null;`, 3000, 200);
   if (da === null) {
-    skipped(name, `Quelle „Textfeld" liess sich nicht waehlen${klick}`);
+    nichtGemessen(name, `Quelle „Textfeld" liess sich nicht waehlen${klick}`);
     await waehleQuelle(cdp, 1).catch(() => "");
     return;
   }
@@ -781,7 +841,7 @@ async function pruefeB11bFreetext(cdp: Cdp): Promise<void> {
   // sowohl bei Erfolg als auch bei einem Fehler.
   await laufeTune(cdp, async () => { getippt = await tippeWaehrendDesLaufs(cdp, ".lt-freetext"); });
   if (getippt) await messeB11(cdp, ".lt-freetext", name);
-  else skipped(name, "Tippen waehrend des Laufs schlug fehl — .lt-freetext war beim Klick nicht im DOM");
+  else nichtGemessen(name, "Tippen waehrend des Laufs schlug fehl — .lt-freetext war beim Klick nicht im DOM");
   await waehleQuelle(cdp, 1).catch(() => "");
 }
 
@@ -802,7 +862,7 @@ async function pruefeTextfeldErreichbar(cdp: Cdp): Promise<void> {
   try {
     const klick = await waehleQuelle(cdp, 2);
     const ta = await pollUntil<{ ok: boolean }>(cdp, `return document.querySelector(".lt-freetext") ? { ok: true } : null;`, 3000, 200);
-    if (ta === null) { skipped(name, `Quelle „Textfeld" liess sich nicht waehlen${klick}`); return; }
+    if (ta === null) { nichtGemessen(name, `Quelle „Textfeld" liess sich nicht waehlen${klick}`); return; }
     gewechselt = true;
     const masse = await cdp.evaluate<{ scrollH: number; clientH: number }>(`
       const p = document.querySelector(".lt-panel");
@@ -818,7 +878,7 @@ async function pruefeTextfeldErreichbar(cdp: Cdp): Promise<void> {
       return { scrollH: p.scrollHeight, clientH: p.clientHeight };
     `);
     if (masse.scrollH <= masse.clientH + 8) {
-      skipped(name, `Vorbedingung fehlt: das Panel laeuft nicht ueber (${masse.scrollH} <= ${masse.clientH} + 8)`);
+      nichtGemessen(name, `Vorbedingung fehlt: das Panel laeuft nicht ueber (${masse.scrollH} <= ${masse.clientH} + 8)`);
       return;
     }
     const r = await cdp.evaluate<Erreichbarkeit>(erreichbarAusdruck([".lt-freetext", ".lt-dial-input"], true));
@@ -847,7 +907,7 @@ async function pruefeZuruecksetzen(cdp: Cdp): Promise<void> {
     };
   `);
   if (vor.reset !== 1 || vor.runden === 0) {
-    skipped("C10 Zuruecksetzen fragt nach und raeumt", `Vorbedingung fehlt: .lt-reset=${vor.reset}, Runden=${vor.runden} — ohne Runde gibt es keine Rueckfrage zu messen`);
+    nichtGemessen("C10 Zuruecksetzen fragt nach und raeumt", `Vorbedingung fehlt: .lt-reset=${vor.reset}, Runden=${vor.runden} — ohne Runde gibt es keine Rueckfrage zu messen`);
     return;
   }
   await clickReal(cdp, `document.querySelector(".lt-reset")`);
@@ -877,12 +937,12 @@ let MODELL_FLAG: string | undefined;
 async function pruefeLauf(cdp: Cdp): Promise<void> {
   console.log("\nC · Lauf mit Modell");
   if (!(await endpointReachable())) {
-    for (const n of C_NAMEN) skipped(n, `kein Endpunkt auf ${ENDPOINT}`);
+    for (const n of C_NAMEN) nichtGemessen(n, `kein Endpunkt auf ${ENDPOINT}`);
     return;
   }
   const vorabModell = (await cdp.evaluate<{ m: string }>(`return { m: app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints[0]?.model ?? "" };`)).m;
   if (vorabModell === "" && MODELL_FLAG === undefined) {
-    for (const n of C_NAMEN) skipped(n, "kein Modell gewaehlt: --model <id> setzen (die Reihenfolge der Server-Liste ist kein Auswahlkriterium)");
+    for (const n of C_NAMEN) nichtGemessen(n, "kein Modell gewaehlt: --model <id> setzen (die Reihenfolge der Server-Liste ist kein Auswahlkriterium)");
     return;
   }
   const vorher = (await cdp.evaluate<{ t: string }>(`return { t: await app.vault.read(app.vault.getAbstractFileByPath(${q(NOTE)})) };`)).t;
@@ -934,7 +994,7 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
     // C5 wird waehrend des Streams gemessen und deshalb auch hier protokolliert — vor C1,
     // damit die Reihenfolge im Protokoll die Reihenfolge der Messung ist.
     if (anim === null) {
-      skipped("C5 is-checking animiert", "der Zustand is-checking war in 15 s nie zusammen mit einem .lt-status-icon svg zu sehen");
+      nichtGemessen("C5 is-checking animiert", "der Zustand is-checking war in 15 s nie zusammen mit einem .lt-status-icon svg zu sehen");
     } else if (anim.reduced) {
       skipped("C5 is-checking animiert", `System steht auf prefers-reduced-motion: reduce — styles.css schaltet die Animation dort absichtlich ab (animationName=${anim.a})`);
     } else {
@@ -949,15 +1009,15 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
     const folge = await laufeMitFolgeMessung(cdp, 120_000);
     const done = folge.fertig ? { ok: true } : null;
     if (folge.werte.length === 0) {
-      skipped("C11 Panel folgt dem Strom", "waehrend des Laufs stand nie ein laufender Absatz im DOM — ohne Tail ist die Frage nicht messbar");
-      skipped("C11b Hochscrollen im Strom wird respektiert", "ohne messbaren Strom gegenstandslos");
+      nichtGemessen("C11 Panel folgt dem Strom", "waehrend des Laufs stand nie ein laufender Absatz im DOM — ohne Tail ist die Frage nicht messbar");
+      nichtGemessen("C11b Hochscrollen im Strom wird respektiert", "ohne messbaren Strom gegenstandslos");
     } else {
       const anteil = folge.sichtbar / folge.werte.length;
       record("C11 Panel folgt dem Strom", anteil >= 0.8,
         `Tail sichtbar in ${folge.sichtbar}/${folge.werte.length} Messungen à ${TAKT_MS} ms (${Math.round(anteil * 100)} %) · rest median ${median(folge.werte)} px, min ${Math.min(...folge.werte)}, max ${Math.max(...folge.werte)} · unter dem Stream-Bereich ${folge.unten} px`);
       // Die andere Haelfte derselben Schwelle: wer hochscrollt, will lesen, nicht folgen.
       if (folge.nachStoerung.length === 0) {
-        skipped("C11b Hochscrollen im Strom wird respektiert", `der Lauf endete vor der Stoerung (nur ${folge.werte.length} Messungen à ${TAKT_MS} ms) — nicht messbar`);
+        nichtGemessen("C11b Hochscrollen im Strom wird respektiert", `der Lauf endete vor der Stoerung (nur ${folge.werte.length} Messungen à ${TAKT_MS} ms) — nicht messbar`);
       } else {
         const max = Math.max(...folge.nachStoerung);
         record("C11b Hochscrollen im Strom wird respektiert", max < 40,
@@ -965,13 +1025,13 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
       }
     }
     if (getippt) await messeB11(cdp);
-    else skipped("B11 Tippen ueberlebt das Ende eines Laufs", "keine .lt-note im Panel — ohne Eingabefeld ist der Punkt gegenstandslos");
+    else nichtGemessen("B11 Tippen ueberlebt das Ende eines Laufs", "keine .lt-note im Panel — ohne Eingabefeld ist der Punkt gegenstandslos");
     const ok = done !== null && (await hasClass(cdp, ".lt-status", "is-ok"));
     const preview = (await text(cdp, ".lt-preview")) ?? "";
     record("C1 Stream liefert Ergebnis", ok && preview.length > 0, ok ? `${preview.length} Zeichen` : `Status: ${(await text(cdp, ".lt-status")) ?? "?"}`);
 
     if (!ok) {
-      for (const n of C_AUSGAENGE) skipped(n, "Lauf 1 lieferte kein Ergebnis — die Ausgaenge sind ohne eines gegenstandslos");
+      for (const n of C_AUSGAENGE) nichtGemessen(n, "Lauf 1 lieferte kein Ergebnis — die Ausgaenge sind ohne eines gegenstandslos");
       return;
     }
     record("C2 Kopieren freigegeben", (await disabled(cdp, ".lt-out-copy")) === false, `disabled=${await disabled(cdp, ".lt-out-copy")}`);
@@ -983,7 +1043,7 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
     // --- C7 VOR C3/C4: beide veraendern die Quelle bzw. wechseln den aktiven Tab ---
     const vorGuard = await disabled(cdp, ".lt-out-replace-note");
     if (vorGuard !== false) {
-      skipped("C7 Ersetzen-Ziel sperrt bei geaenderter Quelle", `Vorbedingung fehlt: .lt-out-replace-note war schon vor der Aenderung disabled=${vorGuard}`);
+      nichtGemessen("C7 Ersetzen-Ziel sperrt bei geaenderter Quelle", `Vorbedingung fehlt: .lt-out-replace-note war schon vor der Aenderung disabled=${vorGuard}`);
     } else {
       await cdp.evaluate(`
         const leaf = app.workspace.getMostRecentLeaf(app.workspace.rootSplit);
@@ -1011,7 +1071,7 @@ async function pruefeLauf(cdp: Cdp): Promise<void> {
       return (t.match(/^## /gm) || []).length >= 2 ? { text: t, path: f.path } : null;
     `, 15_000, 500);
     if (!ok2) {
-      skipped("C6 Logbuch anlegen und anhaengen", `der zweite Lauf lieferte kein Ergebnis (Status: ${(await text(cdp, ".lt-status")) ?? "?"}) — ohne zwei fertige Laeufe ist der Punkt nicht messbar`);
+      nichtGemessen("C6 Logbuch anlegen und anhaengen", `der zweite Lauf lieferte kein Ergebnis (Status: ${(await text(cdp, ".lt-status")) ?? "?"}) — ohne zwei fertige Laeufe ist der Punkt nicht messbar`);
     } else {
       const kopf = logbuch !== null && logbuch.text.startsWith("---\ntype: lingotuner-log\n---\n");
       const n = logbuch === null ? 0 : (logbuch.text.match(/^## /gm) ?? []).length;
@@ -1493,7 +1553,7 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
       `managed-Text ${managedNach ? "noch da" : "weg"}, ${localRowsNach} lokale Zeilen, lokaler Lauf gegen Fake-Server ${okLokal ? "ok" : "fehlgeschlagen"} (${lokaleCalls} POST /v1/chat/completions, Modell ${JSON.stringify(modellLokal)}, erwartet ${JSON.stringify(LOCAL_FALLBACK_MODEL)})`);
   } catch (e) {
     for (const n of REST) {
-      if (!checks.some((c) => c.name === n)) skipped(n, `Messung abgebrochen: ${(e as Error).message}`);
+      if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);
     }
   } finally {
     if (stelle) closeSettings(cdp, stelle);
@@ -1631,7 +1691,7 @@ async function pruefeApple(cdp: Cdp, port: number): Promise<void> {
       `Status ${istFehler ? "is-error" : "nicht is-error"}, Meldung: ${JSON.stringify(meldung)}`);
   } catch (e) {
     for (const n of NAMEN) {
-      if (!checks.some((c) => c.name === n)) skipped(n, `Messung abgebrochen: ${(e as Error).message}`);
+      if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);
     }
   } finally {
     if (stelle) closeSettings(cdp, stelle);
@@ -1688,7 +1748,7 @@ async function pruefeRundenZeile(cdp: Cdp): Promise<void> {
     await setzeNotiz(cdp, "Keep the offer of another day, and mention the deadline once more.");
     await clickReal(cdp, `document.querySelector(".lt-refine")`);
     const ok2 = await pollUntil<{ ok: boolean }>(cdp, `return document.querySelectorAll(".lt-history-row").length >= 2 && document.querySelector(".lt-status")?.classList.contains("is-ok") ? { ok: true } : null;`, 30_000, 300);
-    if (!ok1 || ok2 === null) { skipped(name, "zwei Runden liessen sich nicht herstellen (Fake-Lauf nicht gruen)"); return; }
+    if (!ok1 || ok2 === null) { nichtGemessen(name, "zwei Runden liessen sich nicht herstellen (Fake-Lauf nicht gruen)"); return; }
     await new Promise((r) => setTimeout(r, 400));
     const m = await cdp.evaluate<{ zeilen: Array<{ scroll: number; client: number; panel: number }> }>(`
       const p = document.querySelector(".lt-panel");
@@ -1698,7 +1758,7 @@ async function pruefeRundenZeile(cdp: Cdp): Promise<void> {
     record(name, m.zeilen.length >= 2 && zu.length === 0,
       zu.length === 0 ? `${m.zeilen.length} Zeilen, scrollWidth <= clientWidth (Panel ${m.zeilen[0]?.panel} px)` : `${zu.length} von ${m.zeilen.length} Zeilen laufen ueber: ${zu.map((z) => `${z.scroll} > ${z.client}`).join(", ")}`);
   } catch (e) {
-    skipped(name, `Messung abgebrochen: ${(e as Error).message}`);
+    nichtGemessen(name, `Messung abgebrochen: ${(e as Error).message}`);
   } finally {
     if (vorher !== null) {
       await cdp.evaluate(`
@@ -1736,7 +1796,7 @@ async function pruefeLab(cdp: Cdp): Promise<void> {
   console.log("\nL · llm-lab-Aufzeichnung (optionale Fremd-Quelle)");
   const NAME = "L1 Ein Tunen erzeugt eine Lab-Aufzeichnung mit turnId (apiVersion 4)";
   const info = await cdp.evaluate<{ da: boolean; version: number | null }>(`const l = app.plugins.plugins[${q(LAB_PLUGIN_ID)}]; return { da: !!l?.api, version: l?.api?.apiVersion ?? null };`);
-  if (!info.da) { skipped(NAME, `llm-lab nicht geladen — 'npm run smoke:gui -- --setup' deployt es aus ../llm-lab (gebaut), danach die Zweitinstanz neu starten`); return; }
+  if (!info.da) { nichtGemessen(NAME, `llm-lab nicht geladen — 'npm run smoke:gui -- --setup' deployt es aus ../llm-lab (gebaut), danach die Zweitinstanz neu starten`); return; }
   let fake: FakeChatEndpoint | null = null;
   const zeilen = `
     const dir = ".obsidian/plugins/${LAB_PLUGIN_ID}/traces";
@@ -1905,7 +1965,7 @@ async function pruefeVerbindung(cdp: Cdp): Promise<void> {
     record(NAMEN[2]!, ok && dom.img === 0 && dom.pre === 0 && /dataviewjs/.test(dom.text),
       ok ? `img ${dom.img}, pre ${dom.pre}, Text zeigt „dataviewjs“: ${/dataviewjs/.test(dom.text)}` : `Lauf fehlgeschlagen (${(await text(cdp, ".lt-status")) ?? "?"})`);
   } catch (e) {
-    for (const n of NAMEN) if (!checks.some((c) => c.name === n)) skipped(n, `Messung abgebrochen: ${(e as Error).message}`);
+    for (const n of NAMEN) if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);
   } finally {
     if (vorher !== null) {
       await cdp.evaluate(`
@@ -1966,7 +2026,7 @@ async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
       })()`)};`);
       record(NAMEN[1]!, gesetzt.own && gesetzt.zurueck, `eigener Wert gesetzt=${gesetzt.own}, zurueckgesetzt=${gesetzt.zurueck}`);
     } else {
-      skipped(NAMEN[1]!, "Abschnitt liess sich nicht aufklappen — ohne ihn ist kein Feld erreichbar");
+      nichtGemessen(NAMEN[1]!, "Abschnitt liess sich nicht aufklappen — ohne ihn ist kein Feld erreichbar");
     }
     closeSettings(cdp, stelle);
     stelle = null;
@@ -2004,7 +2064,7 @@ async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
     `).catch(() => undefined);
   } catch (e) {
     for (const n of NAMEN) {
-      if (!checks.some((c) => c.name === n)) skipped(n, `Messung abgebrochen: ${(e as Error).message}`);
+      if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);
     }
   } finally {
     if (stelle) closeSettings(cdp, stelle);
@@ -2013,13 +2073,14 @@ async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
-  if (argv.includes("--setup")) { setupVault(); return; }
-  const portArg = argv.indexOf("--port");
-  const port = portArg >= 0 ? Number(argv[portArg + 1]) : 9222;
-  const vaultArg = argv.indexOf("--vault");
-  const vaultFilter = vaultArg >= 0 ? argv[vaultArg + 1] : REPO_NAME;
-  const modelArg = argv.indexOf("--model");
-  MODELL_FLAG = modelArg >= 0 ? argv[modelArg + 1] : undefined;
+  if (parseArgs(argv).has("--setup")) { setupVault(); return; }
+  const args = parseArgs(argv);
+  const port = Number(args.value("port"));
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+    throw new Error("--port <1024-65535> ist Pflicht (Port deiner Zweitinstanz, vom Lock gehalten) — es gibt keinen Standardport.");
+  }
+  const vaultFilter = args.value("vault") ?? REPO_NAME;
+  MODELL_FLAG = args.value("model");
 
   const cdp = await attachTo("workspace", port, vaultFilter);
   if (!cdp) throw new Error(`Kein Obsidian-Fenster fuer Vault "${vaultFilter}" auf Port ${port}.`);
@@ -2052,12 +2113,8 @@ async function main(): Promise<void> {
     console.log(`\nAufgeraeumt: ${n} zusaetzliche Leaves geschlossen. Notices: ${await notices(cdp).catch(() => "?")}`);
     cdp.close();
   }
-  const gruen = checks.filter((c) => c.zustand === "gruen").length;
-  const rot = checks.filter((c) => c.zustand === "rot");
-  const ueb = checks.filter((c) => c.zustand === "uebersprungen").length;
-  console.log(`\n${gruen} gruen · ${rot.length} rot · ${ueb} uebersprungen · von ${checks.length} Pruefpunkten`);
+  bilanz.abschluss();
   for (const w of warnungen) console.log(`WARNUNG: ${w}`);
-  if (rot.length) { console.log(`Rot: ${rot.map((r) => r.name).join(" · ")}`); process.exitCode = 1; }
 }
 
-main().catch((e: unknown) => { console.error(`\nABBRUCH: ${(e as Error).message}`); process.exitCode = 2; });
+runDriver(main);
