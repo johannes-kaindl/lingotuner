@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- The right-hand label of a tuning slider (for example "diplomatisch" on the Directness slider in German) no longer runs into the right edge of a narrow sidebar: the labels keep their width and the slider itself gives way.
+
 ## [0.9.1] — 2026-10-12
 
 ### Changed

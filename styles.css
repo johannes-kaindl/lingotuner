@@ -157,7 +157,7 @@
 .lt-dial-name { color: var(--text-normal); }
 .lt-dial-level { color: var(--text-muted); font-size: var(--font-ui-smaller); }
 .lt-dial-line { display: flex; align-items: center; gap: var(--size-4-2); }
-.lt-dial-pole { color: var(--text-faint); font-size: var(--font-ui-smaller); min-width: 5em; }
+.lt-dial-pole { color: var(--text-faint); font-size: var(--font-ui-smaller); min-width: 5em; flex: 0 0 auto; }
 .lt-dial-pole:last-child { text-align: right; }
 .lt-dial-input { flex: 1 1 auto; min-width: 0; }
 
