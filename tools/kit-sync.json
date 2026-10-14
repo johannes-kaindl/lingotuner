@@ -1,7 +1,7 @@
 {
   "sources": {
-    "obsidian-kit": { "ref": "0.59.1" },
-    "code-kit": { "ref": "0.24.0" }
+    "obsidian-kit": { "ref": "0.60.1" },
+    "code-kit": { "ref": "0.27.1" }
   },
   "targets": [
     { "dir": "src/vendor/kit", "source": "code-kit", "from": "src/ts/web", "modules": ["clipboard", "remote-resources"], "rewrite": [["../pure/", "./"]] },
@@ -11,7 +11,7 @@
         "sse", "endpoint", "endpoint_config", "endpoint_diagnostics", "model-choice",
         "model-list-cache", "reasoning", "capabilities", "think-splitter", "think-toggle",
         "timeout", "error_body", "i18n", "settings", "stream-blocks", "sampling-profiles",
-        "backend-probe", "redact", "safe-markdown", "secrets", "rounds", "model-context", "embeddings-client"
+        "backend-probe", "redact", "safe-markdown", "secrets", "rounds", "model-context", "embeddings-client", "slug", "local-stamp"
       ]
     },
     {
