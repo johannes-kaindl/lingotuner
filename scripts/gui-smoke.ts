@@ -16,7 +16,7 @@
  *   # $UD/obsidian.json: Vault ($STAGING_VAULTS_DIR/lingotuner) und "language":"en" eintragen (Obsidian liest die Datei nur beim Start)
  *   /Applications/Obsidian.app/Contents/MacOS/Obsidian --user-data-dir="$UD" --remote-debugging-port=<port> &
  *   python3 ~/.claude/hooks/obsidian-cdp-lock.py acquire --label lingotuner --intent "GUI-Smoke" --exclusive focus --port <port> --ttl 300
- *   npm run smoke:gui -- --port <port> --model <id>   (Abschnitt C braucht --model; ohne ist er „nichts gemessen", Exit 1)
+ *   npm run smoke:gui -- --port <port>                                 (Abschnitt C laeuft gegen den zentralen LLM-Stub; `--model <id>` faehrt echt gegen :1234)
  *   python3 ~/.claude/hooks/obsidian-cdp-lock.py release
  *
  * Vertrauensdialog und Restricted Mode eines frischen Profils erledigt der Treiber selbst
@@ -46,8 +46,9 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { join } from "node:path";
 import { cwd } from "node:process";
 
-import { Cdp, attachTo, bereiteInstanzVor, clickReal, closeExtraLeaves, entferneFakeManager, installFakeManager as installZentralFakeManager, notices, pollUntil, requireVisible, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
+import { Cdp, attachTo, beimAbbruch, bereiteInstanzVor, clickReal, closeExtraLeaves, entferneFakeManager, installFakeManager as installZentralFakeManager, istAbgebrochen, notices, pollUntil, requireVisible, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
 import { startLlmStub, type AntwortSpec } from "../../tools/obsidian-cdp/llm-stub.js";
+import { messeFolge, zeichneFolge } from "../../tools/obsidian-cdp/folge.js";
 import { createBilanz, parseArgs, runDriver } from "../../tools/obsidian-cdp/bilanz.js";
 import { buildVault, requireEigenerBuild, stagingVaultDir } from "../../tools/obsidian-cdp/vault.js";
 
@@ -94,6 +95,7 @@ const PUNKTE = [
   "C5 is-checking animiert",
   "C11 Panel folgt dem Strom",
   "C11b Hochscrollen im Strom wird respektiert",
+  "C11c Zurueck am Ende folgt das Panel wieder",
   "C1 Stream liefert Ergebnis",
   "B11 Tippen ueberlebt das Ende eines Laufs",
   "B11b Tippen im Quelltextfeld ueberlebt das Ende eines Laufs",
@@ -151,9 +153,9 @@ const aufgezeichnet = (name: string): boolean => bilanz.eintraege().some((p) => 
 
 const q = (s: string): string => JSON.stringify(s);
 
-/** Vorwert der Regler, damit main() ihn im finally zurueckschreibt — der Lauf soll die
- *  Einstellungen des Wirts nicht behalten. `null` = noch nicht gelesen. */
-let vorherigeDials: unknown = null;
+/** Einstellungen des Plugins VOR der ersten Mutation (JSON), damit `zustandZurueck` sie im Normalweg und beim Abbruch
+ *  zurueckschreibt — der Lauf soll die Einstellungen des Wirts nicht behalten. `null` = noch nicht gelesen. */
+let einstellungenVorher: string | null = null;
 
 /** Ergebnisse immer als Objekt: CDP kann null nicht von undefined unterscheiden. */
 async function count(cdp: Cdp, selector: string): Promise<number> {
@@ -252,10 +254,10 @@ async function waehleQuelle(cdp: Cdp, index: number): Promise<string> {
  *  data.json gespeichert — B5 („alle Regler 0 sperren Tunen") misst beim ZWEITEN Lauf
  *  also den Rest des ersten und ist rot, ohne dass sich am Plugin etwas geaendert haette.
  *  Das Fixture setzt den Startwert, aber nur beim `--setup`; eine laufende Instanz haelt
- *  ihre Einstellungen im Speicher und schreibt sie darueber. Rueckgabe ist der Vorwert,
- *  den main() im finally zurueckschreibt. */
-async function setzeAusgangszustand(cdp: Cdp): Promise<unknown> {
-  const vorher = await cdp.evaluate<unknown>(`return { d: app.plugins.plugins[${q(PLUGIN_ID)}].settings.lastDials };`);
+ *  ihre Einstellungen im Speicher und schreibt sie darueber. Vorher merkt sie sich die
+ *  Einstellungen (`einstellungenVorher`), die `zustandZurueck` in `main()` zurueckschreibt. */
+async function setzeAusgangszustand(cdp: Cdp): Promise<void> {
+  einstellungenVorher = (await cdp.evaluate<{ s: string }>(`return { s: JSON.stringify(app.plugins.plugins[${q(PLUGIN_ID)}].settings) };`)).s;
   await cdp.evaluate(`
     app.workspace.detachLeavesOfType(${q(VIEW_TYPE)});
     app.workspace.detachLeavesOfType("markdown");
@@ -263,7 +265,6 @@ async function setzeAusgangszustand(cdp: Cdp): Promise<unknown> {
     return { ok: true };
   `);
   await setPluginSetting(cdp, PLUGIN_ID, "lastDials", { directness: 0, context: 0, social: 0, semantics: 0 });
-  return (vorher as { d: unknown }).d;
 }
 
 async function pruefeGrundlage(cdp: Cdp, vaultName: string): Promise<void> {
@@ -279,7 +280,7 @@ async function pruefeGrundlage(cdp: Cdp, vaultName: string): Promise<void> {
   const cmds = (await cdp.evaluate<{ c: string[] }>(`return { c: ["open-panel","tune-selection"].filter((id) => Boolean(app.commands.commands[${q(PLUGIN_ID)} + ":" + id])) };`)).c;
   record("A2 Befehle registriert", cmds.length === 2, cmds.join(", ") || "keiner");
 
-  vorherigeDials = await setzeAusgangszustand(cdp);
+  await setzeAusgangszustand(cdp);
   await cdp.evaluate(`app.commands.executeCommandById(${q(`${PLUGIN_ID}:open-panel`)}); return { ok: true };`);
   const panel = await pollUntil<{ ok: boolean }>(cdp, `return document.querySelector(".lt-panel") ? { ok: true } : null;`, 10_000, 300);
   record("A3 Panel oeffnet", panel !== null, panel !== null ? "Leaf mit .lt-panel" : `kein .lt-panel; Leaves: ${(await cdp.evaluate<{ n: number }>(`return { n: app.workspace.getLeavesOfType(${q(VIEW_TYPE)}).length };`)).n}`);
@@ -380,123 +381,6 @@ async function pruefePanel(cdp: Cdp): Promise<void> {
   const blocked = await pollUntil<{ ok: boolean }>(cdp, `const el = document.querySelector(".lt-source-line"); return el && el.classList.contains("is-blocked") ? { ok: true } : null;`, 5000, 250);
   record("B9 Lesemodus blockiert die Quelle", blocked !== null, blocked !== null ? "is-blocked gesetzt" : (await text(cdp, ".lt-source-line")) ?? "keine Zeile");
   await cdp.evaluate(`const v = app.workspace.getLeavesOfType("markdown")[0].view; await v.setState({ ...v.getState(), mode: "source" }, { history: false }); app.workspace.trigger("active-leaf-change"); return { ok: true };`);
-}
-
-/** C11 — folgt das PANEL dem Strom?
- *
- *  Seit 2026-09-11 rollt nicht mehr der Antwort-Body, sondern das Panel als Ganzes; das Kit
- *  scrollt ueber `scrollEl` nach, aber nur, wenn der Leser ohnehin unten steht (Schwelle
- *  `followThreshold`, Default 40 px). Die Schwelle misst den Abstand der SCROLL-KANTE, und
- *  unter dem Stream-Bereich stehen jetzt noch Verlauf und Ausgangsknoepfe — der Verdacht war,
- *  dass ihre Hoehe die Schwelle regelmaessig ueberschreitet und das Folgen deshalb ausbleibt.
- *
- *  Gemessen wird waehrend eines echten Laufs, alle 300 ms: steht der untere Rand des
- *  laufenden Absatzes noch im Sichtfenster des Panels, und wie gross ist dabei `rest`
- *  (`scrollHeight - scrollTop - clientHeight`)? Die Zahlen gehen in den Bericht; die
- *  Kit-Session leitet daraus ab, ob `followTail` kuenftig gegen `rootEl` messen soll. */
-interface FolgeStand { scrollTop: number; ueberlauf: number }
-interface FolgeMessung {
-  fertig: boolean; werte: number[]; sichtbar: number; gesamt: number; unten: number;
-  /** Groesster Ueberlauf (`scrollHeight - clientHeight`) des Panels waehrend des Laufs. */
-  maxUeberlauf: number;
-  /** Die Stoerung (`scrollTop = 0`), ausgeloest, sobald der Ueberlauf `STOER_UEBERLAUF` erreichte; `null` = nie ausgeloest
-   *  (der Strom lief vorher aus) — dann ist C11b „nichts gemessen" (CORE-TEST-22). */
-  stoerung: { ueberlauf: number; scrollTopVorher: number; scrollTopNachher: number } | null;
-  /** Folgemessungen NACH der Stoerung und VOR dem Schluss-Draw: nur sie bewerten C11b. */
-  nachStoerung: FolgeStand[];
-  /** Messungen NACH dem Schluss-Draw (`view.ts` leert die Wurzel und baut neu auf): getrennt aufgezeichnet, nicht bewertet —
-   *  der Lauf entscheidet damit zwischen „die Folge-Regel zieht nach" und „der Schluss-Draw setzt zurueck". */
-  nachSchluss: FolgeStand[];
-}
-
-/** Messtakt von C11/C11b. 300 ms waren zu grob: die Antwort auf die Fixture-Notiz ist unter
- *  einer Sekunde fertig, C11b fiel deshalb zweimal als „nicht messbar" aus. Der Takt bestimmt
- *  die Aufloesung, nicht die Aussage. */
-const TAKT_MS = 150;
-
-/** Gueltigkeitsbedingung von C11b: Die Stoerung loest erst aus, wenn das Panel um mindestens so viele Pixel ueberlaeuft
- *  (`scrollHeight - clientHeight`, gemessen VOR `scrollTop = 0`). Herleitung: Die Folge-Schwelle `followThreshold` des Kits
- *  betraegt 40 px (`stream-area.ts`, kein Konsument ueberschreibt sie), dazu 40 px Spielraum. Bei weniger Ueberlauf steht
- *  `scrollTop = 0` ohnehin innerhalb der Schwelle, und ein Folgen waere von „nichts bewegt sich" nicht zu unterscheiden. */
-const STOER_UEBERLAUF = 80;
-
-/** Toleranz fuer „der Stand blieb stehen" (Rundung von `scrollTop`). Ein Nachziehen der Folge-Regel springt um mindestens den Ueberlauf. */
-const STAND_TOLERANZ_PX = 2;
-
-async function laufeMitFolgeMessung(cdp: Cdp, maxMs: number): Promise<FolgeMessung> {
-  const werte: number[] = [];
-  const nachStoerung: FolgeStand[] = [];
-  const nachSchluss: FolgeStand[] = [];
-  let sichtbar = 0;
-  let gesamt = 0;
-  let unten = 0;
-  let maxUeberlauf = 0;
-  let stoerung: FolgeMessung["stoerung"] = null;
-  const bis = Date.now() + maxMs;
-  for (;;) {
-    const m = await cdp.evaluate<{ fertig: boolean; hat: boolean; rest: number; tailSichtbar: boolean; unten: number; scrollTop: number; ueberlauf: number }>(`
-      const s = document.querySelector(".lt-status");
-      const p = document.querySelector(".lt-panel");
-      const area = document.querySelector(".okit-stream");
-      const tail = document.querySelector(".okit-stream-tail");
-      const fertig = !!s && (s.classList.contains("is-ok") || s.classList.contains("is-error"));
-      if (!p || !tail || !area) return { fertig, hat: false, rest: 0, tailSichtbar: false, unten: 0, scrollTop: 0, ueberlauf: 0 };
-      const pr = p.getBoundingClientRect();
-      const tr = tail.getBoundingClientRect();
-      const ar = area.getBoundingClientRect();
-      // Alles, was im Panel HINTER dem Stream-Bereich steht (Verlauf, Ausgangsknoepfe) —
-      // genau der Betrag, um den die Scroll-Kante weiter weg ist als das Textende.
-      const unten = Math.max(0, Math.round(p.scrollHeight - (ar.bottom - pr.top + p.scrollTop)));
-      return {
-        fertig,
-        hat: tr.height > 0 || tail.textContent.length > 0,
-        rest: Math.round(p.scrollHeight - p.scrollTop - p.clientHeight),
-        tailSichtbar: tr.bottom <= pr.bottom + 1,
-        unten,
-        scrollTop: Math.round(p.scrollTop),
-        ueberlauf: Math.round(p.scrollHeight - p.clientHeight),
-      };
-    `);
-    if (m.hat) {
-      gesamt += 1;
-      unten = m.unten;
-      maxUeberlauf = Math.max(maxUeberlauf, m.ueberlauf);
-      if (stoerung !== null) { if (!m.fertig) nachStoerung.push({ scrollTop: m.scrollTop, ueberlauf: m.ueberlauf }); }
-      else {
-        werte.push(m.rest);
-        if (m.tailSichtbar) sichtbar += 1;
-      }
-    }
-    if (m.fertig) {
-      // Nach dem Schluss-Draw (Wurzel leeren, neu aufbauen, Fokus) fehlt der Tail: der Stand kommt direkt vom Panel, nicht ueber `hat`.
-      if (stoerung !== null) {
-        await new Promise((r) => setTimeout(r, 400));
-        nachSchluss.push(await cdp.evaluate<FolgeStand>(`const p = document.querySelector(".lt-panel"); return { scrollTop: p ? Math.round(p.scrollTop) : -1, ueberlauf: p ? Math.round(p.scrollHeight - p.clientHeight) : -1 };`));
-      }
-      return { fertig: true, werte, sichtbar, gesamt, unten, maxUeberlauf, stoerung, nachStoerung, nachSchluss };
-    }
-    if (Date.now() > bis) return { fertig: false, werte, sichtbar, gesamt, unten, maxUeberlauf, stoerung, nachStoerung, nachSchluss };
-    // Die HAND DES NUTZERS, kuenstlich: mitten im Strom nach oben scrollen — erst, wenn die Gueltigkeitsbedingung steht
-    // (Ueberlauf >= STOER_UEBERLAUF, gemessen VOR dem Setzen). Das Kit darf danach nicht mehr nachziehen — sonst reisst es
-    // jeden zurueck, der den Anfang liest. Ueberlauf und scrollTop vor und nach dem Setzen werden mitgeschrieben.
-    if (stoerung === null && m.hat && m.ueberlauf >= STOER_UEBERLAUF) {
-      stoerung = await cdp.evaluate<{ ueberlauf: number; scrollTopVorher: number; scrollTopNachher: number }>(`
-        const p = document.querySelector(".lt-panel");
-        if (!p) return { ueberlauf: 0, scrollTopVorher: 0, scrollTopNachher: 0 };
-        const ueberlauf = Math.round(p.scrollHeight - p.clientHeight);
-        const scrollTopVorher = Math.round(p.scrollTop);
-        p.scrollTop = 0;
-        return { ueberlauf, scrollTopVorher, scrollTopNachher: Math.round(p.scrollTop) };
-      `);
-    }
-    await new Promise((r) => setTimeout(r, TAKT_MS));
-  }
-}
-
-function median(xs: number[]): number {
-  if (xs.length === 0) return 0;
-  const s = [...xs].sort((a, b) => a - b);
-  return s[Math.floor(s.length / 2)] ?? 0;
 }
 
 /** Einen Tune-Lauf ausloesen und auf seinen Endzustand warten. `false` = nicht gruen geworden. */
@@ -983,12 +867,12 @@ async function pruefeZuruecksetzen(cdp: Cdp): Promise<void> {
 /** Modell fuer Abschnitt C: Flag `--model <id>`. Ohne Flag und ohne konfiguriertes Modell misst C nichts. */
 let MODELL_FLAG: string | undefined;
 
-/** Antworten des zentralen Stubs in Abschnitt C. `lang`: genug Absaetze, dass das Panel zur Stoerzeit um mehr als `STOER_UEBERLAUF`
- *  ueberlaeuft und danach noch Stuecke kommen; `kurz`: ein Dreizeiler (die uebrigen Laeufe); `denken`: langer Denk-Text, dann das Ergebnis (C8, wird abgebrochen). */
+/** Antworten des zentralen Stubs in Abschnitt C. `lang`: genug Absaetze, dass das Panel zur Stoerzeit um mindestens 80 px
+ *  ueberlaeuft (Mindestueberlauf der Folge-Messung) und danach noch Stuecke fuer Stoerung UND Wiederaufnahme kommen; `kurz`: ein Dreizeiler (die uebrigen Laeufe); `denken`: langer Denk-Text, dann das Ergebnis (C8, wird abgebrochen). */
 type StubModus = "lang" | "kurz" | "denken";
 const STUB_MODELL = "stub-modell";
 const STUB_TAKT_MS = 200;
-const STUB_LANG = Array.from({ length: 36 }, (_, i) => `${i === 0 ? "" : "\n\n"}Absatz ${i + 1}: Der Entwurf bleibt in der Sache gleich, klingt aber ruhiger und laesst dem Empfaenger mehr Raum.`);
+const STUB_LANG = Array.from({ length: 60 }, (_, i) => `${i === 0 ? "" : "\n\n"}Absatz ${i + 1}: Der Entwurf bleibt in der Sache gleich, klingt aber ruhiger und laesst dem Empfaenger mehr Raum.`);
 const STUB_KURZ = ["Hallo Sam,", "\n\nkannst du mir den Bericht bis Freitag schicken?", "\n\nDanke, Jo"];
 function stubAntwort(modus: StubModus): AntwortSpec {
   // Tokengross (laenge 8, kurzer Takt), nicht absatzgross: ein Push ueber die 40-px-Folge-Schwelle beendet im Kit 0.57.0 das Folgen
@@ -1115,36 +999,21 @@ async function pruefeLaufKern(cdp: Cdp): Promise<void> {
     // B11: WAEHREND des Streams in die Anmerkung tippen — gemessen wird nach dem Schluss-Draw.
     const getippt = await tippeWaehrendDesLaufs(cdp);
 
-    // Der Endzustands-Poll misst zugleich C11 — ein zweiter Lauf nur fuers Scrollverhalten
-    // kostete Minuten und saehe dasselbe.
-    const folge = await laufeMitFolgeMessung(cdp, 120_000);
+    // C11, C11b, C11c: eine Messung, drei Teilregeln, ein Strom (`messeFolge` der Bruecke, README § Folge-Messung). Das Panel als Ganzes
+    // scrollt (`.lt-panel`), nicht der Stream-Bereich. Der Strom laeuft, solange `.lt-status` auf is-checking steht; die Werte
+    // (Ueberlauf >= 80, >= 3 Staende, 24 px, 4 px Toleranz) sind die der Bruecke — ein Hebel fuer „nichts gemessen“ ist die Stub-Laenge.
+    const folge = await messeFolge(cdp, {
+      selector: ".lt-panel",
+      laeuft: () => hasClass(cdp, ".lt-status", "is-checking"),
+      wiederaufnahme: true,
+    });
+    zeichneFolge({ record, unmeasured: nichtGemessen }, {
+      kontrolle: "C11 Panel folgt dem Strom",
+      folge: "C11b Hochscrollen im Strom wird respektiert",
+      wiederaufnahme: "C11c Zurueck am Ende folgt das Panel wieder",
+    }, folge);
     setzeStubModus("kurz");
-    const done = folge.fertig ? { ok: true } : null;
-    if (folge.werte.length === 0) {
-      nichtGemessen("C11 Panel folgt dem Strom", "waehrend des Laufs stand nie ein laufender Absatz im DOM — ohne Tail ist die Frage nicht messbar");
-      nichtGemessen("C11b Hochscrollen im Strom wird respektiert", "ohne messbaren Strom gegenstandslos");
-    } else {
-      const anteil = folge.sichtbar / folge.werte.length;
-      record("C11 Panel folgt dem Strom", anteil >= 0.8,
-        `Tail sichtbar in ${folge.sichtbar}/${folge.werte.length} Messungen à ${TAKT_MS} ms (${Math.round(anteil * 100)} %) · rest median ${median(folge.werte)} px, min ${Math.min(...folge.werte)}, max ${Math.max(...folge.werte)} · unter dem Stream-Bereich ${folge.unten} px`);
-      // Die andere Haelfte derselben Schwelle: wer hochscrollt, will lesen, nicht folgen.
-      // Gueltigkeit (CORE-TEST-22): ohne Stoerung (Ueberlauf blieb unter STOER_UEBERLAUF) oder mit weniger als zwei Messungen
-      // zwischen Stoerung und Schluss-Draw ist nichts gemessen — nicht rot. Bewertet wird `scrollTop` nach der Stoerung gegen
-      // `scrollTop` zur Stoerungszeit (direkt nach dem Setzen), nicht gegen eine Schwellen-Zahl; die Messungen NACH dem Schluss-Draw zaehlen nicht.
-      const nameB = "C11b Hochscrollen im Strom wird respektiert";
-      const st = folge.stoerung;
-      if (st === null) {
-        nichtGemessen(nameB, `Gueltigkeit nicht erreicht: der Ueberlauf des Panels blieb bei hoechstens ${folge.maxUeberlauf} px (Bedingung: >= ${STOER_UEBERLAUF} px, Folge-Schwelle 40 px + 40 px Spielraum), die Stoerung loeste nie aus — der Strom lief vorher aus`);
-      } else if (folge.nachStoerung.length < 2) {
-        nichtGemessen(nameB, `nach der Stoerung (Ueberlauf ${st.ueberlauf} px) kamen nur ${folge.nachStoerung.length} Messung(en) vor dem Schluss-Draw (Bedingung: mindestens 2) — nicht messbar`);
-      } else {
-        const stande = folge.nachStoerung.map((x) => x.scrollTop);
-        const max = Math.max(...stande);
-        const schluss = folge.nachSchluss.length === 0 ? "keine" : folge.nachSchluss.map((x) => x.scrollTop).join("/");
-        record(nameB, max <= st.scrollTopNachher + STAND_TOLERANZ_PX,
-          `Stoerung bei Ueberlauf ${st.ueberlauf} px, scrollTop ${st.scrollTopVorher} → ${st.scrollTopNachher}; danach ${stande.length} Messungen ${stande.join("/")} (Ueberlauf ${folge.nachStoerung.at(-1)?.ueberlauf ?? 0} px), groesster Stand ${max} px; nach dem Schluss-Draw: ${schluss}`);
-      }
-    }
+    const done = await pollUntil<{ ok: boolean }>(cdp, `const s = document.querySelector(".lt-status"); return s && (s.classList.contains("is-ok") || s.classList.contains("is-error")) ? { ok: true } : null;`, 120_000, 500);
     if (getippt) await messeB11(cdp);
     else nichtGemessen("B11 Tippen ueberlebt das Ende eines Laufs", "keine .lt-note im Panel — ohne Eingabefeld ist der Punkt gegenstandslos");
     const ok = done !== null && (await hasClass(cdp, ".lt-status", "is-ok"));
@@ -1301,29 +1170,6 @@ async function installFakeManager(cdp: Cdp, url: string): Promise<void> {
 /** Entfernt den zentralen Fake-Manager und stellt den vorgefundenen Slot wieder her (auch auf dem Abbruchpfad aufrufbar). */
 async function removeFakeManager(cdp: Cdp): Promise<void> {
   await entferneFakeManager(cdp, { pluginId: MANAGER_PLUGIN_ID });
-}
-
-/** Abbau des lokalen Apple-Managers (`installAppleManager`): sein Transport (`shortcuts`, `list` mit `transports`-Filter) ist im zentralen Fake-Manager nicht ausdrueckbar, das Paar bleibt deshalb lokal — Meldung an den Master, Welle 20. Entfernt die Fake-API — Analog zu `app.plugins.disablePlugin()` (der Brief nennt beides
- *  als gleichwertig fuer M3). `findEndpointManager()` liest bei JEDEM Aufruf frisch aus
- *  `app.plugins.plugins`, ein `changed`-Ereignis ist fuer die Abwesenheit nicht noetig — der
- *  naechste `llm.resolve()`/Settings-Rebuild sieht sie ohnehin sofort.
- *
- *  Stellt den VOR `installFakeManager()` vorgefundenen Eintrag wieder her (Review-Fund I6),
- *  statt ihn zu loeschen — s. Kommentar dort. Idempotent: ein Aufruf ohne vorheriges
- *  `installFakeManager()` (z. B. im `finally`-Pfad nach einem fruehen Abbruch) findet
- *  `"__smokeVorherManager" in window` als `false` und loescht dann einfach, wie zuvor. */
-async function entferneAppleManager(cdp: Cdp): Promise<void> {
-  await cdp.evaluate(`
-    if ("__smokeVorherManager" in window) {
-      const vorher = window.__smokeVorherManager;
-      if (vorher === null) delete app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}];
-      else app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}] = vorher;
-      delete window.__smokeVorherManager;
-    } else {
-      delete app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}];
-    }
-    return { ok: true };
-  `);
 }
 
 /** Settings-Stelle: Modal (< 1.13) oder eigenes Fenster (>= 1.13) — uebernommen aus
@@ -1658,36 +1504,18 @@ const APPLE_SHORTCUT = "Smoke Apple LLM";
 /** Kurz, damit der Timeout-Pfad (S5) in Sekunden laeuft — die Client-Frist richtet sich nach ihr (+10 s). */
 const APPLE_SHORTCUT_TIMEOUT_MS = 3000;
 
-/** Fake-Manager mit ZWEI Endpunkten: einem HTTP-Endpunkt und dem Apple-Endpunkt (Transport
- *  `shortcuts`). `list(filter)` filtert wie der echte Manager nach `filter.transports` mit Default
- *  `["http"]` (Spiegel von llm-endpoint-manager/scripts/gui-smoke.ts G2) — S1 misst genau das,
- *  damit der Fake nicht still alles liefert und S2 gruen wird, ohne dass das Opt-in je gebraucht
- *  wurde (CORE-TEST-12: ein neues Werkzeug misst im ersten Lauf sich selbst). */
+/** Fake-Manager mit ZWEI Endpunkten: einem HTTP-Endpunkt und dem Apple-Endpunkt (Transport `shortcuts`), ueber den
+ *  zentralen Fake-Manager. Der filtert `list(filter)` wie der echte Manager nach `filter.transports` mit Default `["http"]`
+ *  (Spiegel von llm-endpoint-manager/scripts/gui-smoke.ts G2) — S1 misst genau das, damit der Fake nicht still alles
+ *  liefert und S2 gruen wird, ohne dass das Opt-in je gebraucht wurde (CORE-TEST-12). */
 async function installAppleManager(cdp: Cdp, httpUrl: string): Promise<void> {
-  await cdp.evaluate(`
-    if (!("__smokeVorherManager" in window)) {
-      window.__smokeVorherManager = app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}] ?? null;
-    }
-    const http = { id: "fake-http", label: "Fake HTTP Endpoint", url: ${q(httpUrl)}, provider: "openai", capabilities: ["chat"], defaultModel: ${q(MANAGER_DEFAULT_MODEL)}, enabled: true, hasSecret: false };
-    const shortcut = { name: ${q(APPLE_SHORTCUT)}, timeoutMs: ${APPLE_SHORTCUT_TIMEOUT_MS} };
-    const apple = { id: ${q(APPLE_ENDPOINT_ID)}, label: ${q(APPLE_LABEL)}, url: "apple-shortcuts://on-device", provider: "apple-shortcuts", transport: "shortcuts", shortcut, capabilities: ["chat"], enabled: true, hasSecret: false };
-    const all = [http, apple];
-    const resolved = (e) => e.id === apple.id
-      ? { id: e.id, label: e.label, config: { url: e.url, model: "" }, transport: "shortcuts", shortcut }
-      : { id: e.id, label: e.label, config: { url: e.url, model: ${q(MANAGER_DEFAULT_MODEL)} }, defaultModel: ${q(MANAGER_DEFAULT_MODEL)} };
-    const api = {
-      version: 1,
-      list: (filter) => { const ts = (filter && filter.transports) || ["http"]; return all.filter((e) => ts.includes(e.transport || "http")); },
-      get: (id) => all.find((e) => e.id === id) ?? null,
-      resolve: async () => resolved(http),
-      materialize: async (id) => { const e = all.find((x) => x.id === id); return e ? resolved(e) : { error: "not-found" }; },
-      models: async (id) => (id === http.id ? [${q(MANAGER_DEFAULT_MODEL)}] : []),
-      importEndpoints: async (eps) => ({ added: [], merged: [], skipped: eps.map((e) => e.url) }),
-      on: () => (() => {}),
-    };
-    app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}] = { api };
-    return { ok: true };
-  `);
+  await installZentralFakeManager(cdp, {
+    pluginId: MANAGER_PLUGIN_ID,
+    endpunkte: [
+      { id: "fake-http", label: "Fake HTTP Endpoint", url: httpUrl, models: [MANAGER_DEFAULT_MODEL], defaultModel: MANAGER_DEFAULT_MODEL, configModel: "default" },
+      { id: APPLE_ENDPOINT_ID, label: APPLE_LABEL, url: "apple-shortcuts://on-device", transport: "shortcuts", shortcut: { name: APPLE_SHORTCUT, timeoutMs: APPLE_SHORTCUT_TIMEOUT_MS } },
+    ],
+  });
 }
 
 /** S1–S5 · Apple-Intelligence-Endpunkt (Welle 14): Auswahl im Baustein, Transportwahl, Kurzbefehl-URL,
@@ -1776,7 +1604,7 @@ async function pruefeApple(cdp: Cdp, port: number): Promise<void> {
     if (stubGesetzt) {
       await cdp.evaluate(`window.open = window.__smokeOrigOpen; delete window.__smokeOrigOpen; delete window.__smokeOpenUrls; return { ok: true };`).catch(() => null);
     }
-    await entferneAppleManager(cdp).catch(() => null);
+    await removeFakeManager(cdp).catch(() => null);
     await cdp.evaluate(`
       const p = app.plugins.plugins[${q(PLUGIN_ID)}];
       if (!p) return { ok: false };
@@ -2141,6 +1969,23 @@ async function main(): Promise<void> {
   // CORE-TEST-21: der Manager-Slot gehoert nach dem Lauf wieder so, wie er davor war (Fake-Manager zentral und lokal, auch bei Abbruch).
   const slotZustand = async (): Promise<string> => (await cdp.evaluate<{ s: string }>(`const m = app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}]; return { s: !m ? "keiner" : m.__fakeManager || m.api?.__fakeManager ? "fake" : "echt" };`)).s;
   const slotVorher = await slotZustand();
+  // Abbruch (Welle 21): ein Schritt fuer alles, was der Lauf im Wirt anlegt — Plugin-Einstellungen (Endpunkte, Wahl, Regler,
+  // Logbuch, Denken) und der Manager-Slot. Idempotent (Normalweg im finally UND Ctrl-C), wartet nicht. Angemeldet VOR der ersten
+  // Mutation; `einstellungenVorher` ist bis dahin `null`, dann gibt es auch noch nichts zurueckzuschreiben.
+  const zustandZurueck = async (): Promise<void> => {
+    await entferneFakeManager(cdp, { pluginId: MANAGER_PLUGIN_ID }).catch(() => null);
+    if (einstellungenVorher === null) return;
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      if (!p) return { ok: false };
+      const vorher = JSON.parse(${q(einstellungenVorher)});
+      for (const k of Object.keys(p.settings)) if (!(k in vorher)) delete p.settings[k];
+      Object.assign(p.settings, vorher);
+      await p.saveSettings();
+      return { ok: true };
+    `).catch(() => null);
+  };
+  const zustand = beimAbbruch(zustandZurueck, "Plugin-Einstellungen und Manager-Slot zuruecksetzen");
   try {
     await cdp.mitschnitt((z) => { if (/error|exception/i.test(z)) warnungen.push(`Renderer: ${z}`); });
     await requireVisible(cdp);
@@ -2162,9 +2007,8 @@ async function main(): Promise<void> {
     await pruefeGlobalesModell(cdp, port);
     skipped("Markierung ersetzen (Rand-Whitespace)", "Editor-Selektion per CDP ist im Unit-Test abgedeckt (editor-io.test.ts); im Smoke muesste sie ueber CodeMirror gesetzt werden — Handarbeit");
   } finally {
-    if (vorherigeDials !== null) {
-      await setPluginSetting(cdp, PLUGIN_ID, "lastDials", vorherigeDials).catch(() => null);
-    }
+    await zustand.schliesse();
+    if (istAbgebrochen()) return;
     const slotNachher = await slotZustand().catch(() => "unlesbar");
     console.log(`Fake-Manager-Abbau: Slot vorher ${slotVorher}, nachher ${slotNachher}`);
     if (slotNachher !== slotVorher) { warnungen.push(`Manager-Slot nach dem Lauf nicht wiederhergestellt: vorher ${slotVorher}, nachher ${slotNachher}`); process.exitCode = 1; }

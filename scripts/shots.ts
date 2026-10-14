@@ -6,8 +6,9 @@
  *
  * ```bash
  * npm run build && npm run shots -- --setup                    # Vault aus docs/images/fixture/
- * # Obsidian mit diesem Vault UND englischer Oberflaeche starten (obsidian.json language UND
- * # localStorage language = "en", dann Neustart), Lock fuer den Port halten, dann:
+ * # Zweitinstanz wie im Kopf von scripts/gui-smoke.ts (eigenes Profil, eigener Port), Vault
+ * # lingotuner-shots und englische Oberflaeche (obsidian.json language UND localStorage language = "en", dann Neustart),
+ * # Lock fuer den Port halten, dann:
  * npm run shots -- --port 9325 [--only hero] [--out docs/images]
  * ```
  *
@@ -23,7 +24,7 @@
 
 import { argv, cwd, exit } from "node:process";
 
-import { Cdp, attachTo, clickReal, pollUntil, requireVisible, setAppConfig, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
+import { Cdp, attachTo, clickReal, pollUntil, requireUntil, requireVisible, setAppConfig, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
 import { startLlmStub, type LlmStub } from "../../tools/obsidian-cdp/llm-stub.js";
 import { boxAround, capture, setWindowSize, writeShot, type Rect } from "../../tools/obsidian-cdp/shot.js";
 import { buildVault, stagingVaultDir } from "../../tools/obsidian-cdp/vault.js";
@@ -228,7 +229,7 @@ async function settingsBild(ws: Cdp, port: number, outDir: string): Promise<stri
   try {
     if (!modal.m) await requireVisible(fenster).catch(() => undefined);
     await setWindowSize(fenster, 1200, 1100);
-    await pollUntil<{ ok: boolean }>(fenster, `return document.body.textContent.includes("Endpoints") ? { ok: true } : null;`, 10_000, 250);
+    await requireUntil(fenster, `document.body.textContent.includes("Endpoints")`, "Einstellungen-Tab zeigt „Endpoints“ nicht — ein Bild ohne die Endpunkt-Zeile waere falsch", 10_000, 250);
     await sleep(2500);   // die Statusleuchte der Endpunkt-Zeile kommt asynchron
     // Der Tab ist laenger als der Bildschirm: gezeigt wird die Inhaltsspalte von „Connection" bis
     // zum Ende der Gruppe „Style" (Ausgabe-Gruppe steht in der README-Tabelle).
