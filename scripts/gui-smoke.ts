@@ -395,6 +395,29 @@ async function laufeTune(cdp: Cdp, waehrendDesLaufs?: () => Promise<void>): Prom
   return done !== null && (await hasClass(cdp, ".lt-status", "is-ok"));
 }
 
+/** Denken fuer C8 einschalten: `request.thinking.transform` auf eine Stufe (die Profile, nicht das Altfeld `suppressThinking`,
+ *  das `loadSettings` beim Laden loescht und zur Laufzeit niemand liest — mit ihm lief C8 gegen ein echtes Modell ohne Denken).
+ *  Der Vorwert bleibt im Fenster, damit auch ein Abbruch ihn nicht verliert. */
+async function schalteDenkenAn(cdp: Cdp): Promise<void> {
+  await cdp.evaluate(`
+    const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+    if (!("__ltDenkVorwert" in window)) window.__ltDenkVorwert = { had: "transform" in p.settings.request.thinking, value: p.settings.request.thinking.transform };
+    p.settings.request.thinking.transform = "low";
+    await p.saveSettings?.();
+    return { ok: true };
+  `);
+}
+
+async function stelleDenkenZurueck(cdp: Cdp): Promise<void> {
+  await cdp.evaluate(`
+    const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+    const v = window.__ltDenkVorwert;
+    if (v) { if (v.had) p.settings.request.thinking.transform = v.value; else delete p.settings.request.thinking.transform; delete window.__ltDenkVorwert; }
+    await p.saveSettings?.();
+    return { ok: true };
+  `);
+}
+
 /** C8 — der gemeldete Fehler 3: erscheint der Gedanken-Block WAEHREND des Streams oder erst
  *  danach?
  *
@@ -413,7 +436,7 @@ async function pruefeGedanken(cdp: Cdp): Promise<void> {
     nichtGemessen("C8b Gedanken-Text waechst waehrend des Streams", "C8 war nicht messbar (.lt-run nicht bedienbar)");
     return;
   }
-  await setPluginSetting(cdp, PLUGIN_ID, "suppressThinking", false);
+  await schalteDenkenAn(cdp);
   setzeStubModus("denken");
   await clickReal(cdp, `document.querySelector(".lt-run")`);
   const beob = await pollUntil<{ block: boolean; laenge: number }>(cdp, `
@@ -1022,7 +1045,7 @@ async function pruefeLaufKern(cdp: Cdp): Promise<void> {
     else nichtGemessen("B11 Tippen ueberlebt das Ende eines Laufs", "keine .lt-note im Panel — ohne Eingabefeld ist der Punkt gegenstandslos");
     const ok = done !== null && (await hasClass(cdp, ".lt-status", "is-ok"));
     const preview = (await text(cdp, ".lt-preview")) ?? "";
-    record("C1 Stream liefert Ergebnis", ok && preview.length > 0, ok ? `${preview.length} Zeichen` : `Status: ${(await text(cdp, ".lt-status")) ?? "?"}`);
+    record("C1 Stream liefert Ergebnis", ok && preview.length > 0, ok ? `${preview.length} Zeichen, Anfang: „${preview.slice(0, 80).replace(/\s+/g, " ")}“` : `Status: ${(await text(cdp, ".lt-status")) ?? "?"}`);
 
     if (!ok) {
       for (const n of C_AUSGAENGE) nichtGemessen(n, "Lauf 1 lieferte kein Ergebnis — die Ausgaenge sind ohne eines gegenstandslos");
@@ -1108,7 +1131,7 @@ async function pruefeLaufKern(cdp: Cdp): Promise<void> {
       return { ok: true };
     `).catch(() => null);
     if (logbuchAn) await setPluginSetting(cdp, PLUGIN_ID, "logbookEnabled", false).catch(() => null);
-    if (denkenAn) await setPluginSetting(cdp, PLUGIN_ID, "suppressThinking", true).catch(() => null);
+    if (denkenAn) await stelleDenkenZurueck(cdp).catch(() => null);
     if (modellGeaendert) await cdp.evaluate(`const p = app.plugins.plugins[${q(PLUGIN_ID)}]; await p.llm.setModel(${q(modellVorwert)}); return { ok: true };`).catch(() => null);
   }
 }
