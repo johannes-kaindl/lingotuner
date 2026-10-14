@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.9.3] — 2026-10-14
+
 ### Changed
 - Vendored `obsidian-kit` 0.60.1 (was 0.59.1) and `code-kit` 0.27.1 (was 0.24.0). You will notice two things:
 - When a run finds no endpoint, the message now names the actual reason: an endpoint you chose in the LLM Endpoint Manager that is switched off, that has been removed, that has no API key stored yet, or that cannot be reached. Each text says where to fix it. Before, only the missing-key case had its own text, and it was never shown, because the connection reported "no endpoint" instead. Without the Manager, the old message "No reachable endpoint" stays.
