@@ -115,6 +115,7 @@ const PUNKTE = [
   "M2 Lauf nutzt den Manager-Endpunkt und das Default-Modell",
   "M2b Manager-Lauf nutzt gewaehltes Modell, nicht den Endpunkt-Default (C1)",
   "M3 Manager aus → lokale Liste in Settings und im Lauf",
+  "M4 Abgeschalteter Manager-Endpunkt: die Meldung nennt den Grund statt „kein Endpunkt“",
   "S1 Fake-Manager liefert den Apple-Endpunkt nur bei Opt-in",
   "S2 Dropdown zeigt „Apple Intelligence (on-device)“",
   "S3 Wahl → Quelle traegt transport shortcuts",
@@ -123,6 +124,7 @@ const PUNKTE = [
   "H1 Die Hilfe-Zeile steht als erste Zeile im Tab, mit Text-Knopf und Icon-Knopf",
   "L1 Ein Tunen erzeugt eine Lab-Aufzeichnung mit turnId (apiVersion 4)",
   "F1 Ohne CORS-Freigabe kommt das Ergebnis ueber den Fallback ohne Stream",
+  "F2 Antwort bleibt nach dem Header aus: das Panel faellt nach der Frist in is-error, Knopf wieder Tune",
   "V1 Token geht als Platzhalter an den Server, im Ergebnis steht das Original",
   "V2 Schluessel steht nicht mehr in data.json, der Server bekommt ihn trotzdem",
   "V3 Antwort mit Code-Block-Prozessor und Bild rendert als Text",
@@ -1376,6 +1378,7 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
     "M2 Lauf nutzt den Manager-Endpunkt und das Default-Modell",
     "M2b Manager-Lauf nutzt gewaehltes Modell, nicht den Endpunkt-Default (C1)",
     "M3 Manager aus → lokale Liste in Settings und im Lauf",
+    "M4 Abgeschalteter Manager-Endpunkt: die Meldung nennt den Grund statt „kein Endpunkt“",
   ];
   try {
     fake = await startFakeChatEndpoint(MANAGER_DEFAULT_MODEL);
@@ -1431,6 +1434,42 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
       await p.saveSettings();
       return { ok: true };
     `);
+
+    // M4 — Kit 0.60.0: `resolveEndpointSource` behaelt bei einer ausdruecklichen Wahl den Grund `disabled`, und `tune()` zeigt
+    // den Kit-Text dazu. Vorher kam `no-endpoint` an und der Zweig fuer `secret-missing` war toter Code. Gemessen wird die Meldung,
+    // die der Nutzer sieht (Notice), nicht der Wert der Aufloesung.
+    // Nur der abgeschaltete Endpunkt im Manager: gaebe es einen zweiten, wuerde die verwaiste Wahl automatisch dorthin ausweichen
+    // (Aufloesung mit Grund UND Config) und der Lauf ginge durch. Der Fake-Slot wird danach wieder wie bei M1–M3 eingebaut.
+    await installZentralFakeManager(cdp, {
+      pluginId: MANAGER_PLUGIN_ID,
+      endpunkte: [{ id: "fake-mgr-off", label: "Fake Manager Disabled", url: fake.url, models: [MANAGER_DEFAULT_MODEL], defaultModel: MANAGER_DEFAULT_MODEL, configModel: "default", enabled: false }],
+    });
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.settings.choice = { endpointId: "fake-mgr-off" };
+      await p.saveSettings();
+      p.llm.invalidate();
+      await p.llm.resolve();
+      return { ok: true };
+    `);
+    const grund = await cdp.evaluate<{ reason: string | null; ok: boolean }>(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      const r = await p.llm.resolve();
+      const t = await p.api.tune("Bitte kuerzen", { directness: 0, context: 0, social: 2, semantics: 0 });
+      return { reason: r.reason ?? null, ok: t.ok };
+    `);
+    const meldungen = await notices(cdp);
+    const textDisabled = "switched off in the LLM Endpoint Manager";
+    record(REST[4]!, grund.reason === "disabled" && !grund.ok && meldungen.includes(textDisabled),
+      `Aufloesung reason ${JSON.stringify(grund.reason)}, Lauf ok: ${grund.ok}, Notices ${JSON.stringify(meldungen.slice(0, 160))}`);
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.settings.choice = {};
+      await p.saveSettings();
+      return { ok: true };
+    `);
+    await installFakeManager(cdp, fake.url);
+    await cdp.evaluate(`const p = app.plugins.plugins[${q(PLUGIN_ID)}]; p.llm.invalidate(); await p.llm.resolve(); return { ok: true };`);
 
     // M3 — Manager "deaktivieren" (Analog zu disablePlugin, s. removeFakeManager) → Settings
     // fallen auf die lokale Liste zurueck, ein Lauf nutzt wieder den lokalen Endpunkt.
@@ -1772,6 +1811,61 @@ async function pruefeFallback(cdp: Cdp): Promise<void> {
   }
 }
 
+/** F2 — Fristende: der Server sendet die Kopfzeilen und dann nie ein Byte. Die Fristen der Verbindung (Leerlauf 120 s,
+ *  erstes Stueck 600 s) sind im Kit fest; der Treiber kuerzt sie im Renderer, indem `window.setTimeout` jede Frist
+ *  ab 100 s auf 2 s zieht (die Uhr der Verbindung ruft `window.setTimeout`). Gemessen wird die Wirkung im Panel:
+ *  faellt es nach Ablauf in `is-error` mit dem Knopf wieder auf „Tune“, oder bleibt „Tunt…“ stehen? */
+async function pruefeFrist(cdp: Cdp): Promise<void> {
+  console.log("\nF2 · Frist ohne Antwort → Panel");
+  const NAME = "F2 Antwort bleibt nach dem Header aus: das Panel faellt nach der Frist in is-error, Knopf wieder Tune";
+  const stub = await startLlmStub({ models: ["frist-model"], standard: { stille: true, model: "frist-model" } });
+  const url = stub.url;
+  let vorher: unknown = null;
+  const patchZurueck = async (): Promise<void> => {
+    await cdp.evaluate(`if (window.__smokeFristOrig) { window.setTimeout = window.__smokeFristOrig; delete window.__smokeFristOrig; } return { ok: true };`).catch(() => null);
+  };
+  const abmeldung = beimAbbruch(patchZurueck, "window.setTimeout nach F2 zuruecksetzen");
+  try {
+    vorher = (await cdp.evaluate<{ eps: unknown }>(`return { eps: app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints };`)).eps;
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.settings.endpoints = [{ url: ${q(url)}, model: "frist-model" }];
+      await p.saveSettings();
+      p.llm.invalidate();
+      await p.llm.resolve();
+      return { ok: true };
+    `);
+    await cdp.evaluate(`
+      if (!window.__smokeFristOrig) window.__smokeFristOrig = window.setTimeout;
+      const orig = window.__smokeFristOrig;
+      window.setTimeout = (fn, ms, ...rest) => orig.call(window, fn, typeof ms === "number" && ms >= 100000 ? 2000 : ms, ...rest);
+      return { ok: true };
+    `);
+    await clickReal(cdp, `document.querySelector(".lt-run")`);
+    const laeuft = await pollUntil<{ ok: boolean }>(cdp, `const b = document.querySelector(".lt-run"); return b && /Cancel|Abbrechen/.test(b.textContent) ? { ok: true } : null;`, 5000, 100);
+    const fertig = await pollUntil<{ ok: boolean }>(cdp, `const s = document.querySelector(".lt-status"); return s && (s.classList.contains("is-ok") || s.classList.contains("is-error")) ? { ok: true } : null;`, 15_000, 250);
+    const status = await text(cdp, ".lt-status");
+    const knopf = await text(cdp, ".lt-run");
+    const fehler = await hasClass(cdp, ".lt-status", "is-error");
+    record(NAME, laeuft !== null && fertig !== null && fehler && knopf !== null && !/Cancel|Abbrechen/.test(knopf),
+      `Lauf gestartet (Knopf = Abbrechen): ${laeuft !== null}, Status nach Frist ${JSON.stringify(status)}, is-error: ${fehler}, Knopf ${JSON.stringify(knopf)}, POSTs am Server: ${stub.zaehler().chat}`);
+  } finally {
+    await abmeldung.schliesse();
+    if (vorher !== null) {
+      await cdp.evaluate(`
+        const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+        if (!p) return { ok: false };
+        p.settings.endpoints = ${JSON.stringify(vorher)};
+        await p.saveSettings();
+        p.llm.invalidate();
+        await p.llm.resolve();
+        return { ok: true };
+      `).catch(() => null);
+    }
+    await stub.stop();
+  }
+}
+
 /** V — die Verbindung des Kits (0.51.2): Schwaerzung vor dem Senden, Schluesselbund, Neutralisierung.
  *  Ein eigener Fake-Server zeichnet auf, WAS auf den Draht ging (Body, Authorization), und spiegelt den
  *  Platzhalter, den er sah, in seine Antwort. Gemessen wird die Wirkung an drei Stellen: am Draht (V1), in
@@ -2001,6 +2095,7 @@ async function main(): Promise<void> {
     await pruefeHilfeZeile(cdp, port);
     await pruefeLab(cdp);
     await pruefeFallback(cdp);
+    await pruefeFrist(cdp);
     await pruefeVerbindung(cdp);
     await pruefeAnfrage(cdp, port);
     await pruefeRundenZeile(cdp);
