@@ -1,10 +1,12 @@
 import { Notice, Plugin, getLanguage, type WorkspaceLeaf } from "obsidian";
 import "./i18n/strings";
 import { getLang, pickLang, setLang, t } from "./vendor/kit/i18n";
+import { localFileStamp } from "./vendor/kit/local-stamp";
 import { onEndpointManagerChanged } from "./vendor/kit-obsidian/endpoint-source";
 import { copyToClipboard } from "./vendor/kit-obsidian/clipboard";
 import { confirmAction } from "./vendor/kit-obsidian/confirm";
 import { createLlmConnection, type LlmConnection } from "./vendor/kit-obsidian/llm-connection";
+import { managerErrorText, resolveLlmConnectionStrings } from "./vendor/kit-obsidian/llm-connection-strings";
 import { loadRequestSettings, onLevelFor, thinkingFor } from "./vendor/kit/sampling-profiles";
 import { DEFAULT_SETTINGS, LEGACY_REQUEST_MIGRATIONS, allPresets, loadSettings, upsertUserPreset, type LingoTunerSettings } from "./core/settings";
 import { type Dials } from "./core/dials";
@@ -29,8 +31,7 @@ const SELECTION_DEBOUNCE_MS = 150;
 /** Name fuer eine neue Notiz ohne Quellnotiz (Textfeld-Lauf) — Spec 4.7 „Datum bei Textfeld".
  *  Doppelpunkte gehen in Dateinamen nicht, deshalb `HH-mm`. */
 function noteStamp(d: Date): string {
-  const p = (n: number): string => String(n).padStart(2, "0");
-  return `LingoTuner ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}-${p(d.getMinutes())}`;
+  return `LingoTuner ${localFileStamp(d)}`;
 }
 
 function safeGetLanguage(): string | null {
@@ -206,9 +207,11 @@ export default class LingoTunerPlugin extends Plugin {
     const resolved = await this.llm.resolve();
     if (resolved.config === null) {
       // Im Manager-Fall nennt die Aufloesung einen `reason`-Code (`no-endpoint` | `not-found` | `disabled` |
-      // `secret-missing` | `unreachable`). `secret-missing` ist der Fall, der aktiv in die Irre fuehrt: die
-      // generische Meldung schickt an die lokale Liste, obwohl der fehlende Schluessel im Manager-Plugin liegt.
-      new Notice(resolved.reason === "secret-missing" ? t("run.noEndpointSecretMissing") : t("run.noEndpoint"));
+      // `secret-missing` | `unreachable`); jeder hat im Kit einen eigenen Text, der die Stelle nennt, an der er behoben wird
+      // (fehlender Schluessel und abgeschalteter Endpunkt liegen im Manager-Plugin, nicht in der lokalen Liste).
+      // `no-endpoint` ist ohne Manager der lokale Fall und behaelt den eigenen Text.
+      const reason = resolved.reason;
+      new Notice(reason !== undefined && reason !== "no-endpoint" ? managerErrorText(resolveLlmConnectionStrings({ lang: getLang() }), reason) : t("run.noEndpoint"));
       return { ok: false, error: { kind: "network" }, partial: "" };
     }
 

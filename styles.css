@@ -199,14 +199,18 @@
    disabled setzt — sonst sieht ein gesperrter Chip aus wie ein anklickbarer. */
 .lt-run:disabled, .lt-refine:disabled, .lt-reset:disabled, .lt-out:disabled,
 .lt-source-chip:disabled, .lt-preset-chip:disabled, .lt-preset-save:disabled,
-.lt-history-row:disabled, .lt-model:disabled, .lt-model-refresh:disabled,
-.okit-thinking-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
+.lt-history-row:disabled, .lt-model:disabled, .lt-model-refresh:disabled { opacity: 0.4; cursor: not-allowed; }
 .lt-model { flex: 1 1 8em; min-width: 0; font-size: var(--font-ui-small); }
-.lt-think { display: inline-flex; align-items: center; }
-/* Der Knopf/das Dropdown selbst kommt aus `buildThinkingControl` (obsidian-kit) — .lt-think
-   ist nur der Traeger, der ihn ins Zeilen-Layout einreiht. */
-.okit-thinking-toggle { display: inline-flex; gap: var(--size-2-1); align-items: center; font-size: var(--font-ui-small); }
+/* Denk-Knopf (obsidian-kit 0.60.0, THINKING_CONTROL_CSS) — Kit-Vertrag: wortgleich hierher kopiert. */
+.okit-thinking-control { display: inline-flex; align-items: center; }
+.okit-thinking-toggle {
+  display: inline-flex; align-items: center; gap: var(--size-2-1);
+  height: auto; font-size: var(--font-ui-small); white-space: nowrap;
+}
 .okit-thinking-toggle.is-off { color: var(--text-muted); }
+.okit-thinking-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
+.okit-thinking-toggle svg { width: var(--icon-xs); height: var(--icon-xs); }
+.okit-thinking-control select { font-size: var(--font-ui-small); }
 
 /* §8 Status-Indikator: Form UND Farbe UND Klasse; is-checking dreht sich. */
 .lt-status { display: flex; gap: var(--size-2-2); align-items: center; font-size: var(--font-ui-small); color: var(--text-muted); }

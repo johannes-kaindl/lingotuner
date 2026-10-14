@@ -45,6 +45,12 @@ describe("dials", () => {
     expect(userPresetId("neutral")).toBe("user-neutral");
   });
 
+  it("userPresetId transliteriert nicht: die Id ist öffentliche API und bleibt, wie sie vor dem Kit-Slug war", () => {
+    expect(userPresetId("Größe")).toBe("user-gr-e");
+    expect(userPresetId("Für Chef")).toBe("user-f-r-chef");
+    expect(userPresetId("!!!")).toBe("user-preset");
+  });
+
   it("sameDials vergleicht alle vier Dimensionen", () => {
     expect(sameDials(NEUTRAL, { ...NEUTRAL })).toBe(true);
     expect(sameDials(NEUTRAL, { ...NEUTRAL, semantics: -1 })).toBe(false);

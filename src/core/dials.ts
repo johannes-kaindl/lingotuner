@@ -1,5 +1,6 @@
 /** Regler-Modell — die einzige Wahrheit ueber Dimensionen, Stufen und Presets.
  *  Obsidian-frei; das Modell bekommt nie eine Zahl, sondern den Stufennamen (prompt-text.ts). */
+import { slugify } from "../vendor/kit/slug";
 
 export type Level = -2 | -1 | 0 | 1 | 2;
 export type Dimension = "directness" | "context" | "social" | "semantics";
@@ -55,6 +56,7 @@ export function levelKey(dim: Dimension, level: Level): string {
 }
 
 export function userPresetId(name: string): string {
-  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  return `user-${slug || "preset"}`;
+  // `transliterate: false`: die Preset-Id ist öffentliche API (`tune(text, id)`, `presets()`) und wird bei jedem Start aus
+  // dem Namen abgeleitet — eine andere Ableitung änderte die gespeicherte Id („Größe“ bleibt `gr-e`).
+  return `user-${slugify(name, { transliterate: false, fallback: "preset" })}`;
 }
