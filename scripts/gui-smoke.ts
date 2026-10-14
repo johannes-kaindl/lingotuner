@@ -133,6 +133,8 @@ const PUNKTE = [
   "N3 Denk-Knopf im Panel schaltet um",
   "N4 Stufenwahl im Chat zeigt ein Dropdown",
   "R1 Runden-Zeile laeuft bei ~300 px nicht ueber",
+  "R2 Rueckwahl: Klick auf die vorletzte Runde zeigt deren Ergebnis, die Zeile ist aktiv",
+  "R3 Panel ragt bei ~230 px Sidebar-Breite nicht ueber den Rand",
   "G1 Altwert wandert in die Zeile, kein globales Modell in den Einstellungen",
   "G2 Panel-Modellwahl schreibt in die aktive Zeile, „Server waehlt“ leert sie",
   "Markierung ersetzen (Rand-Whitespace)",
@@ -1721,6 +1723,83 @@ async function pruefeRundenZeile(cdp: Cdp): Promise<void> {
   }
 }
 
+/** R2/R3 — Rückwahl und schmales Panel, an einem echten Lauf gegen den Stub (Restliste der 0.1.x-Nachlese).
+ *  R2: Nach zwei Runden waehlt ein Klick auf die erste Zeile der Verlaufsliste die Runde 1 zurueck: die Zeile ist aktiv
+ *  (`is-active`, `aria-pressed`) und die Vorschau zeigt wieder DEREN Ergebnis (der Stub nummeriert die Antworten).
+ *  R3: Bei ~230 px Sidebar-Breite (unter den 250 px der Restliste) ragt kein Bedienelement ueber den Rand des Panels, und das
+ *  Panel scrollt nicht seitwaerts. Die tatsaechliche Breite steht im Detail: Obsidian kann die Sidebar nach unten begrenzen. */
+async function pruefeRueckwahl(cdp: Cdp): Promise<void> {
+  const R2 = "R2 Rueckwahl: Klick auf die vorletzte Runde zeigt deren Ergebnis, die Zeile ist aktiv";
+  const R3 = "R3 Panel ragt bei ~230 px Sidebar-Breite nicht ueber den Rand";
+  let stub: Awaited<ReturnType<typeof startLlmStub>> | null = null;
+  let vorher: { eps: unknown; breite: number } | null = null;
+  try {
+    stub = await startLlmStub({ models: ["rw-model"], standard: { text: "Antwort-0", model: "rw-model" }, antwort: (_a, n) => ({ text: `Antwort-${n}`, model: "rw-model" }) });
+    vorher = await cdp.evaluate<{ eps: unknown; breite: number }>(`return { eps: app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints, breite: app.workspace.rightSplit.size ?? 300 };`);
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.settings.endpoints = [{ url: ${q(stub.url)}, model: "rw-model" }];
+      await p.saveSettings();
+      p.llm.invalidate();
+      await p.llm.resolve();
+      app.workspace.rightSplit.setSize(300);
+      return { ok: true };
+    `);
+    await waehleQuelle(cdp, 2);
+    await cdp.evaluate(`
+      const el = document.querySelector(".lt-freetext");
+      el.value = "Could you maybe send the report by Friday?";
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      return { ok: true };
+    `);
+    await setzeNotiz(cdp, "Keep the offer of another day.");
+    const ok1 = await laufeTune(cdp);
+    await setzeNotiz(cdp, "Keep it short.");
+    await clickReal(cdp, `document.querySelector(".lt-refine")`);
+    const zwei = await pollUntil<{ ok: boolean }>(cdp, `return document.querySelectorAll(".lt-history-row").length >= 2 && document.querySelector(".lt-status")?.classList.contains("is-ok") ? { ok: true } : null;`, 30_000, 300);
+    if (!ok1 || zwei === null) { nichtGemessen(R2, "zwei Runden liessen sich nicht herstellen"); nichtGemessen(R3, "zwei Runden liessen sich nicht herstellen"); return; }
+    const zweite = (await text(cdp, ".lt-preview")) ?? "";
+    // Die Sitzung traegt Runden frueherer Abschnitte: zurueckgewaehlt wird die vorletzte, also MEINE erste Runde.
+    const anzahl = (await cdp.evaluate<{ n: number }>(`return { n: document.querySelectorAll(".lt-history-row").length };`)).n;
+    const ziel = anzahl - 2;
+    await clickReal(cdp, `document.querySelectorAll(".lt-history-row")[${ziel}]`);
+    const zurueck = await pollUntil<{ vorschau: string }>(cdp, `const r = document.querySelectorAll(".lt-history-row")[${ziel}]; const v = document.querySelector(".lt-preview"); return r && r.classList.contains("is-active") && v ? { vorschau: v.textContent.trim() } : null;`, 8000, 250);
+    const m = await cdp.evaluate<{ pressed: string[]; vorschau: string }>(`return { pressed: [...document.querySelectorAll(".lt-history-row")].map((r) => r.getAttribute("aria-pressed")), vorschau: (document.querySelector(".lt-preview") || { textContent: "" }).textContent.trim() };`);
+    const nurZiel = m.pressed.every((x, i) => (x === "true") === (i === ziel));
+    record(R2, zurueck !== null && nurZiel && m.vorschau !== zweite && m.vorschau.includes("Antwort-1") && zweite.includes("Antwort-2"),
+      `${anzahl} Runden, Runde ${ziel + 1} zurueckgewaehlt; letzte Runde zeigte ${JSON.stringify(zweite.slice(0, 20))}, nach dem Klick ${JSON.stringify(m.vorschau.slice(0, 20))}, nur Zeile ${ziel + 1} aktiv: ${nurZiel}`);
+
+    await cdp.evaluate(`app.workspace.rightSplit.setSize(230); return { ok: true };`);
+    await new Promise((r) => setTimeout(r, 800));
+    const b = await cdp.evaluate<{ panel: number; scroll: number; rand: number; raus: string[] }>(`
+      const p = document.querySelector(".lt-panel");
+      const pr = p.getBoundingClientRect();
+      const raus = [...p.querySelectorAll("button, select, textarea, input")]
+        .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > pr.right + 1 || r.left < pr.left - 1); })
+        .map((e) => (e.className || e.tagName) + " " + Math.round(e.getBoundingClientRect().right - pr.right));
+      return { panel: Math.round(pr.width), scroll: p.scrollWidth - p.clientWidth, rand: Math.round(pr.right), raus };
+    `);
+    record(R3, b.panel > 0 && b.panel < 250 + 40 && b.scroll <= 1 && b.raus.length === 0,
+      `Panel ${b.panel} px breit, seitwaerts scrollbar um ${b.scroll} px, ueberragende Elemente: ${b.raus.length === 0 ? "keine" : b.raus.join(", ")}`);
+  } catch (e) {
+    for (const n of [R2, R3]) if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);
+  } finally {
+    if (vorher !== null) {
+      await cdp.evaluate(`
+        const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+        p.settings.endpoints = ${JSON.stringify(vorher.eps)};
+        await p.saveSettings();
+        p.llm.invalidate();
+        await p.llm.resolve();
+        app.workspace.rightSplit.setSize(${Number(vorher.breite)});
+        return { ok: true };
+      `).catch(() => null);
+    }
+    await waehleQuelle(cdp, 1).catch(() => "");
+    if (stub) await stub.stop();
+  }
+}
+
 async function setzeNotiz(cdp: Cdp, text: string): Promise<void> {
   await cdp.evaluate(`
     const el = document.querySelector(".lt-note");
@@ -2099,6 +2178,7 @@ async function main(): Promise<void> {
     await pruefeVerbindung(cdp);
     await pruefeAnfrage(cdp, port);
     await pruefeRundenZeile(cdp);
+    await pruefeRueckwahl(cdp);
     await pruefeGlobalesModell(cdp, port);
     skipped("Markierung ersetzen (Rand-Whitespace)", "Editor-Selektion per CDP ist im Unit-Test abgedeckt (editor-io.test.ts); im Smoke muesste sie ueber CodeMirror gesetzt werden — Handarbeit");
   } finally {
