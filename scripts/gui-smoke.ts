@@ -1668,7 +1668,7 @@ async function pruefeGemma(cdp: Cdp): Promise<void> {
  *  Gegenstelle: der zentrale LLM-Stub im Anthropic-Modus (Messages-API, geprueft: `x-api-key`, `anthropic-version`, Pflichtfelder). Kein
  *  Aufruf an api.anthropic.com. Der Fake-Manager (Bruecke) kennt `transport: "anthropic"` noch nicht im Typ; sein `list()` filtert
  *  aber schon nach `transports` und liefert den Eintrag nur, wenn der Aufrufer es verlangt (Kontrolle in CL1). */
-async function pruefeClaude(cdp: Cdp): Promise<void> {
+async function pruefeClaude(cdp: Cdp, port: number): Promise<void> {
   const [CL1, CL2, CL3] = [
     "CL1 Fake-Manager mit Anbieter anthropic: der Endpunkt kommt nur mit Opt-in, das Plugin waehlt ihn",
     "CL2 Lauf gegen den Claude-Stub: Messages-API mit Schluessel, Ergebnis im Panel, Denken im Denkblock",
@@ -1713,6 +1713,8 @@ async function pruefeClaude(cdp: Cdp): Promise<void> {
     `);
     record(CL1, sicht.ohne === 0 && sicht.mit === 1 && sicht.quelle === "manager" && sicht.modell === MODELL && sicht.backend === "anthropic" && sicht.transport === "claude",
       `Kontrolle am Fake: list() ohne transports ${sicht.ohne}, mit ["http","anthropic"] ${sicht.mit}; Plugin: Backend ${sicht.backend} (Quelle ${sicht.quelle}), Familie ${sicht.transport}, Modell ${sicht.modell}`);
+
+    await halteEinstellungenBild(cdp, port, "claude-einstellungen");
 
     // CL2 — ein Lauf mit Denken
     await schalteDenkenAn(cdp);
@@ -1779,6 +1781,32 @@ async function haltePanelBild(cdp: Cdp, name: string): Promise<void> {
     console.log(`  · Bild: ${join(dir, `${name}.png`)}`);
   } catch (e) {
     console.log(`  · Bild ${name} nicht aufgenommen: ${(e as Error).message}`);
+  }
+}
+
+/** Optional (`SHOT_DIR`): die Einstellungen mit aufgeklapptem Abschnitt „Anfrage“ aufnehmen (Claude-Endpunkt in der Auswahl, Familie und Backend im Kopf). */
+async function halteEinstellungenBild(cdp: Cdp, port: number, name: string): Promise<void> {
+  const dir = process.env.SHOT_DIR;
+  if (dir === undefined || dir === "") return;
+  let stelle: SettingsStelle | null = null;
+  try {
+    mkdirSync(dir, { recursive: true });
+    stelle = await openSettings(cdp, port);
+    await stelle.cdp.evaluate(`return ${stelle.el(`(() => {
+      const header = [...root.querySelectorAll(".okit-collapsible-header")].find((h) => /Anfrage|Request/.test(h.textContent || ""));
+      if (header && header.closest(".okit-collapsible").querySelector(".okit-collapsible-body.is-collapsed")) header.click();
+      return true;
+    })()`)};`);
+    await new Promise((r) => setTimeout(r, 500));
+    await stelle.cdp.evaluate(`return ${stelle.el(`(() => { const t = root.querySelector(".okit-collapsible-header"); if (t) t.scrollIntoView({ block: "start" }); return true; })()`)};`);
+    await new Promise((r) => setTimeout(r, 400));
+    const png = await capture(stelle.cdp, undefined, 1, {});
+    writeFileSync(join(dir, `${name}.png`), png);
+    console.log(`  · Bild: ${join(dir, `${name}.png`)}`);
+  } catch (e) {
+    console.log(`  · Bild ${name} nicht aufgenommen: ${(e as Error).message}`);
+  } finally {
+    if (stelle) closeSettings(cdp, stelle);
   }
 }
 
@@ -2162,7 +2190,7 @@ async function main(): Promise<void> {
     await pruefeRundenZeile(cdp);
     await pruefeRueckwahl(cdp);
     await pruefeGemma(cdp);
-    await pruefeClaude(cdp);
+    await pruefeClaude(cdp, port);
     await pruefeGlobalesModell(cdp, port);
     skipped("Markierung ersetzen (Rand-Whitespace)", "Editor-Selektion per CDP ist im Unit-Test abgedeckt (editor-io.test.ts); im Smoke muesste sie ueber CodeMirror gesetzt werden — Handarbeit");
   } finally {
