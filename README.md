@@ -37,7 +37,7 @@ Neurodivergent and neurotypical communication styles differ along a few well-des
 
 ### Catalog (recommended)
 
-**Via [AnySource Sideloader](https://github.com/johannes-kaindl/anysource-sideloader)**, which installs and updates plugins from any git forge. Subscribe to the Order from Traces catalog once under **Settings → AnySource Sideloader → Catalogs → Add**:
+**Via [AnySource Sideloader](https://github.com/johannes-kaindl/anysource-sideloader)**, which installs and updates plugins from any git forge. Subscribe to the Traces catalog once under **Settings → AnySource Sideloader → Catalogs → Add**:
 
 ```
 https://git.jkaindl.de/jkaindl/obsidian-catalog/raw/branch/main/catalog.json

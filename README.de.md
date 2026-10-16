@@ -37,7 +37,7 @@ Neurodivergente und neurotypische Kommunikationsstile unterscheiden sich entlang
 
 ### Katalog (empfohlen)
 
-**Über den [AnySource Sideloader](https://github.com/johannes-kaindl/anysource-sideloader)**, der Plugins von jeder Git-Forge installiert und aktualisiert. Den Katalog „Order from Traces“ einmal unter **Einstellungen → AnySource Sideloader → Kataloge → Hinzufügen** eintragen:
+**Über den [AnySource Sideloader](https://github.com/johannes-kaindl/anysource-sideloader)**, der Plugins von jeder Git-Forge installiert und aktualisiert. Den Katalog „Traces“ einmal unter **Einstellungen → AnySource Sideloader → Kataloge → Hinzufügen** eintragen:
 
 ```
 https://git.jkaindl.de/jkaindl/obsidian-catalog/raw/branch/main/catalog.json

@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Orientierung für KI-Agenten (Claude Code, Codex, …) und Mitwirkende an diesem Repository.
-Workspace-weite Standards (comply-or-explain): siehe [`../../_docs/CONVENTIONS.md`](../../_docs/CONVENTIONS.md).
+Workspace-weite Standards (comply-or-explain): siehe [`../../workspace/_docs/CONVENTIONS.md`](../../workspace/_docs/CONVENTIONS.md).
 
 **Profil:** `ts-node` · `obsidian-plugin`.
 
@@ -221,8 +221,7 @@ erlaubt, stillschweigend abzuweichen nicht.
   den Editor-Fokus nimmt — zum Zeitpunkt des Knopfdrucks gibt es keine Markierung mehr.
 - **`main.js`** ist Build-Artefakt, **`data.json`** ist Obsidian-persistierte Konfiguration —
   beide git-ignored.
-- **Release-CI ist GitHub-only** (`.github/` wird von Forgejo ignoriert) und läuft hier
-  bewusst nicht, siehe unten.
+- **Release-CI ist GitHub-only** (`.github/` wird von Forgejo ignoriert): der Tag aus `release.mjs` stößt `release.yml` auf GitHub an, siehe „Abweichungen“.
 - **Der LLM Endpoint Manager ist optional und wird bei JEDEM Aufruf frisch gelesen** —
   `findEndpointManager(app)` (Kit `endpoint-source`) liest `app.plugins.plugins["llm-endpoint-manager"].api`
   neu, nie aus einem gemerkten Plugin-Feld. Grund: das Nachbarplugin kann jederzeit installiert,
@@ -250,16 +249,6 @@ Git-Repo** (PROF-OBS-09). **Vor dem Lösen eines Problems:** [`../AGENTS.md`](..
 
 ## Abweichungen von der Leitkonvention
 
-- **Kein GitHub-Mirror, kein Store-Release.** Das Repo ist am 2026-09-07 ohne `github`-Remote
-  angelegt worden; `npm run release` fährt fest mit `--no-github` (im `package.json` verdrahtet,
-  nicht als Tipp-Disziplin), und `lingotuner` steht in `tools/mirror_drift_check.py::AUSNAHMEN`.
-  Grund: der GitHub-Ausstieg des Workspace (das Konto ist geflaggt) — die Verteilung läuft über
-  den Forgejo-Release und den `anysource-sideloader`-Katalog. Wer das Flag entfernt, ohne ein
-  `github`-Remote einzurichten, bekommt einen harten Abbruch; wer das Remote löscht, ohne das
-  Flag zu setzen, zerstört die Releases.
-- **`origin` ist Forgejo (`git.jkaindl.de:jkaindl/lingotuner`) und die einzige Quelle.** Das
-  Repository ist **privat** — der Katalog-Eintrag folgt, sobald es öffentlich geschaltet wird
-  (ein Katalog-Eintrag auf ein privates Repo wäre ein toter Eintrag, weil der Sideloader die
-  Releases über die Forge-API liest).
-- **Keine Screenshots in der README.** `readme-shots` ist auf 0.2 vertagt; die README trägt
-  deshalb einen Hero-**Absatz** statt eines Hero-Bildes.
+- **GitHub und Store gelten wieder (seit 2026-09-24, gemessen 2026-10-16).** Das `github`-Remote steht (`git@github.com:johannes-kaindl/lingotuner.git`), `npm run release` läuft ohne `--no-github`, `lingotuner` steht nicht in `tools/mirror_drift_check.py::AUSNAHMEN`, das GitHub-Repo ist öffentlich und `lingotuner` steht in `community-plugins.json`. GitHub bekommt Branch und Tag nur über den Dual-Push von `release.mjs`, es gibt keinen Forgejo-Push-Mirror (Dach-AGENTS § Store-Einreichung). Der Ausstieg vom 07. bis 24.09.2026 ist Chronik.
+- **`origin` ist Forgejo (`git.jkaindl.de:jkaindl/lingotuner`)** und die Quelle für den Alltag; GitHub trägt nur Releases.
+- **Die README trägt Screenshots** (`docs/images/`, aufgenommen mit `scripts/shots.ts`, Vertrag in `docs/images/README.md`).
