@@ -135,6 +135,8 @@ const PUNKTE = [
   "R1 Runden-Zeile laeuft bei ~300 px nicht ueber",
   "R2 Rueckwahl: Klick auf die vorletzte Runde zeigt deren Ergebnis, die Zeile ist aktiv",
   "R3 Panel ragt bei ~230 px Sidebar-Breite nicht ueber den Rand",
+  "T1 Gemma-Stub: das Denken ohne Oeffner steht nicht im Ergebnis",
+  "T1b Gemma-Stub: das Denken steht im ausklappbaren Denkblock",
   "G1 Altwert wandert in die Zeile, kein globales Modell in den Einstellungen",
   "G2 Panel-Modellwahl schreibt in die aktive Zeile, „Server waehlt“ leert sie",
   "Markierung ersetzen (Rand-Whitespace)",
@@ -1823,6 +1825,64 @@ async function pruefeRueckwahl(cdp: Cdp): Promise<void> {
   }
 }
 
+/** T1/T1b — das Gemma-Format (Gemma-Abschluss, Welle 23): gemma-4 auf LM Studio ignoriert „none“ und schreibt sein Denken OHNE
+ *  Oeffner in den Inhalt, beendet es mit `<channel|>` (gemessen 2026-10-14). Der Stub spielt das nach.
+ *  T1: das Ergebnis ist nur die Antwort. T1b: das Denken landet im ausklappbaren Denkblock statt im Antworttext. Mit dem Stand vor
+ *  Kit 0.60.3 (think-splitter ohne Kanalformat, ohne `onContentReset`) ist T1 rot — die Gegenprobe, die nach der Hebung nicht mehr messbar ist. */
+async function pruefeGemma(cdp: Cdp): Promise<void> {
+  const T1 = "T1 Gemma-Stub: das Denken ohne Oeffner steht nicht im Ergebnis";
+  const T1b = "T1b Gemma-Stub: das Denken steht im ausklappbaren Denkblock";
+  const MODELL = "google/gemma-4-e4b";
+  const DENKEN = "The user wants me to make the mail more polite.\nI will keep the offer of another day.";
+  let stub: Awaited<ReturnType<typeof startLlmStub>> | null = null;
+  let vorher: unknown = null;
+  try {
+    stub = await startLlmStub({ models: [MODELL], takt: 150, standard: { text: "x", model: MODELL }, antwort: () => ({ text: `${DENKEN}<channel|>Sauberer Text`, laenge: 14, model: MODELL }) });
+    vorher = await cdp.evaluate<unknown>(`return app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints;`);
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.settings.endpoints = [{ url: ${q(stub.url)}, model: ${q(MODELL)} }];
+      await p.saveSettings();
+      p.llm.invalidate();
+      await p.llm.resolve();
+      return { ok: true };
+    `);
+    await waehleQuelle(cdp, 2);
+    await cdp.evaluate(`
+      const el = document.querySelector(".lt-freetext");
+      el.value = "Could you maybe send the report by Friday?";
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      return { ok: true };
+    `);
+    await setzeNotiz(cdp, "Keep the offer of another day.");
+    let imBlock = false;
+    const ok = await laufeTune(cdp, async () => {
+      const b = await pollUntil<{ ok: boolean }>(cdp, `const pre = document.querySelector(".okit-stream-reasoning pre"); return pre && pre.textContent.includes("The user wants") ? { ok: true } : null;`, 15_000, 100);
+      imBlock = b !== null;
+    });
+    const vorschau = ((await text(cdp, ".lt-preview")) ?? "").trim();
+    const nachLauf = (await cdp.evaluate<{ n: number }>(`const pre = document.querySelector(".okit-stream-reasoning pre"); return { n: pre && pre.textContent.includes("The user wants") ? 1 : 0 };`)).n > 0;
+    if (!ok && vorschau === "") { nichtGemessen(T1, "der Lauf wurde nicht gruen"); nichtGemessen(T1b, "der Lauf wurde nicht gruen"); return; }
+    record(T1, vorschau === "Sauberer Text", `Vorschau ${JSON.stringify(vorschau.slice(0, 90))}`);
+    record(T1b, imBlock || nachLauf, `Denktext im Denkblock waehrend des Streams: ${imBlock}, nach dem Lauf: ${nachLauf}`);
+  } catch (e) {
+    for (const n of [T1, T1b]) if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);
+  } finally {
+    if (vorher !== null) {
+      await cdp.evaluate(`
+        const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+        p.settings.endpoints = ${JSON.stringify(vorher)};
+        await p.saveSettings();
+        p.llm.invalidate();
+        await p.llm.resolve();
+        return { ok: true };
+      `).catch(() => null);
+    }
+    await waehleQuelle(cdp, 1).catch(() => "");
+    if (stub) await stub.stop();
+  }
+}
+
 async function setzeNotiz(cdp: Cdp, text: string): Promise<void> {
   await cdp.evaluate(`
     const el = document.querySelector(".lt-note");
@@ -2202,6 +2262,7 @@ async function main(): Promise<void> {
     await pruefeAnfrage(cdp, port);
     await pruefeRundenZeile(cdp);
     await pruefeRueckwahl(cdp);
+    await pruefeGemma(cdp);
     await pruefeGlobalesModell(cdp, port);
     skipped("Markierung ersetzen (Rand-Whitespace)", "Editor-Selektion per CDP ist im Unit-Test abgedeckt (editor-io.test.ts); im Smoke muesste sie ueber CodeMirror gesetzt werden — Handarbeit");
   } finally {
