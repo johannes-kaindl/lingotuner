@@ -118,6 +118,7 @@ export default class LingoTunerPlugin extends Plugin {
       getModel: () => this.llm.modelInUse(),
       setModel: (m) => { void this.llm.setModel(m).then(() => { this.panel()?.refresh(); }).catch(() => undefined); },
       getFamily: () => this.llm.source().family,
+      getBackend: () => this.llm.source().backend,
       getThinkingLevel: () => thinkingFor(this.settings.request, MODE),
       getThinkingOnLevel: () => onLevelFor(this.settings.request, MODE),
       getLevelPickerInChat: () => this.settings.request.levelPickerInChat,
@@ -199,11 +200,12 @@ export default class LingoTunerPlugin extends Plugin {
       text: req.text, dials: req.dials, note: req.note, signal: req.signal,
       onToken: (tk) => { req.onToken(tk); },
       onReasoning: (tk) => { req.onReasoning(tk); },
+      onContentReset: () => { req.onContentReset(); },
     });
   }
 
   /** EIN Ausfuehrungspfad fuer Panel und API: Endpunkt aufloesen → Overrides → Prompt → Stream → Lab → Logbuch. */
-  private async tune(p: { text: string; dials: Dials; note: string; signal?: AbortSignal; quiet?: boolean; onToken?: (t: string) => void; onReasoning?: (t: string) => void }): Promise<TuneResult> {
+  private async tune(p: { text: string; dials: Dials; note: string; signal?: AbortSignal; quiet?: boolean; onToken?: (t: string) => void; onReasoning?: (t: string) => void; onContentReset?: () => void }): Promise<TuneResult> {
     const resolved = await this.llm.resolve();
     if (resolved.config === null) {
       // Im Manager-Fall nennt die Aufloesung einen `reason`-Code (`no-endpoint` | `not-found` | `disabled` |
@@ -236,6 +238,7 @@ export default class LingoTunerPlugin extends Plugin {
       ...(p.signal ? { signal: p.signal } : {}),
       ...(p.onToken ? { onToken: p.onToken } : {}),
       ...(p.onReasoning ? { onReasoning: p.onReasoning } : {}),
+      ...(p.onContentReset ? { onContentReset: p.onContentReset } : {}),
     });
     const src = r.source;
     // Das Modell, wie es Nutzer und Liste kennen (Anzeige, Lab, Logbuch) — der Alias steht in `src.sentModel`.

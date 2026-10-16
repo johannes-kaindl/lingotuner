@@ -4,7 +4,7 @@ import type { Session } from "../core/session";
 import { readinessKey, type Readiness, type SourceKind } from "../core/source";
 import { buildStreamArea, type StreamArea } from "../vendor/kit-obsidian/stream-area";
 import { buildThinkingControl } from "../vendor/kit-obsidian/thinking-control";
-import type { FamilyId, ThinkingLevel } from "../vendor/kit/sampling-profiles";
+import type { BackendId, FamilyId, ThinkingLevel } from "../vendor/kit/sampling-profiles";
 import { t } from "../vendor/kit/i18n";
 
 export type RunPhase = "idle" | "streaming" | "done" | "error" | "aborted";
@@ -20,6 +20,7 @@ export interface PanelModel {
   models: string[];
   model: string;
   family: FamilyId | null;
+  backend?: BackendId | undefined;
   thinkingLevel: ThinkingLevel;
   thinkingOnLevel: ThinkingLevel;
   levelPickerInChat: boolean;
@@ -201,6 +202,7 @@ function runRow(parent: El, m: PanelModel, h: PanelHandlers): void {
   buildThinkingControl({
     containerEl: thinkHost,
     family: () => m.family,
+    backend: () => m.backend,
     current: () => m.thinkingLevel,
     onLevel: () => m.thinkingOnLevel,
     setLevel: (l) => { h.onThinkingLevel(l); return Promise.resolve(); },

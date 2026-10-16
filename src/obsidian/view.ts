@@ -5,7 +5,7 @@ import { activeRound, pushRound, selectRound } from "../vendor/kit/rounds";
 import { type Readiness, type SourceKind } from "../core/source";
 import { errorMessageKey } from "../core/llm/errors";
 import type { TuneResult } from "../core/llm/client";
-import type { FamilyId, ThinkingLevel } from "../vendor/kit/sampling-profiles";
+import type { BackendId, FamilyId, ThinkingLevel } from "../vendor/kit/sampling-profiles";
 import { patchPanel, renderPanel, structureKey, type PanelHandlers, type PanelModel, type PanelParts, type RunPhase } from "./view-render";
 import { createStableWriter, type StableMarkdownWriter } from "../vendor/kit-obsidian/stable-writer";
 import { neutralizeModelMarkdown } from "../vendor/kit/safe-markdown";
@@ -20,6 +20,8 @@ export interface RunRequest {
   basedOn: number | null;
   onToken(t: string): void;
   onReasoning(t: string): void;
+  /** Gemma 4 schreibt sein Denken zuerst als Antwort; beim `<channel|>` wird der gesammelte Antworttext verworfen (Kit 0.60.3). */
+  onContentReset(): void;
   signal: AbortSignal;
 }
 
@@ -35,6 +37,8 @@ export interface ViewDeps {
   getModel(): string;
   setModel(m: string): void;
   getFamily(): FamilyId | null;
+  /** Backend der aktiven Quelle (Kit 0.61.0): der Denk-Knopf zeigt damit „nicht ganz aus“ bei gemma4 auf LM Studio. */
+  getBackend?(): BackendId | undefined;
   getThinkingLevel(): ThinkingLevel;
   getThinkingOnLevel(): ThinkingLevel;
   getLevelPickerInChat(): boolean;
@@ -127,7 +131,7 @@ export class LingoTunerView extends ItemView {
       dials, presets, presetId: presetFor(dials, presets),
       note: this.note,
       models: this.models, model: this.deps.getModel(),
-      family: this.deps.getFamily(), thinkingLevel: this.deps.getThinkingLevel(),
+      family: this.deps.getFamily(), backend: this.deps.getBackend?.(), thinkingLevel: this.deps.getThinkingLevel(),
       thinkingOnLevel: this.deps.getThinkingOnLevel(), levelPickerInChat: this.deps.getLevelPickerInChat(),
       phase: this.phase, statusText: this.statusText, truncated: this.truncated,
       session: this.session, preview: this.preview, reasoning: this.reasoning, reasoningOpen: this.reasoningOpen,
@@ -341,6 +345,12 @@ export class LingoTunerView extends ItemView {
       // Aufruf waere folgenlos, aber er liesse das Folgen wie eine Consumer-Pflicht aussehen.
       w.push(tk);
     };
+    const onContentReset = (): void => {
+      if (this.controller !== ctrl) return;
+      // Was bisher als Antwort lief, war Denken (der Chat-Client hat es als Gedanken nachgereicht): Antwort und Anzeige leeren, die Gedanken bleiben.
+      this.preview = "";
+      this.writer?.resetContent();
+    };
     const onReasoning = (tk: string): void => {
       if (this.controller !== ctrl) return;
       const area = this.parts?.area;
@@ -357,7 +367,7 @@ export class LingoTunerView extends ItemView {
 
     let result: TuneResult;
     try {
-      result = await this.deps.run({ text: base, dials, note: this.note, basedOn, onToken, onReasoning, signal: ctrl.signal });
+      result = await this.deps.run({ text: base, dials, note: this.note, basedOn, onToken, onReasoning, onContentReset, signal: ctrl.signal });
     } catch (e) {
       if (this.controller !== ctrl) return;
       this.controller = null;

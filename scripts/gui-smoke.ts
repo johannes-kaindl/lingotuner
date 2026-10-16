@@ -1860,7 +1860,8 @@ async function pruefeGemma(cdp: Cdp): Promise<void> {
       const b = await pollUntil<{ ok: boolean }>(cdp, `const pre = document.querySelector(".okit-stream-reasoning pre"); return pre && pre.textContent.includes("The user wants") ? { ok: true } : null;`, 15_000, 100);
       imBlock = b !== null;
     });
-    const vorschau = ((await text(cdp, ".lt-preview")) ?? "").trim();
+    // Ohne den Denkblock: `.lt-preview` enthaelt ihn als Kind, gemessen wird die Antwort.
+    const vorschau = (await cdp.evaluate<string>(`const v = document.querySelector(".lt-preview"); if (!v) return ""; const c = v.cloneNode(true); c.querySelectorAll(".okit-stream-reasoning").forEach((e) => e.remove()); return (c.textContent || "").trim();`)).trim();
     const nachLauf = (await cdp.evaluate<{ n: number }>(`const pre = document.querySelector(".okit-stream-reasoning pre"); return { n: pre && pre.textContent.includes("The user wants") ? 1 : 0 };`)).n > 0;
     if (!ok && vorschau === "") { nichtGemessen(T1, "der Lauf wurde nicht gruen"); nichtGemessen(T1b, "der Lauf wurde nicht gruen"); return; }
     record(T1, vorschau === "Sauberer Text", `Vorschau ${JSON.stringify(vorschau.slice(0, 90))}`);

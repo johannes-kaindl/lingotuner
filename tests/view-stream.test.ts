@@ -114,6 +114,22 @@ describe("Stream in den Kit-Bereich", () => {
     expect(a.messung?.bloecke).toBe(1);
   });
 
+  it("onContentReset nimmt den als Antwort gelaufenen Denktext zurueck (Gemma 4), die Gedanken bleiben", async () => {
+    const a = baue((req) => {
+      req.onToken("The user wants a polite mail.\n\nI will keep it.");
+      req.onReasoning("The user wants a polite mail.\n\nI will keep it.");
+      req.onContentReset();
+      req.onToken("Sauberer Text");
+    });
+    (a.view as unknown as { note: string }).note = "duzen";
+    await (a.view as unknown as { run(b: number | null): Promise<void> }).run(null);
+
+    const m = a.messung;
+    expect(m?.blockText).not.toContain("The user wants");
+    expect(m?.tail).toBe("Sauberer Text");
+    expect(m?.gedanke).toContain("The user wants");
+  });
+
   it("Gedanken landen im Block, und er steht beim neuen Lauf offen", async () => {
     const a = baue((req) => { req.onReasoning("denkt nach"); req.onToken("Text.\n\n"); });
     (a.view as unknown as { note: string }).note = "duzen";

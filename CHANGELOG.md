@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Vendored `obsidian-kit` 0.61.0 (was 0.60.1) and `code-kit` 0.28.0 (was 0.27.1). You will notice four things:
+- Gemma 4 in LM Studio no longer shows its thinking as the result. LM Studio ignores "thinking off" for this model and writes the thought into the answer text; the result area now takes that text back as soon as the answer starts, so the result is only the answer and the thought sits in the collapsible thinking block.
+- With "thinking off" on Gemma 4 in LM Studio the plugin now sends the lowest thinking level, because LM Studio ignores "none" there. The model still thinks a little (a few more tokens and a bit more time). The thinking button says so ("cannot be fully turned off here"), and the "Request" section shows the same note.
+- If the LLM Endpoint Manager is switched on only after LingoTuner, the plugin now picks it up in the same session instead of staying on the local endpoint list until you reload.
+- A backend or model family that this version does not know yet no longer makes a request fail; the "Request" section names it and sends only the standard fields.
+- Nothing else is visible: the other kit changes concern other plugins (Claude profile, tool-argument check, index guard).
+
 ## [0.9.3] — 2026-10-14
 
 ### Changed
