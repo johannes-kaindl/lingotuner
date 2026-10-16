@@ -49,6 +49,7 @@ import { cwd } from "node:process";
 import { Cdp, attachTo, beimAbbruch, bereiteInstanzVor, clickReal, closeExtraLeaves, entferneFakeManager, installFakeManager as installZentralFakeManager, istAbgebrochen, notices, pollUntil, requireVisible, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
 import { startLlmStub, type AntwortSpec } from "../../tools/obsidian-cdp/llm-stub.js";
 import { messeFolge, zeichneFolge } from "../../tools/obsidian-cdp/folge.js";
+import { gegenprobeErreichbarkeit, messeErreichbarkeit, messeFokusErhalt, messeFokusFenster, mitHoehe, zeichnePflicht, fokusAufraeumSkript, type PflichtBilanz, type PflichtTeilurteil } from "../../tools/obsidian-cdp/pflichtpunkte.js";
 import { createBilanz, parseArgs, runDriver } from "../../tools/obsidian-cdp/bilanz.js";
 import { buildVault, requireEigenerBuild, stagingVaultDir } from "../../tools/obsidian-cdp/vault.js";
 
@@ -91,6 +92,7 @@ const PUNKTE = [
   "B7 Preset zeigt (angepasst)",
   "B8 Textfeld-Quelle zeigt Textarea",
   "B10 Tippen ins Textfeld behaelt den Fokus",
+  "B10b Gegenprobe: ein Neuzeichnen mit Fokusverlust macht B10 rot",
   "B9 Lesemodus blockiert die Quelle",
   "C5 is-checking animiert",
   "C11 Panel folgt dem Strom",
@@ -292,49 +294,11 @@ async function pruefeGrundlage(cdp: Cdp, vaultName: string): Promise<void> {
   record("A3 Panel oeffnet", panel !== null, panel !== null ? "Leaf mit .lt-panel" : `kein .lt-panel; Leaves: ${(await cdp.evaluate<{ n: number }>(`return { n: app.workspace.getLeavesOfType(${q(VIEW_TYPE)}).length };`)).n}`);
 }
 
-/** B10, Schritt 1: die MUTATION. Fokus setzen, tippen, den Ausloeser feuern — mehr nicht.
- *  Getrennt von der Messung, weil im selben `evaluate` vor dem Redraw gemessen wuerde
- *  (Debounce 150 ms in `main.ts`). Form aus dem Skill `gui-smoke-setup` § 3a (a). */
-async function tippeInsTextfeld(cdp: Cdp): Promise<void> {
-  await cdp.evaluate(`
-    const el = document.querySelector(".lt-freetext");
-    if (!el) return { ok: false };
-    el.value = "";
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-    el.focus();
-    el.setSelectionRange(0, 0);
-    document.execCommand("insertText", false, "abc");
-    // Der Ausloeser aus dem Anlassfall — im Wirt feuert ihn jede Cursorbewegung selbst.
-    document.dispatchEvent(new Event("selectionchange"));
-    return { ok: true };
-  `);
-}
-
-/** B10, Schritt 2: die WARTEPHASE auf der Node-Seite.
- *
- *  ⚠️ Gepollt wird auf den NEGATIVEN Zustand, nicht auf den positiven — und das ist der
- *  Unterschied zwischen einem Pruefpunkt und einer Behauptung. Ein `pollUntil` auf
- *  „Fokus liegt im Feld" kehrt beim ERSTEN Versuch zurueck, also vor dem Debounce; es
- *  waere auch gegen die kaputte Fassung gruen, weil der Fokus dort erst nach ~150 ms
- *  wegfaellt. Gemessen wird deshalb ein FENSTER: faellt der Fokus in 1200 ms nicht weg,
- *  hat er den Anstrich ueberlebt. `null` = ueberlebt. */
-async function messeFokus(cdp: Cdp): Promise<[boolean, string]> {
-  const verloren = await pollUntil<{ aktiv: string }>(cdp, `
-    const a = document.activeElement;
-    if (a && a.matches(".lt-freetext")) return null;
-    return { aktiv: a ? (a.className || a.tagName) : "(null)" };
-  `, 1200, 100);
-  const stand = await cdp.evaluate<{ wert: string; aktiv: string }>(`
-    const el = document.querySelector(".lt-freetext");
-    const a = document.activeElement;
-    return { wert: el ? el.value : "(keine Textarea)", aktiv: a ? (a.className || a.tagName) : "(null)" };
-  `);
-  const gehalten = verloren === null && stand.aktiv.split(" ").includes("lt-freetext");
-  const detail = gehalten
-    ? `value=${JSON.stringify(stand.wert)}, Fokus blieb 1200 ms in .lt-freetext`
-    : `value=${JSON.stringify(stand.wert)}, Fokus fiel auf ${JSON.stringify((verloren?.aktiv ?? stand.aktiv).slice(0, 60))}`;
-  return [gehalten && stand.wert === "abc", detail];
-}
+/** Die Bilanz, wie der Baustein `pflichtpunkte` sie braucht (`zeichnePflicht`). */
+const pflichtBilanz: PflichtBilanz = {
+  record: (name, passed, detail) => record(name, passed, detail ?? ""),
+  unmeasured: (name, grund) => nichtGemessen(name, grund),
+};
 
 async function pruefePanel(cdp: Cdp): Promise<void> {
   console.log("\nB · Panel ohne Modell");
@@ -372,13 +336,16 @@ async function pruefePanel(cdp: Cdp): Promise<void> {
   if (ta === null) {
     nichtGemessen("B10 Tippen ins Textfeld behaelt den Fokus", "ohne .lt-freetext (B8 rot) ist der Punkt gegenstandslos");
   } else {
-    await tippeInsTextfeld(cdp);
-    record("B10 Tippen ins Textfeld behaelt den Fokus", ...(await messeFokus(cdp)));
-    await cdp.evaluate(`
-      const ta = document.querySelector(".lt-freetext");
-      if (ta) { ta.value = ""; ta.dispatchEvent(new Event("input", { bubbles: true })); ta.blur(); }
-      return { ok: true };
-    `);
+    zeichnePflicht(pflichtBilanz, "B10 Tippen ins Textfeld behaelt den Fokus", await messeFokusErhalt(cdp, { selector: ".lt-freetext" }));
+    // B10b — Gegenprobe: ein Neuzeichnen, das dem Feld den Fokus nimmt (hier ein `blur` im selben Ausloeser), MUSS die Messung rot machen.
+    // Ohne sie waere B10 auch gruen, wenn das Fenster zu kurz oder der Ausloeser wirkungslos waere (CORE-TEST-01).
+    await cdp.evaluate(`window.__ltFokusProbe = () => { const el = document.querySelector(".lt-freetext"); if (el) el.blur(); }; document.addEventListener("selectionchange", window.__ltFokusProbe); return true;`);
+    try {
+      const u = await messeFokusErhalt(cdp, { selector: ".lt-freetext" });
+      record("B10b Gegenprobe: ein Neuzeichnen mit Fokusverlust macht B10 rot", u.urteil === "rot", `Urteil der Messung unter der Manipulation: ${u.urteil} — ${u.detail}`);
+    } finally {
+      await cdp.evaluate(`document.removeEventListener("selectionchange", window.__ltFokusProbe); delete window.__ltFokusProbe; return true;`).catch(() => null);
+    }
   }
 
   // Lesemodus blockiert Markierung/Notiz.
@@ -540,184 +507,28 @@ const C_NAMEN = ["C5 is-checking animiert", "C11 Panel folgt dem Strom", "C11b H
  *  im Typecheck auf. Deshalb: Zeilen als eigene Elemente, keine Backticks in Kommentaren
  *  innerhalb eines Renderer-Ausdrucks. */
 async function pruefeUeberdeckung(cdp: Cdp): Promise<void> {
-  // Fuellen: einmal fuer beide Lagen.
-  const gefuellt = await cdp.evaluate<{ scrollH: number; clientH: number }>(`
-    const p = document.querySelector(".lt-panel");
-    const body = document.querySelector(".okit-stream-body");
-    if (!p || !body) return { scrollH: 0, clientH: 0 };
-    // Je Zeile ein eigenes div, nicht ein Textblock mit Zeilenumbruechen: siehe den
-    // Kommentar am Kopf dieser Funktion.
-    const f = body.createDiv({ cls: "lt-smoke-fueller" });
-    for (let i = 0; i < 150; i += 1) f.createDiv({ text: "Fuellzeile " + i + " fuer die Erreichbarkeitsprobe." });
-    return { scrollH: p.scrollHeight, clientH: p.clientHeight };
-  `);
-  if (gefuellt.scrollH <= gefuellt.clientH + 8) {
-    nichtGemessen("C9 jedes Bedienelement ist erreichbar (natuerliche Hoehe)", `Vorbedingung fehlt: das Panel laeuft nicht ueber (scrollHeight ${gefuellt.scrollH} <= clientHeight ${gefuellt.clientH})`);
-    nichtGemessen("C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)", "ohne ueberlaufendes Panel gegenstandslos");
-  } else {
-    await messeErreichbarkeit(cdp, "C9 jedes Bedienelement ist erreichbar (natuerliche Hoehe)", gefuellt);
-
-    // --- Zweite Lage: kurzes Panel ------------------------------------------------
-    // Ein geteilter rechter Seitenbereich (zwei gestapelte Panels) ist der Normalfall,
-    // nicht die Verrenkung — deshalb ist das eine Pflichtlage und keine Kuer. In der alten
-    // Aufteilung war genau hier der Schaden: bei 420 px blieben dem Bedienblock null Pixel,
-    // die Regler waren unerreichbar, und der Ueberstand wurde ersatzlos abgeschnitten.
-    const kurz = await cdp.evaluate<{ ok: boolean; vorher: string; hoehe: number }>(`
-      const leaf = document.querySelector(".lt-panel").closest(".workspace-leaf");
-      if (!leaf) return { ok: false, vorher: "", hoehe: 0 };
-      const vorher = leaf.style.height || "";
-      leaf.style.height = "420px";
-      await new Promise((r) => setTimeout(r, 400));
-      return { ok: true, vorher, hoehe: Math.round(document.querySelector(".lt-panel").getBoundingClientRect().height) };
-    `);
-    if (!kurz.ok) {
-      nichtGemessen("C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)", "kein .workspace-leaf ueber dem Panel gefunden");
-    } else {
-      const masse = await cdp.evaluate<{ scrollH: number; clientH: number }>(`
-        const p = document.querySelector(".lt-panel");
-        return { scrollH: p.scrollHeight, clientH: p.clientHeight };
-      `);
-      try {
-        await messeErreichbarkeit(cdp, "C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)", masse, ` · Panel ${kurz.hoehe} px`);
-        await gegenprobeErreichbarkeit(cdp);
-      } finally {
-        // Die Leaf-Hoehe ist Zustand der Zweitinstanz, nicht des Pruefpunkts: sie wird auch
-        // dann zurueckgesetzt, wenn die Messung wirft — sonst misst jeder folgende Punkt
-        // ein 420-px-Panel und meldet es als Eigenschaft des Plugins (CORE-TEST-21).
-        await cdp.evaluate(`
-          const leaf = document.querySelector(".lt-panel").closest(".workspace-leaf");
-          if (leaf) leaf.style.height = ${q(kurz.vorher)};
-          await new Promise((r) => setTimeout(r, 300));
-          return { ok: true };
-        `);
-      }
-    }
-  }
-  await cdp.evaluate(`
-    for (const f of document.querySelectorAll(".lt-smoke-fueller")) f.remove();
-    return { ok: true };
-  `);
+  const C9 = "C9 jedes Bedienelement ist erreichbar (natuerliche Hoehe)";
+  const C9b = "C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)";
+  const C9c = "C9c Gegenprobe: ohne Rollbalken wird etwas unerreichbar";
+  // Bausteine aus `tools/obsidian-cdp/pflichtpunkte.ts` (Welle 23, Pilot): Fuellen mit echtem Inhalt, Ueberlauf am Panel (EIN Rollbereich),
+  // Gegenprobe ohne Rollbalken. Vom Regler zaehlt nur der erste (vier gleiche Zeilen untereinander).
+  const opts = {
+    selektoren: BEDIENELEMENTE,
+    nurErster: [".lt-dial-input"],
+    fuelle: { in: ".okit-stream-body" },
+    ueberlauf: ".lt-panel",
+    erforderlich: [".lt-run", ".lt-dial-input"],
+  };
+  zeichnePflicht(pflichtBilanz, C9, await messeErreichbarkeit(cdp, opts));
+  // Zweite Lage: ein geteilter rechter Seitenbereich (zwei gestapelte Panels) ist der Normalfall, nicht die Verrenkung. Das Leaf ueber dem
+  // Panel, nicht das erste `.workspace-leaf` des Dokuments (das waere der Editor): `:has(.lt-panel)`.
+  const kurz = await mitHoehe<PflichtTeilurteil>(cdp, { element: ".workspace-leaf:has(.lt-panel)", hoehe: 420 }, () => messeErreichbarkeit(cdp, opts));
+  zeichnePflicht(pflichtBilanz, C9b, kurz);
+  zeichnePflicht(pflichtBilanz, C9c, await gegenprobeErreichbarkeit(cdp, { selektoren: BEDIENELEMENTE, nurErster: [".lt-dial-input"], rollbereich: ".lt-panel", fuelle: { in: ".okit-stream-body" } }));
 }
 
-/** Der Renderer-Ausdruck der Erreichbarkeitsprobe — einmal geschrieben, dreimal gebraucht
- *  (natuerliche Hoehe, kurzes Panel, Gegenprobe). Zwei Fassungen liefen beim naechsten neuen
- *  Bedienelement auseinander, und die Gegenprobe maesse dann eine andere Menge als der Punkt,
- *  den sie absichern soll — genau das war am 2026-09-11 der Fall (Review M2).
- *
- *  `scrollen` ist der EINZIGE Unterschied zwischen Punkt und Gegenprobe: ohne Rollbereich
- *  gibt es nichts hinzuscrollen, und `scrollIntoView` bei `overflow: hidden` hat den Lauf
- *  einmal mit „Zeitueberschreitung: Runtime.evaluate" gerissen.
- *
- *  `gesamt` zaehlt VOR der Flaechenpruefung: ein Element, das gleich darauf in `schlecht`
- *  landet, wuerde sonst doppelt gezaehlt, und der Nenner im Protokoll waere zu gross
- *  („6 von 17" statt „6 von 11", Review I3). */
-function erreichbarAusdruck(ziele: string[], scrollen: boolean): string {
-  return `
-  const ziele = ${JSON.stringify(ziele)};
-  const schlecht = [];
-  const fehlend = [];
-  let gesamt = 0;
-  let geprueft = 0;
-  for (const sel of ziele) {
-    const treffer = Array.from(document.querySelectorAll(sel));
-    // Vom Regler nur der erste: vier Reglerzeilen stehen unmittelbar untereinander, und was
-    // fuer die erste gilt, gilt fuer die anderen.
-    const menge = sel === ".lt-dial-input" ? treffer.slice(0, 1) : treffer;
-    if (menge.length === 0) { fehlend.push(sel); continue; }
-    for (const b of menge) {
-      gesamt += 1;
-      // Hinscrollen ist Teil der Frage: im Ein-Rollbereich-Panel ist „steht ausserhalb des
-      // Sichtfensters" kein Fehler, „laesst sich auch nach dem Rollen nicht treffen" schon.
-      if (${String(scrollen)}) {
-        b.scrollIntoView({ block: "center" });
-        await new Promise((r) => setTimeout(r, 60));
-      }
-      const box = b.getBoundingClientRect();
-      if (box.width === 0 || box.height === 0) { schlecht.push({ cls: b.className, deckt: "(keine Flaeche)" }); continue; }
-      geprueft += 1;
-      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-      if (!(b === hit || b.contains(hit))) schlecht.push({ cls: b.className, deckt: hit ? String(hit.className || hit.tagName) : "(nichts)" });
-    }
-  }
-  return { gesamt, geprueft, schlecht, fehlend };
-`;
-}
-
-/** Die Bedienelemente des Panels — eine Liste, drei Verwendungen (C9, C9b, C9c). */
+/** Die bedingungslos zu pruefenden Bedienelemente des Panels (`.lt-freetext` gibt es nur bei der Quelle Textfeld, dafuer C9d). */
 const BEDIENELEMENTE = [".lt-run", ".lt-refine", ".lt-reset", ".lt-out", ".lt-freetext", ".lt-dial-input"];
-const ERREICHBAR_AUSDRUCK = erreichbarAusdruck(BEDIENELEMENTE, true);
-
-interface Erreichbarkeit { gesamt: number; geprueft: number; schlecht: Array<{ cls: string; deckt: string }>; fehlend: string[] }
-
-/** Die eigentliche Messung, zweimal gebraucht (natuerliche und kurze Panelhoehe). */
-async function messeErreichbarkeit(cdp: Cdp, name: string, masse: { scrollH: number; clientH: number }, zusatz = ""): Promise<void> {
-  const r = await cdp.evaluate<Erreichbarkeit>(ERREICHBAR_AUSDRUCK);
-  // Nicht vorhandene Selektoren sind kein Befund, aber auch keine Fussnote: `.lt-freetext`
-  // gibt es nur bei der Quelle „Textfeld", und wer das nicht mitliest, haelt einen Punkt fuer
-  // gemessen, der es nicht war (CORE-TEST-19).
-  const nicht = r.fehlend.length === 0 ? "" : ` · nicht im Panel: ${r.fehlend.join(", ")}`;
-  const detail = r.schlecht.length === 0
-    ? `${r.geprueft} von ${r.gesamt} Bedienelementen treffen sich selbst nach scrollIntoView (Panel ${masse.scrollH} px in ${masse.clientH} px)${zusatz}${nicht}`
-    : `${r.schlecht.map((x) => `${x.cls} → ${x.deckt}`).join(" · ")}${zusatz}${nicht}`;
-  record(name, r.schlecht.length === 0 && r.geprueft > 0, detail);
-}
-
-/** Gegenprobe zu C9/C9b: nimmt man dem Panel seinen Rollbalken, MUSS mindestens ein Element
- *  unerreichbar werden. Ohne sie waere ein gruener Punkt auch dann gruen, wenn die Messung
- *  gar nichts sehen kann — das ist die Gattung Fehler, an der ein Pruefpunkt still stirbt.
- *  Gemessen wird zuerst, ob die Manipulation die Geometrie ueberhaupt veraendert hat.
- *
- *  ⚠️ Hier wird NICHT `scrollIntoView` benutzt, anders als in C9/C9b — und das ist kein
- *  Versehen, sondern zweimal begruendet. Sachlich: ohne Rollbereich gibt es nichts
- *  hinzuscrollen; die Frage der Gegenprobe ist genau, was dann passiert. Gemessen: mit
- *  `scrollIntoView` bei `overflow: hidden` sucht Chromium den naechsten rollbaren Vorfahren
- *  und Obsidian antwortet mit einem Layout-Sturm — der erste Lauf am 2026-09-11 starb mit
- *  „Zeitueberschreitung: Runtime.evaluate" (30 s) und riss den restlichen Lauf mit. */
-async function gegenprobeErreichbarkeit(cdp: Cdp): Promise<void> {
-  const name = "C9c Gegenprobe: ohne Rollbalken wird etwas unerreichbar";
-  let gesetzt = false;
-  try {
-    const vorher = await cdp.evaluate<{ h: number; scrollH: number; scrollTop: number }>(`
-      const p = document.querySelector(".lt-panel");
-      if (!p) return { h: 0, scrollH: 0, scrollTop: 0 };
-      return { h: Math.round(p.getBoundingClientRect().height), scrollH: p.scrollHeight, scrollTop: Math.round(p.scrollTop) };
-    `);
-    gesetzt = (await cdp.evaluate<{ ok: boolean }>(`
-      const p = document.querySelector(".lt-panel");
-      if (!p) return { ok: false };
-      p.scrollTop = 0;
-      p.style.overflow = "hidden";
-      return { ok: true };
-    `)).ok;
-    if (!gesetzt) { nichtGemessen(name, "kein .lt-panel im DOM"); return; }
-    await new Promise((r) => setTimeout(r, 300));
-    // DIESELBE Menge wie C9/C9b, nur ohne Scrollen — sonst sichert die Gegenprobe einen
-    // Punkt ab, den sie gar nicht misst.
-    const r = await cdp.evaluate<Erreichbarkeit>(erreichbarAusdruck(BEDIENELEMENTE, false));
-    const masse = await cdp.evaluate<{ h: number; scrollH: number }>(`
-      const p = document.querySelector(".lt-panel");
-      return { h: Math.round(p.getBoundingClientRect().height), scrollH: p.scrollHeight };
-    `);
-    const wirksam = masse.scrollH > masse.h + 8;
-    const namen = r.schlecht.slice(0, 4).map((x) => x.cls.split(" ")[0]);
-    record(name, wirksam && r.schlecht.length > 0,
-      !wirksam
-        ? `die Manipulation hat nichts veraendert (${masse.scrollH} px in ${masse.h} px, vorher ${vorher.scrollH}/${vorher.h}) — ohne Wirkung ist die Gegenprobe wertlos`
-        : r.schlecht.length > 0
-          ? `overflow:hidden → ${r.schlecht.length} von ${r.gesamt} Elementen unerreichbar (${namen.join(", ")}), Panel ${masse.scrollH} px in ${masse.h} px`
-          : `overflow:hidden, aber alle ${r.gesamt} Elemente weiter erreichbar — die Probe misst nichts`);
-  } catch (e) {
-    record(name, false, `Messung abgebrochen: ${(e as Error).message}`);
-  } finally {
-    if (gesetzt) {
-      await cdp.evaluate(`
-        const p = document.querySelector(".lt-panel");
-        if (p) p.style.overflow = "";
-        return { ok: true };
-      `).catch(() => null);
-    }
-  }
-}
 
 /** B11 — Fehler 1 in seinem schmaleren Fenster: der Voll-Draw am ENDE eines Laufs.
  *
@@ -749,26 +560,9 @@ async function tippeWaehrendDesLaufs(cdp: Cdp, selector = ".lt-note"): Promise<b
 }
 
 async function messeB11(cdp: Cdp, selector = ".lt-note", name = "B11 Tippen ueberlebt das Ende eines Laufs"): Promise<void> {
-  const verloren = await pollUntil<{ aktiv: string }>(cdp, `
-    const a = document.activeElement;
-    if (a && a.matches(${q(selector)})) return null;
-    return { aktiv: a ? (a.className || a.tagName) : "(null)" };
-  `, 1200, 100);
-  const stand = await cdp.evaluate<{ wert: string; aktiv: string }>(`
-    const el = document.querySelector(${q(selector)});
-    const a = document.activeElement;
-    return { wert: el ? el.value : "(keine Textarea)", aktiv: a ? (a.className || a.tagName) : "(null)" };
-  `);
-  const klasse = selector.replace(/^\./, "");
-  const gehalten = verloren === null && stand.aktiv.split(" ").includes(klasse);
-  record(name, gehalten && stand.wert === "abc",
-    gehalten ? `value=${JSON.stringify(stand.wert)}, Fokus blieb nach dem Schluss-Draw in ${selector}`
-             : `value=${JSON.stringify(stand.wert)}, Fokus fiel auf ${JSON.stringify((verloren?.aktiv ?? stand.aktiv).slice(0, 60))}`);
-  await cdp.evaluate(`
-    const el = document.querySelector(${q(selector)});
-    if (el) { el.value = ""; el.dispatchEvent(new Event("input", { bubbles: true })); el.blur(); }
-    return { ok: true };
-  `);
+  // Die Mutation lief WAEHREND des Stroms (`tippeWaehrendDesLaufs`); hier nur das Fenster auf den negativen Zustand (Baustein `pflichtpunkte`).
+  zeichnePflicht(pflichtBilanz, name, await messeFokusFenster(cdp, { selector, text: "abc" }));
+  await cdp.evaluate(fokusAufraeumSkript(selector));
 }
 
 /** B11b — dieselbe Frage wie B11, fuer die Quelle „Textfeld" (`.lt-freetext`) statt „Aktive
@@ -826,33 +620,14 @@ async function pruefeTextfeldErreichbar(cdp: Cdp): Promise<void> {
     const ta = await pollUntil<{ ok: boolean }>(cdp, `return document.querySelector(".lt-freetext") ? { ok: true } : null;`, 3000, 200);
     if (ta === null) { nichtGemessen(name, `Quelle „Textfeld" liess sich nicht waehlen${klick}`); return; }
     gewechselt = true;
-    const masse = await cdp.evaluate<{ scrollH: number; clientH: number }>(`
-      const p = document.querySelector(".lt-panel");
-      const body = document.querySelector(".okit-stream-body");
-      if (body) {
-        const f = body.createDiv({ cls: "lt-smoke-fueller" });
-        for (let i = 0; i < 150; i += 1) f.createDiv({ text: "Fuellzeile " + i + " fuer die Erreichbarkeitsprobe." });
-      }
-      await new Promise((r) => setTimeout(r, 200));
-      // Ohne Panel kein Wurf, sondern 0/0 — die Vorbedingung unten meldet das dann als
-      // uebersprungen, statt dass ein Wurf hier den ganzen Lauf reisst (Muster aus C9c).
-      if (!p) return { scrollH: 0, clientH: 0 };
-      return { scrollH: p.scrollHeight, clientH: p.clientHeight };
-    `);
-    if (masse.scrollH <= masse.clientH + 8) {
-      nichtGemessen(name, `Vorbedingung fehlt: das Panel laeuft nicht ueber (${masse.scrollH} <= ${masse.clientH} + 8)`);
-      return;
-    }
-    const r = await cdp.evaluate<Erreichbarkeit>(erreichbarAusdruck([".lt-freetext", ".lt-dial-input"], true));
-    const detail = r.schlecht.length === 0
-      ? `${r.geprueft} von ${r.gesamt} (Textfeld + erster Regler) treffen sich selbst nach scrollIntoView, Panel ${masse.scrollH} px in ${masse.clientH} px`
-      : r.schlecht.map((x) => `${x.cls} → ${x.deckt}`).join(" · ");
-    record(name, r.schlecht.length === 0 && r.geprueft === 2, detail);
+    zeichnePflicht(pflichtBilanz, name, await messeErreichbarkeit(cdp, {
+      selektoren: [".lt-freetext", ".lt-dial-input"],
+      nurErster: [".lt-dial-input"],
+      fuelle: { in: ".okit-stream-body" },
+      ueberlauf: ".lt-panel",
+      erforderlich: [".lt-freetext", ".lt-dial-input"],
+    }));
   } finally {
-    await cdp.evaluate(`
-      for (const f of document.querySelectorAll(".lt-smoke-fueller")) f.remove();
-      return { ok: true };
-    `).catch(() => null);
     // Die Quelle ist Zustand des Wirts, nicht des Pruefpunkts: sie geht auch dann zurueck,
     // wenn die Messung wirft.
     if (gewechselt) await waehleQuelle(cdp, 1).catch(() => "");
