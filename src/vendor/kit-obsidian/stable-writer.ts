@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.60.1, src/obsidian/stable-writer.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.61.0, src/obsidian/stable-writer.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { neutralizeModelMarkdown } from "../kit/safe-markdown";
 import { splitStable } from "../kit/stream-blocks";
 import type { ClockPort } from "./clock";
@@ -95,6 +95,11 @@ export interface StableMarkdownWriter {
    *  Zug — zwei getrennte Resets hätte man irgendwann halb gerufen, und ein zweiter Lauf,
    *  der unter den ersten schreibt, war einer der am 2026-09-07 gemeldeten Fehler. */
   reset(): void;
+  /** Nur die Antwort zurücknehmen: Rohstrom, Schnitt-Zeiger, Blöcke und Tail. Die Gedanken des Bereichs bleiben. Für
+   *  `onContentReset` des Chat-Clients: Gemma 4 schreibt das Denken ohne Öffner in `content`, und erst das `<channel|>` verrät
+   *  es; der Text, der bis dahin als Antwort lief, gehört in den Gedankenblock (den füllt `onReasoning`). Ein Block, der
+   *  gerade noch rendert, schreibt ins schon entfernte Element und stört den neuen Text nicht. */
+  resetContent(): void;
   /** Trennt den Observer (`domGuard`). Nach dem Abbau der Ansicht rufen; ohne `domGuard` ohne Wirkung. Ein noch rendernder Block
    *  bekommt vorher seinen letzten Durchgang (seit 0.55.0 trennt `destroy()` erst nach `settled()`, wenn noch etwas läuft). */
   destroy(): void;
@@ -166,6 +171,12 @@ export function createStableWriter(opts: StableWriterOptions): StableMarkdownWri
       // (höchstens die Frist `renderDeadlineMs` später). Der Aufrufer muss die Reihenfolge `settled()` → `destroy()` nicht kennen.
       if (pending.length === 0) { guard.disconnect(); return; }
       void settledAll().finally(() => { guard.disconnect(); });
+    },
+
+    resetContent(): void {
+      raw = "";
+      stableLen = 0;
+      area.resetContent();
     },
 
     reset(): void {

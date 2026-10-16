@@ -1,7 +1,7 @@
 {
   "sources": {
-    "obsidian-kit": { "ref": "0.60.1" },
-    "code-kit": { "ref": "0.27.1" }
+    "obsidian-kit": { "ref": "0.61.0" },
+    "code-kit": { "ref": "0.28.0" }
   },
   "targets": [
     { "dir": "src/vendor/kit", "source": "code-kit", "from": "src/ts/web", "modules": ["clipboard", "remote-resources"], "rewrite": [["../pure/", "./"]] },

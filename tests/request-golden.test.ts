@@ -26,31 +26,32 @@ describe("goldene Requests — transform, Denkstufe aus, ohne Ueberschreibung", 
       lmstudio: { temperature: 0.2, top_p: 0.8, top_k: 20, min_p: 0, reasoning_effort: "none" },
       openwebui: { temperature: 0.2, top_p: 0.8, top_k: 20, min_p: 0, presence_penalty: 1.5, reasoning_effort: "none" },
       unknown: { temperature: 0.2, top_p: 0.8, reasoning_effort: "none" },
-      ollama: {}, openai: {},
+      ollama: {}, openai: {}, anthropic: {},
     },
     "qwen3.6": {
       lmstudio: { temperature: 0.2, top_p: 0.95, top_k: 20, reasoning_effort: "none" },
       openwebui: { temperature: 0.2, top_p: 0.95, top_k: 20, reasoning_effort: "none" },
       unknown: { temperature: 0.2, top_p: 0.95, reasoning_effort: "none" },
-      ollama: {}, openai: {},
+      ollama: {}, openai: {}, anthropic: {},
     },
     "gemma4": {
-      lmstudio: { temperature: 0.2, top_p: 0.95, top_k: 64, reasoning_effort: "none" },
+      // code-kit 0.28.0: LM Studio ignoriert "none" bei gemma 4 (das Denken landete im Antworttext), "aus" sendet dort die niedrigste Stufe.
+      lmstudio: { temperature: 0.2, top_p: 0.95, top_k: 64, reasoning_effort: "low" },
       openwebui: { temperature: 0.2, top_p: 0.95, top_k: 64, reasoning_effort: "none" },
       unknown: { temperature: 0.2, top_p: 0.95, reasoning_effort: "none" },
-      ollama: {}, openai: {},
+      ollama: {}, openai: {}, anthropic: {},
     },
     "gpt-oss": {
       lmstudio: { temperature: 0.2, top_p: 1.0, reasoning_effort: "minimal" },
       openwebui: { temperature: 0.2, top_p: 1.0, reasoning_effort: "minimal" },
       unknown: { temperature: 0.2, top_p: 1.0, reasoning_effort: "minimal" },
-      ollama: {}, openai: {},
+      ollama: {}, openai: {}, anthropic: {},
     },
     "null": {
       lmstudio: { temperature: 0.2, reasoning_effort: "none" },
       openwebui: { temperature: 0.2, reasoning_effort: "none" },
       unknown: { temperature: 0.2 },
-      ollama: {}, openai: {},
+      ollama: {}, openai: {}, anthropic: {},
     },
   };
 
