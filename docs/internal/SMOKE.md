@@ -155,7 +155,7 @@ und der erste Regler: die waren es, die in der alten Aufteilung bei 420 px unerr
 Detailtext das ausdrücklich mit (`nicht im Panel: .lt-freetext`) statt es zu verschweigen.
 
 **C9c misst seit der Fix-Runde vom 2026-09-11 dieselbe MENGE wie C9** (`erreichbarAusdruck`
-mit einem Parameter `scrollen`, eine Liste `BEDIENELEMENTE` für beide). Vorher fuhr die
+mit einem Parameter `scrollen`, eine Liste `BEDIENELEMENTE` für beide; seit Welle 23 steht der Ausdruck als `erreichbarSkript` im Baustein `tools/obsidian-cdp/pflichtpunkte.ts`, die Liste `BEDIENELEMENTE` bleibt im Treiber). Vorher fuhr die
 Gegenprobe einen eigenen, inline duplizierten Loop, der `.lt-freetext` nicht kannte und alle
 vier Regler nahm — also genau der Drift, den sie verhindern sollte; und ihr Nenner zählte jedes
 Element mit Fläche doppelt („6 von 17" statt „6 von 8").
@@ -194,7 +194,7 @@ eine **Naht**, keine Datenstruktur; im Unit-Test wäre keiner von beiden entsche
 **B10** misst Fehler 1 („Textfeld lässt sich nicht beschreiben"). Ursache war ein Voll-Draw
 des Panels auf `selectionchange`: jede Cursorbewegung IN der Textarea feuert dieses Ereignis,
 `main.ts` gab es an `panel.refresh()` weiter, und `renderPanel` baute das Feld unter dem
-Cursor neu. **Mutation und Wartephase sind getrennt** (`tippeInsTextfeld` / `messeFokus`):
+Cursor neu. **Mutation und Wartephase sind getrennt** (`tippeInsTextfeld` / `messeFokus`, seit Welle 23 `fokusMutationSkript` / `messeFokusFenster` im Baustein `pflichtpunkte`):
 im selben `evaluate` gemessen läge die Messung vor dem Redraw, denn der Debounce in
 `main.ts` ist 150 ms. Die Mutation feuert den Auslöser selbst
 (`document.dispatchEvent(new Event("selectionchange"))`).
