@@ -496,3 +496,19 @@ zurück — der Lauf behält nichts vom Wirt.
 ## R1 — Runden-Zeile bei ~300 px (Welle 9, 2026-09-26)
 
 Ein echter Lauf gegen einen Fake-Server, zwei Runden, die zweite mit langer Anmerkung, Sidebar auf 300 px: jede `.lt-history-row` muss `scrollWidth <= clientWidth` haben. Anlass: die aktive Zeile (fett, Herkunft plus Anmerkung) wurde links abgeschnitten, weil ein `button` seinen Text auf einer Zeile hält und Überlauf zentriert. Gegenprobe am alten Stand (`styles.css` aus `98df558`): rot, „2 von 6 Zeilen laufen über: 297 > 276, 452 > 276"; mit der Regel `white-space: normal` grün, 39 grün / 0 rot / 2 übersprungen von 41.
+
+## Welle 23 (2026-10-16): Pflichtpunkte über den Baustein, Gemma, Claude
+
+B10, B11 und C9 bis C9d laufen über `tools/obsidian-cdp/pflichtpunkte.ts` (Pilot). Das Leaf für die zweite Höhe (420 px) wird mit `.workspace-leaf:has(.lt-panel)` gewählt, weil der Baustein das erste Element des Selektors nimmt. B10b ist die Gegenprobe für den Fokus-Punkt: Ein `blur` im selben Auslöser muss die Messung rot machen.
+
+T1 und T1b spielen Gemma 4 auf LM Studio nach (Denken ohne Öffner im Antworttext, dann `<channel|>`): T1 liest das Ergebnis ohne den Denkblock, T1b den Denkblock. Auf dem Pin 0.60.1/0.27.1 waren beide rot (Vorschau begann mit dem Denktext), nach der Hebung samt `onContentReset` grün. Der Lauf `SHOT_DIR=<ordner> npm run smoke:gui -- --port <p>` (unter `--exclusive focus`) nimmt dazu das Panel auf.
+
+CL1 bis CL3 laufen gegen den Anthropic-Modus des zentralen LLM-Stubs, mit einem Fake-Manager, dessen Endpunkt `transport: "anthropic"` trägt. CL1: das Plugin wählt den Endpunkt (Familie `claude`, Backend `anthropic`), und `list()` des Fakes liefert ihn ohne `transports` nicht. CL2: Messages-API mit `x-api-key`, `anthropic-version` und Browser-Header, `max_tokens`, ohne `temperature` und `top_p`, mit Denken im Denkblock. CL3: ein Fehler mitten im Strom (`overloaded_error`) lässt das Panel in `is-error` mit der Meldung der API, das Teilergebnis bleibt. Gegenprobe: ohne `anthropic: true` in `main.ts` sind CL2 und CL3 rot, mit ihm grün.
+
+| Lauf | Stand | Bilanz |
+|---|---|---|
+| Baseline 20:52 | Pin 0.60.1/0.27.1 | 58 grün · 0 rot · 1 übersprungen · 0 nichts gemessen von 59 |
+| Gemma-Gegenprobe | Pin 0.60.1/0.27.1, T1/T1b neu | 58 grün · 2 rot (T1, T1b) · 1 übersprungen von 61 |
+| nach der Hebung | Pin 0.61.0/0.28.0, `onContentReset` | 60 grün · 0 rot · 1 übersprungen von 61 |
+| Pflichtpunkte über den Baustein | wie zuvor, B10b neu | 61 grün · 0 rot · 1 übersprungen von 62 |
+| Claude-Pilot | Pin 0.62.0/0.28.1, CL1–CL3 neu | 64 grün · 0 rot · 1 übersprungen von 65 |
