@@ -51,6 +51,7 @@ import { startLlmStub, type AntwortSpec } from "../../tools/obsidian-cdp/llm-stu
 import { messeFolge, zeichneFolge } from "../../tools/obsidian-cdp/folge.js";
 import { gegenprobeErreichbarkeit, messeErreichbarkeit, messeFokusErhalt, messeFokusFenster, mitHoehe, zeichnePflicht, fokusAufraeumSkript, type PflichtBilanz, type PflichtTeilurteil } from "../../tools/obsidian-cdp/pflichtpunkte.js";
 import { createBilanz, parseArgs, runDriver } from "../../tools/obsidian-cdp/bilanz.js";
+import { boxAround, capture } from "../../tools/obsidian-cdp/shot.js";
 import { buildVault, requireEigenerBuild, stagingVaultDir } from "../../tools/obsidian-cdp/vault.js";
 
 const REPO_NAME = "lingotuner";
@@ -139,6 +140,9 @@ const PUNKTE = [
   "R3 Panel ragt bei ~230 px Sidebar-Breite nicht ueber den Rand",
   "T1 Gemma-Stub: das Denken ohne Oeffner steht nicht im Ergebnis",
   "T1b Gemma-Stub: das Denken steht im ausklappbaren Denkblock",
+  "CL1 Fake-Manager mit Anbieter anthropic: der Endpunkt kommt nur mit Opt-in, das Plugin waehlt ihn",
+  "CL2 Lauf gegen den Claude-Stub: Messages-API mit Schluessel, Ergebnis im Panel, Denken im Denkblock",
+  "CL3 Fehler mitten im Strom: das Panel zeigt is-error mit der Meldung der API, das Teilergebnis bleibt",
   "G1 Altwert wandert in die Zeile, kein globales Modell in den Einstellungen",
   "G2 Panel-Modellwahl schreibt in die aktive Zeile, „Server waehlt“ leert sie",
   "Markierung ersetzen (Rand-Whitespace)",
@@ -1639,6 +1643,7 @@ async function pruefeGemma(cdp: Cdp): Promise<void> {
     const vorschau = (await cdp.evaluate<string>(`const v = document.querySelector(".lt-preview"); if (!v) return ""; const c = v.cloneNode(true); c.querySelectorAll(".okit-stream-reasoning").forEach((e) => e.remove()); return (c.textContent || "").trim();`)).trim();
     const nachLauf = (await cdp.evaluate<{ n: number }>(`const pre = document.querySelector(".okit-stream-reasoning pre"); return { n: pre && pre.textContent.includes("The user wants") ? 1 : 0 };`)).n > 0;
     if (!ok && vorschau === "") { nichtGemessen(T1, "der Lauf wurde nicht gruen"); nichtGemessen(T1b, "der Lauf wurde nicht gruen"); return; }
+    await haltePanelBild(cdp, "gemma-denkblock");
     record(T1, vorschau === "Sauberer Text", `Vorschau ${JSON.stringify(vorschau.slice(0, 90))}`);
     record(T1b, imBlock || nachLauf, `Denktext im Denkblock waehrend des Streams: ${imBlock}, nach dem Lauf: ${nachLauf}`);
   } catch (e) {
@@ -1656,6 +1661,124 @@ async function pruefeGemma(cdp: Cdp): Promise<void> {
     }
     await waehleQuelle(cdp, 1).catch(() => "");
     if (stub) await stub.stop();
+  }
+}
+
+/** CL1–CL3 — Claude (Anthropic API) ueber den LLM Endpoint Manager, Pilot Welle 23 (Kit 0.62.0, Opt-in `transports.anthropic`).
+ *  Gegenstelle: der zentrale LLM-Stub im Anthropic-Modus (Messages-API, geprueft: `x-api-key`, `anthropic-version`, Pflichtfelder). Kein
+ *  Aufruf an api.anthropic.com. Der Fake-Manager (Bruecke) kennt `transport: "anthropic"` noch nicht im Typ; sein `list()` filtert
+ *  aber schon nach `transports` und liefert den Eintrag nur, wenn der Aufrufer es verlangt (Kontrolle in CL1). */
+async function pruefeClaude(cdp: Cdp): Promise<void> {
+  const [CL1, CL2, CL3] = [
+    "CL1 Fake-Manager mit Anbieter anthropic: der Endpunkt kommt nur mit Opt-in, das Plugin waehlt ihn",
+    "CL2 Lauf gegen den Claude-Stub: Messages-API mit Schluessel, Ergebnis im Panel, Denken im Denkblock",
+    "CL3 Fehler mitten im Strom: das Panel zeigt is-error mit der Meldung der API, das Teilergebnis bleibt",
+  ];
+  const MODELL = "claude-haiku-5-5";
+  const SCHLUESSEL = "sk-ant-smoke-lingotuner";
+  let stub: Awaited<ReturnType<typeof startLlmStub>> | null = null;
+  let manager = false;
+  let denkenAn = false;
+  try {
+    stub = await startLlmStub({
+      anbieter: "anthropic",
+      schluessel: SCHLUESSEL,
+      models: [{ id: MODELL, capabilities: { effort: { supported: true }, thinking: { types: { adaptive: { supported: true } } } } }],
+      takt: 120,
+      standard: { reasoning: "Ich pruefe zuerst, welche Anmerkung gilt. ", text: "Claude-Antwort in zwei Absaetzen.\n\nZweiter Absatz.", laenge: 12, model: MODELL },
+    });
+    await removeFakeManager(cdp);
+    await installZentralFakeManager(cdp, {
+      pluginId: MANAGER_PLUGIN_ID,
+      endpunkte: [{
+        id: "fake-claude", label: "Claude API", url: stub.url, models: [MODELL], defaultModel: MODELL, configModel: "default",
+        provider: "anthropic", backend: "anthropic", apiKey: SCHLUESSEL, hasSecret: true,
+        // Typ der Bruecke kennt nur http|shortcuts; die Laufzeit reicht den Wert durch (Befund an den Master).
+        transport: "anthropic" as unknown as "http",
+      }],
+      invalidiere: [PLUGIN_ID],
+    });
+    manager = true;
+    const sicht = await cdp.evaluate<{ ohne: number; mit: number; quelle: string; modell: string; transport: string | null; backend: string }>(`
+      const api = app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}].api;
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.llm.invalidate();
+      const r = await p.llm.resolve({ force: true });
+      const src = p.llm.source();
+      return {
+        ohne: api.list({ capability: "chat" }).length,
+        mit: api.list({ capability: "chat", transports: ["http", "anthropic"] }).length,
+        quelle: src.backendSource, modell: src.model, transport: src.family, backend: src.backend,
+      };
+    `);
+    record(CL1, sicht.ohne === 0 && sicht.mit === 1 && sicht.quelle === "manager" && sicht.modell === MODELL && sicht.backend === "anthropic" && sicht.transport === "claude",
+      `Kontrolle am Fake: list() ohne transports ${sicht.ohne}, mit ["http","anthropic"] ${sicht.mit}; Plugin: Backend ${sicht.backend} (Quelle ${sicht.quelle}), Familie ${sicht.transport}, Modell ${sicht.modell}`);
+
+    // CL2 — ein Lauf mit Denken
+    await schalteDenkenAn(cdp);
+    denkenAn = true;
+    await cdp.evaluate(`app.workspace.trigger("active-leaf-change"); return { ok: true };`);
+    await waehleQuelle(cdp, 2);
+    await cdp.evaluate(`
+      const el = document.querySelector(".lt-freetext");
+      el.value = "Could you maybe send the report by Friday?";
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      return { ok: true };
+    `);
+    await setzeNotiz(cdp, "Keep it short.");
+    let imBlock = false;
+    const ok = await laufeTune(cdp, async () => {
+      const b = await pollUntil<{ ok: boolean }>(cdp, `const pre = document.querySelector(".okit-stream-reasoning pre"); return pre && pre.textContent.includes("welche Anmerkung") ? { ok: true } : null;`, 15_000, 100);
+      imBlock = b !== null;
+    });
+    const vorschau = (await cdp.evaluate<string>(`const v = document.querySelector(".lt-preview"); if (!v) return ""; const c = v.cloneNode(true); c.querySelectorAll(".okit-stream-reasoning").forEach((e) => e.remove()); return (c.textContent || "").trim();`)).trim();
+    await haltePanelBild(cdp, "claude-denkblock");
+    const anfragen = stub.anfragen().filter((a) => a.route === "messages");
+    const letzte = anfragen.at(-1);
+    const body = (letzte?.json ?? {}) as Record<string, unknown>;
+    const verbotene = ["temperature", "top_p", "top_k", "min_p", "presence_penalty"].filter((k) => k in body);
+    const kopf = letzte?.header ?? {};
+    const protokollOk = anfragen.length > 0 && kopf["x-api-key"] === SCHLUESSEL && typeof kopf["anthropic-version"] === "string"
+      && typeof body.max_tokens === "number" && body.stream === true && verbotene.length === 0
+      && kopf["anthropic-dangerous-direct-browser-access"] === "true";
+    record(CL2, ok && vorschau.startsWith("Claude-Antwort") && imBlock && protokollOk,
+      `Lauf ${ok ? "gruen" : "nicht gruen"}, Vorschau ${JSON.stringify(vorschau.slice(0, 40))}, Denkblock waehrend des Streams: ${imBlock}; Anfragen ${anfragen.length}, x-api-key ${kopf["x-api-key"] === SCHLUESSEL ? "ok" : "FALSCH"}, anthropic-version ${String(kopf["anthropic-version"])}, Browser-Header ${String(kopf["anthropic-dangerous-direct-browser-access"])}, max_tokens ${String(body.max_tokens)}, stream ${String(body.stream)}, verbotene Felder: ${verbotene.length === 0 ? "keine" : verbotene.join(",")}`);
+
+    // CL3 — Fehler mitten im Strom
+    stub.antworten([{ text: "Teilantwort vor dem Fehler und mehr Text. ".repeat(3), laenge: 12, model: MODELL, stromFehler: { nach: 3, typ: "overloaded_error", meldung: "Overloaded" } }]);
+    await setzeNotiz(cdp, "Keep it short, again.");
+    await clickReal(cdp, `document.querySelector(".lt-run")`);
+    const fertig = await pollUntil<{ ok: boolean }>(cdp, `const s = document.querySelector(".lt-status"); return s && (s.classList.contains("is-ok") || s.classList.contains("is-error")) ? { ok: true } : null;`, 30_000, 300);
+    const fehler = await hasClass(cdp, ".lt-status", "is-error");
+    const label = (await text(cdp, ".lt-status-label")) ?? "";
+    const teil = (await cdp.evaluate<string>(`return (document.querySelector(".lt-preview")?.textContent || "").trim();`));
+    record(CL3, fertig !== null && fehler && /overload/i.test(label) && teil.includes("Teilantwort"),
+      `Status ${fertig === null ? "nie fertig" : fehler ? "is-error" : "is-ok"}, Meldung ${JSON.stringify(label.slice(0, 80))}, Vorschau beginnt ${JSON.stringify(teil.slice(0, 30))}`);
+  } catch (e) {
+    for (const n of [CL1, CL2, CL3]) if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);
+  } finally {
+    if (denkenAn) await stelleDenkenZurueck(cdp).catch(() => null);
+    if (manager) await removeFakeManager(cdp).catch(() => null);
+    await cdp.evaluate(`const p = app.plugins.plugins[${q(PLUGIN_ID)}]; p.llm.invalidate(); return true;`).catch(() => null);
+    await waehleQuelle(cdp, 1).catch(() => "");
+    if (stub) await stub.stop();
+  }
+}
+
+/** Optional: mit `SHOT_DIR=<ordner>` nimmt der Lauf das Panel nach T1 (Gemma) und CL2 (Claude) auf (Sichtpruefung des Denkblocks, Regel 12).
+ *  Aufnahmen gehoeren unter `--exclusive focus`: unter einem Port-Lock haengt `Page.captureScreenshot` bei verdecktem Fenster. */
+async function haltePanelBild(cdp: Cdp, name: string): Promise<void> {
+  const dir = process.env.SHOT_DIR;
+  if (dir === undefined || dir === "") return;
+  try {
+    mkdirSync(dir, { recursive: true });
+    await cdp.evaluate(`const d = document.querySelector(".okit-stream-reasoning"); if (d) d.open = true; return true;`);
+    const r = await boxAround(cdp, [".lt-panel"], 4);
+    const png = await capture(cdp, r ?? undefined, 1, {});
+    writeFileSync(join(dir, `${name}.png`), png);
+    console.log(`  · Bild: ${join(dir, `${name}.png`)}`);
+  } catch (e) {
+    console.log(`  · Bild ${name} nicht aufgenommen: ${(e as Error).message}`);
   }
 }
 
@@ -2039,6 +2162,7 @@ async function main(): Promise<void> {
     await pruefeRundenZeile(cdp);
     await pruefeRueckwahl(cdp);
     await pruefeGemma(cdp);
+    await pruefeClaude(cdp);
     await pruefeGlobalesModell(cdp, port);
     skipped("Markierung ersetzen (Rand-Whitespace)", "Editor-Selektion per CDP ist im Unit-Test abgedeckt (editor-io.test.ts); im Smoke muesste sie ueber CodeMirror gesetzt werden — Handarbeit");
   } finally {

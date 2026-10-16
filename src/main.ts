@@ -78,7 +78,8 @@ export default class LingoTunerPlugin extends Plugin {
       levelPicker: true,
       lang: () => getLang(),
       // Apple Intelligence (Kurzbefehl): one-shot ueber die Bruecke; die Frist mindestens Kurzbefehl + 10 s setzt das Kit.
-      transports: { shortcuts: (shortcut) => createShortcutsChatTransport({ bridge: this.shortcutsBridge, shortcut }) },
+      // Claude (Anthropic API) ueber den LLM Endpoint Manager: Opt-in, ohne ihn sieht die Verbindung diese Endpunkte nie (Kit 0.62.0).
+      transports: { anthropic: true, shortcuts: (shortcut) => createShortcutsChatTransport({ bridge: this.shortcutsBridge, shortcut }) },
       getSettings: () => ({
         endpoints: this.settings.endpoints,
         choice: this.settings.choice,
