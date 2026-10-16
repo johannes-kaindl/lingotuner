@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-10-16
+
 ### Added
 
 - **Claude (Anthropic API) works through the LLM Endpoint Manager.** If the manager offers a Claude endpoint, it now appears in the endpoint dropdown and LingoTuner tunes with it: the answer streams, the thinking shows in the thinking block, and a failure in the middle of the answer shows the message from the API while the part that arrived stays in the preview. Your text goes straight from Obsidian to Anthropic with your own key, so choose it on purpose. Thinking cannot be turned fully off on Claude (the button offers the lowest effort), and LingoTuner sends no sampling values (temperature and the like) because these models refuse them. See `docs/use-claude.md`.
