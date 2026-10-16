@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.61.0, src/pure/shortcut-failure.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.62.0, src/pure/shortcut-failure.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // uebernommen aus lingotuner/src/core/llm/errors.ts:33-48 (classifyShortcutFailure) und obsidian-transmute/src/core/llm/shortcut-errors.ts:2-21
 // (dessen Übernahme aus lingotuner vom 2026-10-01), 2026-10-12 (Welle 19, Erhebung a4). Reine Funktion, kein obsidian-Import, kein Import.
 

@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.61.0, src/obsidian/llm-connection-strings.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.62.0, src/obsidian/llm-connection-strings.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /** Default-Texte (EN/DE) für `LlmConnection.renderSettings` — nach dem Muster von
  *  `HELP_SETTING_TEXTS_EN/DE`. Ohne sie formulierte jeder Konsument rund 60 Texte selbst, obwohl
  *  „Reset“ oder „Open manager settings“ je Plugin nichts anderes heißen soll.
@@ -26,7 +26,7 @@
  *
  *  Überschreiben: `renderSettings(el, { lang: "de", request: { title: "…" } })` — ein Teil-Merge
  *  über dem Default, je Abschnitt ein Feld genau. */
-import { BACKENDS, FAMILIES, type FamilyId, type BackendId, type Deviation } from "../kit/sampling-profiles";
+import { BACKENDS, FAMILIES, type FamilyId, type BackendId, type Deviation, type DeviationKind } from "../kit/sampling-profiles";
 import type { EndpointSourceSectionStrings } from "./endpoint-source";
 import type { ApiErrorCode, SourceKind } from "../kit/endpoint-source";
 import type { EndpointListStrings } from "./endpoint-list";
@@ -90,7 +90,7 @@ interface Texts {
   reset: string; thinkingLevel: string; levels: Record<"off" | "low" | "medium" | "high", string>;
   levelPicker: string; levelPickerDesc: string; requestSaveFailed: string; dormant: string; deleteDormant: string;
   lastRequest: string; lastRequestNone: string; copy: string; copied: string; deviationsOk: string; deviationsWarn: string;
-  deviations: Record<"thinking-despite-off" | "empty-by-budget" | "family-mismatch" | "family-detected" | "rejected", string>;
+  deviations: Record<DeviationKind, string>;
   /** Zweiter Satz der Abweichungs-Notice; `{0}` = Titel des Abschnitts „Anfrage“. */
   seeSettings: string;
   /** Hinweiszeile unter einer Vorschau des gesendeten Textes; `{0}` = Zahl der geschwärzten Werte. */
@@ -250,6 +250,7 @@ const EN: Texts = {
     "family-mismatch": "The answer came from a different model family ({0}).",
     "family-detected": "Model family detected: {0}. Set it in the LLM Endpoint Manager.",
     "rejected": "The server rejected the request: {0}",
+    "override-dropped": "Request values not sent, the model does not accept them: {0}.",
   },
   seeSettings: "Details in the settings under “{0}”.",
   redactedOne: "{0} passage redacted", redactedMany: "{0} passages redacted",
@@ -334,6 +335,7 @@ const DE: Texts = {
     "family-mismatch": "Die Antwort kam von einer anderen Modellfamilie ({0}).",
     "family-detected": "Modellfamilie erkannt: {0}. Im LLM Endpoint Manager setzen.",
     "rejected": "Der Server hat die Anfrage abgelehnt: {0}",
+    "override-dropped": "Anfragewerte nicht gesendet, das Modell nimmt sie nicht an: {0}.",
   },
   seeSettings: "Details in den Einstellungen unter „{0}“.",
   redactedOne: "{0} Stelle geschwärzt", redactedMany: "{0} Stellen geschwärzt",

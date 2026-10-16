@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.61.0, src/obsidian/chat-transport.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.62.0, src/obsidian/chat-transport.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /** Die zwei Transporte für `chat-client`: XHR für den Stream, `requestUrl` für die Anfrage ohne
  *  Stream (Fallback). Beide erfüllen `SseTransport`.
  *
@@ -196,12 +196,16 @@ export interface TransportChoice { primary: SseTransport; fallback?: SseTranspor
  *  verbaut) und wirft — das ist ehrlicher als still auf HTTP zurückzufallen und gegen die falsche
  *  URL zu feuern (Spec § Baustein 2, Vertragsentscheidung). */
 export function transportFor(
-  resolved: { transport?: "http" | "shortcuts" },
-  opts: { http: SseTransport; httpFallback?: SseTransport; shortcuts?: SseTransport },
+  resolved: { transport?: "http" | "shortcuts" | "anthropic" },
+  opts: { http: SseTransport; httpFallback?: SseTransport; shortcuts?: SseTransport; anthropic?: TransportChoice },
 ): TransportChoice {
   if (resolved.transport === "shortcuts") {
     if (!opts.shortcuts) throw new Error("resolved endpoint requires transport \"shortcuts\", but none was provided");
     return { primary: opts.shortcuts };
+  }
+  if (resolved.transport === "anthropic") {
+    if (!opts.anthropic) throw new Error("resolved endpoint requires transport \"anthropic\", but none was provided");
+    return opts.anthropic;
   }
   return opts.httpFallback ? { primary: opts.http, fallback: opts.httpFallback } : { primary: opts.http };
 }
