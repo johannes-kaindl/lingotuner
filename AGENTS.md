@@ -1,14 +1,9 @@
 # AGENTS.md
 
 Orientierung für KI-Agenten (Claude Code, Codex, …) und Mitwirkende an diesem Repository.
-Workspace-weite Standards (comply-or-explain): siehe [`../../workspace/_docs/CONVENTIONS.md`](../../workspace/_docs/CONVENTIONS.md).
+Workspace-weite Standards: [`../../workspace/_docs/CONVENTIONS.md`](../../workspace/_docs/CONVENTIONS.md).
 
-**Profil:** `ts-node` · `obsidian-plugin`.
-
-**Stand 2026-09-07: 0.1.0, erstes Release.** 93 Unit-Tests über 17 Dateien, `npm run gate` grün,
-GUI-Smoke 19 grün / 0 rot / 1 übersprungen (Teil C ohne Endpunkt) mit Gegenprobe, Lab-Messung
-aller 16 Beispielpaare in beiden Sprachen. Für neue Vorhaben gilt: erst Kit-first-Sondierung
-(`../AGENTS.md` + `../REGISTRY.md`), dann `superpowers:brainstorming` → Spec → Plan → TDD.
+Für neue Vorhaben gilt: erst Kit-first-Sondierung (`../AGENTS.md` + `../REGISTRY.md`), dann `superpowers:brainstorming` → Spec → Plan → TDD. Stand: CHANGELOG.
 
 ## Project character
 
@@ -36,10 +31,6 @@ Neun Punkte tragen 0.1 — wer hier kürzt, kürzt das Produkt weg:
 **Modellagnostik ist Pflicht** (wie in allen Schwester-Plugins): kein hartkodierter Modellname,
 kein Feature, das nur ein Server kann. Das Modell kommt aus `GET /v1/models` des Endpunkts, leer
 heißt „Server entscheidet". Reasoning-Modelle sind mitgedacht (`think-splitter`, `suppressParams`).
-
-**Nicht-Ziele 0.1:** Stil-Erkennung des Quelltexts · Neovim/CLI · Cloud-Anbieter als Default ·
-Rückfall-Transport (`requestUrl` statt XHR) · vault-weite Läufe · eigenes Chat-Interface ·
-Screenshots in der README (`readme-shots` ist 0.2) · Store-Einreichung.
 
 ## Architecture principles
 
@@ -82,32 +73,10 @@ daran ist in `obsidian-transmute` die Anzeige von der Ausführung abgedriftet.
 **View ist zweigeteilt** (`view.ts` baut, `view-render.ts` zeichnet aus dem Zustand). Ein
 `empty()` unter dem Cursor nähme Fokus, Cursorposition und den Undo-Stack des Feldes mit.
 
-### Kit-first-Befund (Ergebnis der Sondierung 2026-09-07)
+### Kit-first-Befund
 
-| Baustein | Quelle | Form |
-|---|---|---|
-| `clipboard`, `sse`, `endpoint`, `endpoint_config`, `endpoint_diagnostics`, `model-choice`, `model-list-cache`, `reasoning`, `capabilities`, `think-splitter`, `think-toggle`, `timeout`, `error_body`, `i18n`, `settings`, `stream-blocks`, `sampling-profiles`, `backend-probe`, `redact`, `safe-markdown`, `secrets`, `rounds`, `model-context`, `embeddings-client` | `obsidian-kit` 0.56.0 / `code-kit` 0.23.0 | vendored `src/vendor/kit/` (Liste: `tools/kit-sync.json`) |
-| `buildEndpointList`, `renderModelPicker`, `confirm`, `settings_walker`, `folder-suggest`, `clipboard`, `buildStreamArea`, `createStableWriter` | `obsidian-kit/src/obsidian/` | vendored `src/vendor/kit-obsidian/` |
-| XHR-Stream-Transport | `vault-rag/src/sse.ts` | Übernahme mit Herkunftsstempel |
-| `splitStable` (stabile Vorschau-Blöcke) | erst Übernahme aus `koda-agent`, seit 2026-09-11 vendored aus `code-kit` 0.6.0 | vendored `src/vendor/kit/stream-blocks.ts` |
-| Streaming-Antwortbereich + inkrementeller Markdown-Schreiber | `obsidian-kit` 0.34.0 (`buildStreamArea`, `createStableWriter`) | vendored — LingoTuner ist der erste Konsument |
-| CORS-Fall „Probe grün, Chat rot" | `koda-agent/src/core/llm/failover.ts` (`onRefusedDespiteProbe`) | Muster → `classifyNetworkFailure` |
-| Runden-Verlauf | `obsidian-transmute/src/core/{types,session}.ts` | Übernahme (3. Exemplar → Kit-Kandidat) |
-| Selektion mitschreiben + Guards | `vault-rag/src/main.ts`, `reformat_selection_state.ts` | Übernahme (2. Exemplar) |
-| `splitSelectionAffix` (Rand-Whitespace) | `vault-rag/src/reformat_mechanical.ts` | Übernahme |
-| Anbieter-API-Form (`apiVersion`, `ok`-Union) | `vault-rag/src/plugin_api.ts`, `local-image-generator` | Muster |
-| llm-lab-Aufruf | `llm-lab/src/plugin_api.ts` (`log(input)`, synchron) | Konsument |
-| Release/Lint/Gate | `../tools/release-template/` via Skill `plugin-release-setup` | Vorlage |
+Tabelle der Übernahmen, Herkunftsstempel-Regel und die vier Spec-Abweichungen: `docs/internal/KIT-FIRST.md`. Auslöser: ein Baustein wird neu gebaut, ersetzt oder vendored.
 
-Jede Übernahme trägt `// uebernommen aus <repo>/<pfad>, <YYYY-MM-DD>` in Zeile 1
-(Dach-`AGENTS.md` Punkt 1) — der Stempel ist die Voraussetzung dafür, dass die Extraktions-Schwelle
-echte Instanzen zählt und keine Kopier-Kette.
-
-**Vier bewusste Abweichungen von der Spec** (im Cockpit unter `_SDD/` nachgetragen):
-Override-Dateiname `<dimension>_<level>.md` statt `-` (das negative Vorzeichen kollidiert sonst) ·
-`tune()` liefert eine `ok`-diskriminierte Union statt `Promise<string>` (Haus-Muster) ·
-Denken-Schalter aus `code-kit` (`think-toggle`) statt Kopie aus transmute ·
-`splitStable` aus koda-agent, nicht aus vault-rag (dort nur Rohtext-Vorschau).
 
 ## Commands
 
@@ -124,24 +93,9 @@ npm run shots -- --port <p> --only <hero|rounds|settings|dials>   # README-Bilde
 npm run release / version-bump / preflight   # delegieren ans zentrale ../tools/release/ (Dach)
 ```
 
-**Lab** (Prompt-Qualität messen statt behaupten — ein Lauf ist eine Anekdote):
+**Lab** (Prompt-Qualität messen, ein Lauf ist eine Anekdote): `npm run lab:tune -- --model <id> --lang de --runs 2`, Rezept in `docs/internal/LAB.md`.
 
-```bash
-npm run lab:tune -- --model qwen/qwen3.6-35b-a3b --lang de --runs 2
-npm run lab:tune -- --dim directness --runs 2      # gezielter Nachlauf einer Dimension
-```
-
-**GUI-Smoke** läuft in einer **Zweitinstanz** (eigenes `--user-data-dir`, eigener Port) — die
-reguläre Instanz auf `9222` gehört möglicherweise einer anderen Session und wird nicht angefasst:
-
-```bash
-npm run build && npm run smoke:gui -- --setup      # Staging-Vault aus fixtures/vault/ bauen
-# Zweitinstanz starten (Rezept vollständig in docs/internal/SMOKE.md), dann:
-npm run smoke:gui -- --port 9341
-```
-
-Vor jedem CDP-Zugriff den Lock nehmen (`obsidian-cdp-lock.py acquire --exclusive focus --ttl 300`)
-und **unmittelbar nach dem Lauf** freigeben — Committen und Doku brauchen den Port nicht.
+**GUI-Smoke** läuft in einer **Zweitinstanz** (eigenes `--user-data-dir`, eigener Port), die reguläre Instanz auf `9222` wird nicht angefasst. Rezept, Lock (`obsidian-cdp-lock.py acquire`, unmittelbar nach dem Lauf `release`) und Staging-Vault: `docs/internal/SMOKE.md`.
 
 ## Conventions
 
@@ -182,23 +136,7 @@ erlaubt, stillschweigend abzuweichen nicht.
   lokalen Server ohne CORS-Header abgelehnt — **ohne Status, ohne Body**. Ein Netzwerkfehler ohne
   Status wird deshalb nicht als „Server nicht erreichbar" gemeldet, sondern über eine
   Nachprobe (`classifyNetworkFailure`) als `cors-suspected` mit dem konkreten Schalter.
-- **`lms server start` ist weder Statuscheck noch CORS-Schalter.** Jedes fehlende Flag wird auf
-  den Default zurückgesetzt und persistiert: `--cors` ohne `--bind` bindet auf `127.0.0.1`
-  (sperrt andere Geräte aus, lokal bleibt alles grün), `--bind 0.0.0.0` ohne `--cors` schaltet
-  CORS **ab** — und dann scheitert genau dieses Plugin am Preflight, während der Verbindungstest
-  weiter grün ist. Immer `lms server start --bind 0.0.0.0 --cors`. Statuscheck ohne Nebenwirkung:
-  `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:1234/v1/models`. Details und
-  Werkzeug: `_docs/docs/lokale-llms.md` § „`lms server start` ist weder Statuscheck noch
-  CORS-Schalter".
-- **Eine Zweitinstanz startet im Restricted Mode — und das sieht aus wie ein kaputtes Plugin.**
-  Jede Einzelprüfung gibt Entwarnung (`community-plugins.json` listet es,
-  `app.plugins.enabledPlugins` enthält es, das Manifest ist vollständig), nur
-  `app.plugins.plugins` ist leer und `loadPlugin(id)` resolved mit `null` — ohne Fehler, ohne
-  Konsolenausgabe. Der Treiber ruft deshalb `app.plugins.setEnable(true)`. Ein `npm run deploy`
-  oder ein Reload hilft hier **nicht**.
-- **Ein frisches Profil startet mit der gebündelten Obsidian-Version**, nicht mit der laufenden.
-  Für `minAppVersion 1.11.4` ist das meist folgenlos (die gebündelte Version liegt darunter: die `.asar` kopieren ist Pflicht); wer die `.asar` ins Testprofil kopiert, hebt die
-  Zweitinstanz gezielt an (Rezept in `docs/internal/SMOKE.md`).
+- **Weitere Gotchas** in `docs/internal/GOTCHAS.md`: `lms server start` und CORS-Schalter (lokaler Server) · Restricted Mode und gebündelte Obsidian-Version (Zweitinstanz) · Fristen und leere Antwort (Zeitüberschreitung) · Endpoint-Manager-Auflösung · `textContent` im Smoke-Treiber (Settings-Fenster).
 - **„Notiz ersetzen" ersetzt nur den Body — das Frontmatter bleibt.** Ersetzt wird über den
   Editor (also Cmd+Z-fähig), und der Bereich beginnt hinter dem Frontmatter-Block. Wer hier auf
   `vault.modify` mit dem ganzen Dateiinhalt umbaut, zerstört Frontmatter **und** den Undo-Stack.
@@ -207,39 +145,16 @@ erlaubt, stillschweigend abzuweichen nicht.
   bestehende Nutzer. Der Knopf „Auslieferungsstand in den Ordner schreiben" ist eine explizite
   Nutzeraktion und überschreibt vorhandene Dateien nicht. Eine kaputte Override-Datei ist eine
   Meldung + Auslieferungsstand, kein Abbruch.
-- **Die Fristen sind fest und kein Setting** (seit dem Verbindungs-Tausch, Kit 0.51.2): bis zum ersten
-  Token 600 s (`JIT_FIRST_CHUNK_TIMEOUT_MS`, ein erst beim Aufruf ladendes Modell braucht Minuten),
-  danach 120 s Stille. Ein Kurzbefehl-Endpunkt hebt die erste Frist auf Kurzbefehl-Frist + 10 s. Ein Modell,
-  das minutenlang **denkt**, zählt als Aktivität (Reasoning ist ein Chunk); eine leere Antwort hat mit
-  `thought-only` eine eigene Meldung.
-- **Ein leerer `content` bei gefülltem `reasoning` ist keine leere Antwort**, sondern ein Modell,
-  das sein Token-Budget vollständig ins Denken gesteckt hat (`TuneError.thought-only`).
 - **Ersetzen-Guards sind zwei Fragen, nicht eine:** *live* (dieselbe Editor-Instanz, derselbe
   `file.path`, `getMode() === "source"`) und *stale* (Text an der Stelle seit dem Einlesen
   unverändert). Beide verweigern nur die Ersetzen-Ausgänge; Kopieren und „Neue Notiz" bleiben.
 - **Die Markierung wird proaktiv mitgeschrieben** (`SelectionTracker`), weil ein Klick ins Panel
   den Editor-Fokus nimmt — zum Zeitpunkt des Knopfdrucks gibt es keine Markierung mehr.
-- **`main.js`** ist Build-Artefakt, **`data.json`** ist Obsidian-persistierte Konfiguration —
-  beide git-ignored.
-- **Release-CI ist GitHub-only** (`.github/` wird von Forgejo ignoriert): der Tag aus `release.mjs` stößt `release.yml` auf GitHub an, siehe „Abweichungen“.
-- **Der LLM Endpoint Manager ist optional und wird bei JEDEM Aufruf frisch gelesen** —
-  `findEndpointManager(app)` (Kit `endpoint-source`) liest `app.plugins.plugins["llm-endpoint-manager"].api`
-  neu, nie aus einem gemerkten Plugin-Feld. Grund: das Nachbarplugin kann jederzeit installiert,
-  aktiviert, deaktiviert oder umkonfiguriert werden — ein gecachtes „Manager da/weg" würde nach
-  einer solchen Änderung falsch bleiben. `llm.resolve()` (Kit-Verbindung) merkt nur den LOKALEN Pfad bis
-  `llm.invalidate()`; „kein Endpunkt“ (Server beim Start aus) wird seit Kit 0.51.3 nicht gemerkt, der Manager-Pfad nie.
-- **`document.textContent` liefert für ein Document-Node per DOM-Spec IMMER `null`** — nur
-  Element-/Text-Nodes tragen `textContent`. Gemessen 2026-09-15 beim GUI-Smoke-Ausbau (Abschnitt
-  M): ein Treiber-Helfer für das eigene Settings-Fenster (Obsidian ≥1.13) las `root.textContent`
-  mit `root = document` und bekam `""` — obwohl `document.querySelectorAll(...)` im SELBEN Skript
-  echte Elemente fand. Sah aus wie ein Timing-Flake (mehrere Sleeps/Polls draufgeworfen, halfen
-  nichts), war aber ein struktureller Fehler. Fix: `root = document.body`. Wer in einem
-  GUI-Smoke-Treiber Text aus einem eigenen Settings-Fenster liest, prüft das zuerst.
+- **`main.js`** (Build) und **`data.json`** (Konfiguration) sind git-ignored.
 
 ## Memory
 
-**Cockpit:** `$VAULT/25_Coding/lingotuner/` (Stand, Tasks, Session-Log, Entscheidungen —
-mnemetisches Substrat/SSOT). **SDD-Artefakte (Spec/Plan) liegen dort unter `_SDD/`, nicht im
+**Cockpit:** `$VAULT/25_Coding/lingotuner/` (Stand, Tasks, Entscheidungen, SSOT). **SDD-Artefakte (Spec/Plan) liegen dort unter `_SDD/`, nicht im
 Repo** (CORE-META-14) — das Repo behält die verdichtete Design-Essenz hier und im CHANGELOG.
 **Nie absolute Pfade außerhalb des Repos in Repo-Dateien** — Platzhalter (`$VAULT/…`) verwenden.
 
@@ -249,6 +164,6 @@ Git-Repo** (PROF-OBS-09). **Vor dem Lösen eines Problems:** [`../AGENTS.md`](..
 
 ## Abweichungen von der Leitkonvention
 
-- **GitHub und Store gelten wieder (seit 2026-09-24, gemessen 2026-10-16).** Das `github`-Remote steht (`git@github.com:johannes-kaindl/lingotuner.git`), `npm run release` läuft ohne `--no-github`, `lingotuner` steht nicht in `tools/mirror_drift_check.py::AUSNAHMEN`, das GitHub-Repo ist öffentlich und `lingotuner` steht in `community-plugins.json`. GitHub bekommt Branch und Tag nur über den Dual-Push von `release.mjs`, es gibt keinen Forgejo-Push-Mirror (Dach-AGENTS § Store-Einreichung). Der Ausstieg vom 07. bis 24.09.2026 ist Chronik.
-- **`origin` ist Forgejo (`git.jkaindl.de:jkaindl/lingotuner`)** und die Quelle für den Alltag; GitHub trägt nur Releases.
+- **GitHub und Store gelten wieder (seit 2026-09-24).** `github`-Remote steht, `npm run release` läuft ohne `--no-github`, kein Eintrag in `mirror_drift_check::AUSNAHMEN`. GitHub bekommt Branch und Tag nur über den Dual-Push von `release.mjs` (Dach-AGENTS § Store-Einreichung).
+- **`origin` ist Forgejo**, die Quelle für den Alltag; GitHub trägt nur Releases.
 - **Die README trägt Screenshots** (`docs/images/`, aufgenommen mit `scripts/shots.ts`, Vertrag in `docs/images/README.md`).
