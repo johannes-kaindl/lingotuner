@@ -3,6 +3,7 @@ import { classifyShortcutFailure as classifyKitShortcutFailure, type ShortcutFai
 export type TuneError =
   | { kind: "http"; status: number; detail: string }
   | { kind: "network" }
+  | { kind: "transport-missing"; text: string }
   | { kind: "cors-suspected" }
   | { kind: "thought-only" }
   | { kind: "empty" }
@@ -14,6 +15,7 @@ export function errorMessageKey(e: TuneError): { key: string; args: string[] } {
   switch (e.kind) {
     case "http": return { key: "error.http", args: [String(e.status), e.detail] };
     case "network": return { key: "error.network", args: [] };
+    case "transport-missing": return { key: "error.transportMissing", args: [e.text] };
     case "cors-suspected": return { key: "error.corsSuspected", args: [] };
     case "thought-only": return { key: "error.thoughtOnly", args: [] };
     case "empty": return { key: "error.empty", args: [] };

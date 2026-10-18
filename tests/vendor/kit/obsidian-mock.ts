@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.62.0, src/testing/obsidian-mock.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.63.0, src/testing/obsidian-mock.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Self-contained Obsidian test double for obsidian-kit.
 // - Zero external imports (NOT from "obsidian", NOT from "vitest").
 // - Consumed via vitest `resolve.alias` as a drop-in for `import ... from "obsidian"`,
@@ -203,7 +203,12 @@ export function makeFakeEl(tagName = "DIV"): any {
       if (arr) { const i = arr.indexOf(cb); if (i >= 0) arr.splice(i, 1); }
     },
     dispatchEvent: (evt: any) => { (listeners[evt?.type] ?? []).forEach((cb) => cb(evt)); return true; },
-    click: () => { (listeners["click"] ?? []).forEach((cb) => cb()); },
+    /** Löst die Click-Handler mit einem Minimal-Ereignis aus (`preventDefault`/`stopPropagation`, 0.63.0): Kit-Module,
+     *  die einen Klick abfangen (Kopier-Knopf im `<summary>` des Denkblocks), rufen beides ohne Prüfung auf. */
+    click: () => {
+      const evt = { type: "click", defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {} };
+      (listeners["click"] ?? []).forEach((cb) => cb(evt));
+    },
 
     // Permissive guard stub (markdown-presentation): refine per test if needed.
     instanceOf: (_type: any) => true,
@@ -1074,7 +1079,10 @@ function momentFormat(d: Date, fmt: string): string {
  *  wirft** statt es roh durchzureichen: still falsche Ausgabe ließe einen Test den Mock prüfen statt den Prüfling. Die unterstützten Tokens sind in
  *  `tests/daily-notes.test.ts` gegen das echte Paket gemessen. Wer mehr braucht, überschreibt `moment` im eigenen `tests/__mocks__/obsidian.ts`
  *  (das echte Paket kommt mit `obsidian` ins `node_modules`; der Mock selbst bleibt ohne externe Importe). `moment.locale()` liefert `"en"`. */
-export function moment(input?: Date | number): { format(fmt?: string): string; toDate(): Date; valueOf(): number; isValid(): boolean } {
+export function moment(input?: Date | number | string, format?: string, strict?: boolean): { format(fmt?: string): string; toDate(): Date; valueOf(): number; isValid(): boolean } {
+  // Die Parse-Form `moment(text, format, strict)` (kuro-gamification `VaultReader`) kennt der Mock nicht: ein stilles `new Date(text)` ließe
+  // einen Test den Mock prüfen statt den Prüfling. Wer parst, überschreibt `moment` im eigenen Mock (echtes Paket).
+  if (format !== undefined) throw new Error(`obsidian-mock: moment(${JSON.stringify(input)}, ${JSON.stringify(format)}, ${String(strict)}) parst nicht nach — moment im eigenen Mock überschreiben.`);
   const d = input === undefined ? new Date() : new Date(input);
   return {
     format: (fmt = "YYYY-MM-DDTHH:mm:ss") => momentFormat(d, fmt),

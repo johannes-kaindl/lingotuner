@@ -6,7 +6,7 @@ import { onEndpointManagerChanged } from "./vendor/kit-obsidian/endpoint-source"
 import { copyToClipboard } from "./vendor/kit-obsidian/clipboard";
 import { confirmAction } from "./vendor/kit-obsidian/confirm";
 import { createLlmConnection, type LlmConnection } from "./vendor/kit-obsidian/llm-connection";
-import { managerErrorText, resolveLlmConnectionStrings } from "./vendor/kit-obsidian/llm-connection-strings";
+import { managerErrorText, resolveLlmConnectionStrings, transportMissingText } from "./vendor/kit-obsidian/llm-connection-strings";
 import { loadRequestSettings, onLevelFor, thinkingFor } from "./vendor/kit/sampling-profiles";
 import { DEFAULT_SETTINGS, LEGACY_REQUEST_MIGRATIONS, allPresets, loadSettings, upsertUserPreset, type LingoTunerSettings } from "./core/settings";
 import { type Dials } from "./core/dials";
@@ -247,8 +247,11 @@ export default class LingoTunerPlugin extends Plugin {
     const viaShortcut = src.transport === "shortcuts";
     let result: TuneResult;
     if (!r.ok && r.kind === "no-endpoint") {
-      // Konfigurationsfehler des Transports (Kurzbefehl-Endpunkt ohne Kurzbefehl-Angabe): sichtbar melden, nicht still auf HTTP fallen.
-      result = { ok: false, error: { kind: "shortcut", reason: "error", detail: r.detail }, partial: "" };
+      // Fehlt ein Transport, den der Endpunkt verlangt (nicht die Kurzbefehl-Bruecke), ist das eine eigene Meldung des Kits (seit 0.63.0).
+      // Sonst ein Konfigurationsfehler des Kurzbefehl-Transports (Endpunkt ohne Kurzbefehl-Angabe): sichtbar melden, nicht still auf HTTP fallen.
+      result = r.reason === "transport-missing" && r.transport !== undefined && r.transport !== "shortcuts"
+        ? { ok: false, error: { kind: "transport-missing", text: transportMissingText(resolveLlmConnectionStrings({ lang: getLang() }), r.transport) }, partial: "" }
+        : { ok: false, error: { kind: "shortcut", reason: "error", detail: r.detail }, partial: "" };
     } else {
       result = toTuneResult(r, src.shortcut);
     }

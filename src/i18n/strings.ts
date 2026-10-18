@@ -114,6 +114,7 @@ export const STRINGS = {
 
     "error.http": "The server rejected the request ({0}): {1}",
     "error.network": "The server did not answer.",
+    "error.transportMissing": "{0}",
     "error.corsSuspected": "The server is reachable, but the stream was blocked by the browser (CORS). In LM Studio enable CORS in the server settings; for Ollama set OLLAMA_ORIGINS=app://obsidian.md.",
     "error.thoughtOnly": "The model only reasoned and returned no text. Turn thinking off or raise the token limit.",
     "error.empty": "The model returned an empty answer.",
@@ -157,7 +158,6 @@ export const STRINGS = {
 
     "think.button.off": "Thinking off",
     "think.button.on": "Thinking: {0}",
-    "think.button.offNotPossible": "Thinking: {0} (can't fully turn off)",
     "think.pickerLabel": "Thinking level",
 
     "request.level.off": "off",
@@ -285,6 +285,7 @@ export const STRINGS = {
 
     "error.http": "Der Server hat die Anfrage abgelehnt ({0}): {1}",
     "error.network": "Der Server hat nicht geantwortet.",
+    "error.transportMissing": "{0}",
     "error.corsSuspected": "Der Server ist erreichbar, aber der Browser hat den Stream blockiert (CORS). In LM Studio CORS in den Server-Einstellungen einschalten; für Ollama OLLAMA_ORIGINS=app://obsidian.md setzen.",
     "error.thoughtOnly": "Das Modell hat nur gedacht und keinen Text geliefert. Denken ausschalten oder das Token-Limit erhöhen.",
     "error.empty": "Das Modell hat eine leere Antwort geliefert.",
@@ -328,7 +329,6 @@ export const STRINGS = {
 
     "think.button.off": "Denken aus",
     "think.button.on": "Denken: {0}",
-    "think.button.offNotPossible": "Denken: {0} (lässt sich nicht ganz abschalten)",
     "think.pickerLabel": "Denkstufe",
 
     "request.level.off": "aus",

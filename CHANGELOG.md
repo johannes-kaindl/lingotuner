@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Vendored `obsidian-kit` 0.63.0 (was 0.62.0) and `code-kit` 0.31.0 (was 0.28.1). You will notice six things:
+- The thinking block in the result area has a copy button next to its title. It copies the thought as plain text and shows a check mark for a moment; clicking it does not open or close the block.
+- A long line in the streaming answer (for example JSON without spaces) wraps instead of running out of the panel on the right.
+- The thinking button now reads "Thinking: lowest level" when "off" is not possible (Gemma 4 in LM Studio, Claude); the reason is in the tooltip. It used to read "Thinking: off (can't fully turn off)".
+- With LM Studio, thinking and image support of a model are now read from the model's own metadata instead of only guessed from its name, so the thinking button can appear for more models.
+- Settings, "Request" section: the note "model family detected" has a button "Set family in manager" that opens the settings of the LLM Endpoint Manager; a warning appears when the model you send is not loaded in LM Studio and sending would unload another one; for Claude the field reads "Thinking effort (effort)" instead of "(reasoning_effort)".
+- A connection type that the endpoint asks for and this plugin does not provide now gets its own message ("The endpoint needs a connection type this plugin does not support (…)") instead of the Apple Intelligence shortcut error.
+- Nothing else is visible: the other kit changes concern other plugins (path and folder helpers, slash menu, error texts for image and audio providers).
+
 ## [0.10.0] — 2026-10-16
 
 ### Added

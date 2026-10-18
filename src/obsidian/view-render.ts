@@ -3,9 +3,9 @@ import { DIMENSIONS, isNoop, levelKey, type Dials, type Dimension, type Level, t
 import type { Session } from "../core/session";
 import { readinessKey, type Readiness, type SourceKind } from "../core/source";
 import { buildStreamArea, type StreamArea } from "../vendor/kit-obsidian/stream-area";
-import { buildThinkingControl } from "../vendor/kit-obsidian/thinking-control";
+import { buildThinkingControl, thinkingOffTexts } from "../vendor/kit-obsidian/thinking-control";
 import type { BackendId, FamilyId, ThinkingLevel } from "../vendor/kit/sampling-profiles";
-import { t } from "../vendor/kit/i18n";
+import { getLang, t } from "../vendor/kit/i18n";
 
 export type RunPhase = "idle" | "streaming" | "done" | "error" | "aborted";
 
@@ -208,9 +208,8 @@ function runRow(parent: El, m: PanelModel, h: PanelHandlers): void {
     setLevel: (l) => { h.onThinkingLevel(l); return Promise.resolve(); },
     levelPicker: () => m.levelPickerInChat,
     strings: {
-      button: (level, offNotPossible) => level === "off"
-        ? (offNotPossible ? t("think.button.offNotPossible", t("request.level.off")) : t("think.button.off"))
-        : t("think.button.on", t(`request.level.${level}`)),
+      button: (level) => level === "off" ? t("think.button.off") : t("think.button.on", t(`request.level.${level}`)),
+      offNotPossible: thinkingOffTexts(getLang()),
       level: (l) => t(`request.level.${l}`),
       pickerLabel: t("think.pickerLabel"),
     },

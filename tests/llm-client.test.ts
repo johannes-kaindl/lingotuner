@@ -126,6 +126,7 @@ describe("errors", () => {
   it("errorMessageKey bildet i18n-Schluessel und Argumente", () => {
     expect(errorMessageKey({ kind: "http", status: 500, detail: "boom" })).toEqual({ key: "error.http", args: ["500", "boom"] });
     expect(errorMessageKey({ kind: "cors-suspected" })).toEqual({ key: "error.corsSuspected", args: [] });
+    expect(errorMessageKey({ kind: "transport-missing", text: "kein Transport" })).toEqual({ key: "error.transportMissing", args: ["kein Transport"] });
     expect(errorMessageKey({ kind: "thought-only" }).key).toBe("error.thoughtOnly");
     expect(errorMessageKey({ kind: "timeout", seconds: 60 })).toEqual({ key: "error.timeout", args: ["60"] });
   });

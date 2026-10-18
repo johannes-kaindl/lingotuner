@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.62.0, src/obsidian/llm-connection.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.63.0, src/obsidian/llm-connection.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /** Die LLM-Anbindung eines Fachplugins als EINE Komposition: Endpunkt-Quelle (Manager oder lokale
  *  Liste mit Schlüsselbund), gemerkte Auflösung, Modellliste, Anfrage-Parameter je Modus, Client mit
  *  Transport und Fristen, Prüfung der Antwort und beide Settings-Abschnitte.
@@ -49,16 +49,17 @@ import {
   createChatClient, JIT_FIRST_CHUNK_TIMEOUT_MS, DEFAULT_IDLE_TIMEOUT_MS,
   type ChatClient, type ChatResult, type ChatTiming, type ChatWireMessage, type SseTransport,
 } from "./chat-client";
-import { requestUrlTransport, transportFor, xhrSseTransport } from "./chat-transport";
+import { requestUrlTransport, transportFor, TransportMissingError, xhrSseTransport } from "./chat-transport";
 import { splitCallOverrides } from "../kit/override-guard";
 import { createAnthropicChatTransport, createAnthropicState, type AnthropicState } from "./anthropic-transport";
 import { realClock, type ClockPort } from "./clock";
-import { createObsidianBackendProbe } from "./backend-probe";
+import { createObsidianBackendProbe, fetchLoadedModelsAt } from "./backend-probe";
+import type { LoadedModel } from "../kit/capabilities";
 import { buildEndpointList } from "./endpoint-list";
 import { prepareLocalEndpoints } from "./endpoint-secrets";
 import { createEndpointPlumbing } from "./endpoint-plumbing";
 import { createEmbeddingConnection, type EmbeddingConnection, type EmbeddingConnectionOptions } from "./embedding-connection";
-import { buildEndpointSourceSection, findEndpointManager } from "./endpoint-source";
+import { buildEndpointSourceSection, findEndpointManager, openEndpointManagerSettings } from "./endpoint-source";
 import { buildRequestSection, type RequestSectionState } from "./request-section";
 import { createRequestSession, type RequestSession } from "./request-session";
 import { LLM_CONNECTION_STRINGS_DE, LLM_CONNECTION_STRINGS_EN, resolveLlmConnectionStrings, type LlmConnectionStrings, type LlmConnectionStringsOverride } from "./llm-connection-strings";
@@ -115,6 +116,9 @@ export interface LlmConnectionOptions {
   /** Backend des Endpunkts, wenn der Manager es nicht nennt. Default: `createObsidianBackendProbe()`
    *  (je Verbindung ein eigener 30-s-Zwischenspeicher); überschreibbar. */
   backendOf?: (cfg: EndpointConfig) => Promise<BackendId | null>;
+  /** Welche Modelle der Endpunkt gerade geladen hat — für die Warnung im Anfrage-Abschnitt, wenn die Anfrage ein anderes per JIT laden und ein
+   *  geladenes verdrängen würde (nur LM Studio). Default: `fetchLoadedModelsAt` (`GET /api/v1/models`, nur lesend). `null` = unbekannt. */
+  loadedModels?: (cfg: EndpointConfig) => Promise<readonly LoadedModel[] | null>;
   managerOnly?: boolean;
   transports?: LlmConnectionTransports;
   timeouts?: LlmConnectionTimeouts;
@@ -166,6 +170,11 @@ export interface NoEndpointResult {
   kind: "no-endpoint";
   /** Grund des Managers (`no-endpoint`, `disabled`, …) oder die Konfigurationsmeldung. */
   detail: string;
+  /** Seit 0.63.0: `"transport-missing"`, wenn der Endpunkt einen Transport verlangt, den das Plugin nicht bereitstellt (Vertragsverletzung des
+   *  Managers oder fehlendes Opt-in) — dann nennt `transport` ihn. Kein Fehler des Kurzbefehls, auch wenn `transport` `"shortcuts"` ist, nur dort
+   *  ist es die fehlende Brücke. Text: `transportMissingText(strings, transport)`. */
+  reason?: "transport-missing";
+  transport?: "shortcuts" | "anthropic";
   partial: string;
   reasoning: string;
   timing: ChatTiming;
@@ -438,15 +447,18 @@ function createChatConnection(o: LlmConnectionOptions): LlmConnection {
       const { displayFamily: _drop, ...rest } = resolved0;
       src = { ...rest, model: wanted, family: d.family, familySource: d.familySource, sentModel: d.sentModel, ...(d.displayFamily ? { displayFamily: d.displayFamily } : {}) };
     }
-    const fail = (kind: "no-endpoint", detail: string): LlmResult => {
+    const fail = (kind: "no-endpoint", detail: string, extra: Pick<NoEndpointResult, "reason" | "transport"> = {}): LlmResult => {
       const now = clock.now();
-      return { ok: false, kind, detail, partial: "", reasoning: "", timing: { startedAt: now, endedAt: now }, redactions: 0, facts: null, deviations: [], source: src };
+      return { ok: false, kind, detail, ...extra, partial: "", reasoning: "", timing: { startedAt: now, endedAt: now }, redactions: 0, facts: null, deviations: [], source: src };
     };
     if (!src.config) return fail("no-endpoint", src.reason ?? "no-endpoint");
 
     let chat: ChatClient;
     try { chat = chatClientFor(src); }
-    catch (e) { return fail("no-endpoint", e instanceof Error ? e.message : String(e)); }
+    catch (e) {
+      if (e instanceof TransportMissingError) return fail("no-endpoint", e.message, { reason: "transport-missing", transport: e.transport });
+      return fail("no-endpoint", e instanceof Error ? e.message : String(e));
+    }
 
     const mode = h.mode ?? o.mode;
     const settings = o.getSettings().request ?? DEFAULT_REQUEST_SETTINGS;
@@ -538,6 +550,12 @@ function createChatConnection(o: LlmConnectionOptions): LlmConnection {
       save: (s) => persist({ request: s }),
       maxTokens: maxTokensFor,
       session, strings: strings.request, rerender,
+      openManager: () => { openEndpointManagerSettings(o.app); },
+      loadedModels: () => {
+        const cfg = (shown ?? last)?.config;
+        if (!cfg) return Promise.resolve(null);
+        return (o.loadedModels ?? ((c: EndpointConfig) => fetchLoadedModelsAt(c.url, c.apiKey, { timers: clock })))(cfg);
+      },
       ...(o.levelPicker !== undefined ? { levelPicker: o.levelPicker } : {}),
     });
   }

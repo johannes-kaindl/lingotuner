@@ -128,12 +128,13 @@ describe("renderPanel", () => {
     expect(findByClass<El>(on, "okit-thinking-toggle")?.getAttribute?.("aria-pressed")).toBe("true");
   });
 
-  it("gpt-oss kann Denken nicht ganz abschalten — der Knopf-Text sagt das", () => {
+  it("gpt-oss kann Denken nicht ganz abschalten — der Knopf zeigt die niedrigste Stufe, der Grund steht im Hinweis", () => {
     const root = makeFakeEl();
     renderPanel(root, model({ model: "gpt-oss:20b", family: "gpt-oss", thinkingLevel: "off" }), handlers());
     const toggle = findByClass<El>(root, "okit-thinking-toggle");
     expect(toggle?.getAttribute?.("aria-pressed")).toBe("false");
-    expect(toggle?.textContent).toContain("can't fully turn off");
+    expect(toggle?.textContent).toContain("Thinking: lowest level");
+    expect(toggle?.getAttribute?.("aria-label")).toContain("can't be fully turned off");
   });
 
   it("paintStatus setzt Klasse, Icon-Form und aria-label je Phase", () => {

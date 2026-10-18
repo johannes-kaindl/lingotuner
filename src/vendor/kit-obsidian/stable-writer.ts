@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.62.0, src/obsidian/stable-writer.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.63.0, src/obsidian/stable-writer.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { neutralizeModelMarkdown } from "../kit/safe-markdown";
 import { splitStable } from "../kit/stream-blocks";
 import type { ClockPort } from "./clock";
@@ -95,7 +95,9 @@ export interface StableMarkdownWriter {
    *  Zug — zwei getrennte Resets hätte man irgendwann halb gerufen, und ein zweiter Lauf,
    *  der unter den ersten schreibt, war einer der am 2026-09-07 gemeldeten Fehler. */
   reset(): void;
-  /** Nur die Antwort zurücknehmen: Rohstrom, Schnitt-Zeiger, Blöcke und Tail. Die Gedanken des Bereichs bleiben. Für
+  /** Nur die Antwort zurücknehmen: Rohstrom, Schnitt-Zeiger, die **vom Schreiber selbst abgelegten** Blöcke und Tail. Die Gedanken des Bereichs bleiben,
+   *  ebenso alles, was der Consumer sonst in den Bereich gehängt hat (seit 0.63.0; vorher leerte es `area.resetContent()` und damit
+   *  den ganzen Body — bei einem Schreiber mit umgelenktem `bodyEl` den Verlauf der Fläche, nicht den eigenen Strom, kuro-gamification Welle 23). Für
    *  `onContentReset` des Chat-Clients: Gemma 4 schreibt das Denken ohne Öffner in `content`, und erst das `<channel|>` verrät
    *  es; der Text, der bis dahin als Antwort lief, gehört in den Gedankenblock (den füllt `onReasoning`). Ein Block, der
    *  gerade noch rendert, schreibt ins schon entfernte Element und stört den neuen Text nicht. */
@@ -112,6 +114,8 @@ export function createStableWriter(opts: StableWriterOptions): StableMarkdownWri
   /** Wie viele Zeichen des Stroms bereits als Markdown gerendert sind. */
   let stableLen = 0;
   let pending: Array<Promise<void>> = [];
+  /** Die Blöcke, die dieser Schreiber abgelegt hat — nur diese nimmt `resetContent` zurück. */
+  let blocks: HTMLElement[] = [];
   const guardOpts = opts.domGuard === undefined || opts.domGuard === true ? {} : opts.domGuard === false ? null : opts.domGuard;
   const guard: DomGuard | null = guardOpts ? attachDomGuard(area.bodyEl, guardOpts) : null;
   const deadline = opts.renderDeadlineMs ?? DOM_GUARD_DEADLINE_MS;
@@ -145,6 +149,7 @@ export function createStableWriter(opts: StableWriterOptions): StableMarkdownWri
           const fresh = stable.slice(stableLen);
           stableLen = stable.length;
           const blockEl = area.bodyEl.createDiv({ cls: blockCls });
+          blocks.push(blockEl);
           const rendering = opts.render(blockEl, opts.raw ? fresh : neutralizeModelMarkdown(fresh));
           // Der Durchgang steht in DERSELBEN Kette vor dem `catch`: eine Ausnahme darin fällt auf `setText`.
           const p = (guard ? settleWithin(rendering, deadline, opts.clock).then(() => guard.run()) : rendering).catch(() => { blockEl.setText(fresh); });
@@ -176,13 +181,18 @@ export function createStableWriter(opts: StableWriterOptions): StableMarkdownWri
     resetContent(): void {
       raw = "";
       stableLen = 0;
-      area.resetContent();
+      // Nicht `area.resetContent()`: das leert den Body der FLÄCHE, und ein Schreiber mit umgelenktem `bodyEl`
+      // (`{ ...area, bodyEl: eintrag }`) schreibt woanders hin. Der Tail wird geleert, nicht entfernt (Consumer halten ihn).
+      for (const b of blocks) b.remove();
+      blocks = [];
+      area.setTail("");
     },
 
     reset(): void {
       raw = "";
       stableLen = 0;
       pending = [];
+      blocks = [];
       area.reset();
     },
   };
