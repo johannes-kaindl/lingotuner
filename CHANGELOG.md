@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-10-18
+
 ### Changed
 - Vendored `obsidian-kit` 0.63.0 (was 0.62.0) and `code-kit` 0.31.0 (was 0.28.1). You will notice six things:
 - The thinking block in the result area has a copy button next to its title. It copies the thought as plain text and shows a check mark for a moment; clicking it does not open or close the block.
