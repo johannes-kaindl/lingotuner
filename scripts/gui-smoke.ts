@@ -49,7 +49,7 @@ import { cwd } from "node:process";
 import { Cdp, attachTo, beimAbbruch, bereiteInstanzVor, clickReal, closeExtraLeaves, entferneFakeManager, installFakeManager as installZentralFakeManager, istAbgebrochen, notices, pollUntil, requireVisible, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
 import { startLlmStub, type AntwortSpec } from "../../tools/obsidian-cdp/llm-stub.js";
 import { messeFolge, zeichneFolge } from "../../tools/obsidian-cdp/folge.js";
-import { gegenprobeErreichbarkeit, messeErreichbarkeit, messeFokusErhalt, messeFokusFenster, mitHoehe, zeichnePflicht, fokusAufraeumSkript, type PflichtBilanz, type PflichtTeilurteil } from "../../tools/obsidian-cdp/pflichtpunkte.js";
+import { gegenprobeErreichbarkeit, gegenprobeFokus, messeErreichbarkeit, messeFokusErhalt, messeFokusFenster, mitHoehe, zeichnePflicht, fokusAufraeumSkript, type PflichtBilanz, type PflichtTeilurteil } from "../../tools/obsidian-cdp/pflichtpunkte.js";
 import { createBilanz, parseArgs, runDriver } from "../../tools/obsidian-cdp/bilanz.js";
 import { boxAround, capture } from "../../tools/obsidian-cdp/shot.js";
 import { buildVault, requireEigenerBuild, stagingVaultDir } from "../../tools/obsidian-cdp/vault.js";
@@ -109,6 +109,8 @@ const PUNKTE = [
   "C7 Ersetzen-Ziel sperrt bei geaenderter Quelle",
   "C8 Gedanken-Block waehrend des Streams",
   "C8b Gedanken-Text waechst waehrend des Streams",
+  "C8c Denkblock kopierbar: der Knopf legt den Denktext in die Zwischenablage, der Block klappt nicht um",
+  "C8d Gegenprobe: lehnt die Zwischenablage ab, quittiert der Knopf nicht",
   "C9 jedes Bedienelement ist erreichbar (natuerliche Hoehe)",
   "C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)",
   "C9c Gegenprobe: ohne Rollbalken wird etwas unerreichbar",
@@ -341,15 +343,8 @@ async function pruefePanel(cdp: Cdp): Promise<void> {
     nichtGemessen("B10 Tippen ins Textfeld behaelt den Fokus", "ohne .lt-freetext (B8 rot) ist der Punkt gegenstandslos");
   } else {
     zeichnePflicht(pflichtBilanz, "B10 Tippen ins Textfeld behaelt den Fokus", await messeFokusErhalt(cdp, { selector: ".lt-freetext" }));
-    // B10b — Gegenprobe: ein Neuzeichnen, das dem Feld den Fokus nimmt (hier ein `blur` im selben Ausloeser), MUSS die Messung rot machen.
-    // Ohne sie waere B10 auch gruen, wenn das Fenster zu kurz oder der Ausloeser wirkungslos waere (CORE-TEST-01).
-    await cdp.evaluate(`window.__ltFokusProbe = () => { const el = document.querySelector(".lt-freetext"); if (el) el.blur(); }; document.addEventListener("selectionchange", window.__ltFokusProbe); return true;`);
-    try {
-      const u = await messeFokusErhalt(cdp, { selector: ".lt-freetext" });
-      record("B10b Gegenprobe: ein Neuzeichnen mit Fokusverlust macht B10 rot", u.urteil === "rot", `Urteil der Messung unter der Manipulation: ${u.urteil} — ${u.detail}`);
-    } finally {
-      await cdp.evaluate(`document.removeEventListener("selectionchange", window.__ltFokusProbe); delete window.__ltFokusProbe; return true;`).catch(() => null);
-    }
+    // B10b — Gegenprobe (Baustein `gegenprobeFokus`, vorher lokal): ein Neuzeichnen, das dem Feld den Fokus nimmt, MUSS die Messung rot machen.
+    zeichnePflicht(pflichtBilanz, "B10b Gegenprobe: ein Neuzeichnen mit Fokusverlust macht B10 rot", await gegenprobeFokus(cdp, { selector: ".lt-freetext" }));
   }
 
   // Lesemodus blockiert Markierung/Notiz.
@@ -401,12 +396,58 @@ async function stelleDenkenZurueck(cdp: Cdp): Promise<void> {
  *  Streams gesperrt sind. Zwei rote und ein uebersprungener Punkt aus einer Zeitersparnis.
  *  Sobald der Block steht, ist die Frage beantwortet — der Rest des Laufs kostet nur noch
  *  Minuten, deshalb der Abbruch. */
+const C8C = "C8c Denkblock kopierbar: der Knopf legt den Denktext in die Zwischenablage, der Block klappt nicht um";
+const C8D = "C8d Gegenprobe: lehnt die Zwischenablage ab, quittiert der Knopf nicht";
+
+/** C8c/C8d — der Kopier-Knopf am Gedankenblock (Kit 0.63.0). `navigator.clipboard.writeText` wird im Renderer ersetzt (Aufzeichnung statt der
+ *  echten Zwischenablage, die dem Fenster-Fokus unterliegt), danach wiederhergestellt. C8d: lehnt `writeText` ab, darf der Knopf nicht
+ *  „kopiert“ quittieren — sonst waere die Quittung von C8c kein Beleg fuer das Kopieren. */
+async function messeDenkblockKopierbar(cdp: Cdp, blockDa: boolean): Promise<void> {
+  if (!blockDa || (await count(cdp, ".okit-stream-reasoning-copy")) === 0) {
+    const grund = !blockDa ? "C8 hat keinen Gedanken-Block waehrend des Streams beobachtet" : "der Block traegt (noch) keinen Kopier-Knopf";
+    nichtGemessen(C8C, grund);
+    nichtGemessen(C8D, grund);
+    return;
+  }
+  const probe = (modus: "ok" | "ablehnen") => `
+    const alt = Object.getOwnPropertyDescriptor(navigator.clipboard, "writeText");
+    window.__ltKopie = { text: null, n: 0 };
+    Object.defineProperty(navigator.clipboard, "writeText", { configurable: true, value: (t) => { window.__ltKopie.n += 1; window.__ltKopie.text = t; return ${modus === "ok" ? "Promise.resolve()" : 'Promise.reject(new Error("abgelehnt"))'}; } });
+    window.__ltKopieAlt = alt || null;
+    const d = document.querySelector(".okit-stream-reasoning");
+    const offenVorher = d.open;
+    document.querySelector(".okit-stream-reasoning-copy").click();
+    await new Promise((r) => setTimeout(r, 400));
+    const pre = d.querySelector("pre");
+    const btn = document.querySelector(".okit-stream-reasoning-copy");
+    return { n: window.__ltKopie.n, text: window.__ltKopie.text, preText: pre ? pre.textContent : "", offenVorher, offenNachher: d.open, quittiert: !!btn && btn.classList.contains("is-copied") };
+  `;
+  const aufraeumen = `
+    if (window.__ltKopieAlt) Object.defineProperty(navigator.clipboard, "writeText", window.__ltKopieAlt); else delete navigator.clipboard.writeText;
+    delete window.__ltKopie; delete window.__ltKopieAlt; return true;`;
+  try {
+    const ok = await cdp.evaluate<{ n: number; text: string | null; preText: string; offenVorher: boolean; offenNachher: boolean; quittiert: boolean }>(probe("ok"));
+    await cdp.evaluate(aufraeumen);
+    const gleich = ok.n === 1 && ok.text !== null && ok.text.trim() !== "" && ok.preText.trim().startsWith(ok.text.trim());  // der Strom laeuft: der Block darf seit dem Klick gewachsen sein, der Kopierte ist sein Anfang
+    record(C8C, gleich && ok.offenVorher === ok.offenNachher && ok.quittiert,
+      `${ok.n}× kopiert, ${ok.text === null ? "kein Text" : `${ok.text.length} Zeichen`} (Block jetzt ${ok.preText.length}, der Kopierte ist sein Anfang), Block ${ok.offenVorher === ok.offenNachher ? "unveraendert" : "UMGEKLAPPT"}, Quittung ${ok.quittiert ? "da" : "fehlt"}`);
+    // Quittung abwarten, bevor die Gegenprobe den Zustand liest.
+    await pollUntil<{ ok: boolean }>(cdp, `const b = document.querySelector(".okit-stream-reasoning-copy"); return b && !b.classList.contains("is-copied") ? { ok: true } : null;`, 4000, 150);
+    const nein = await cdp.evaluate<{ n: number; quittiert: boolean }>(probe("ablehnen"));
+    record(C8D, nein.n === 1 && !nein.quittiert, `writeText abgelehnt (${nein.n}× aufgerufen): Knopf ${nein.quittiert ? "quittiert trotzdem" : "quittiert nicht"}`);
+  } finally {
+    await cdp.evaluate(aufraeumen).catch(() => null);
+  }
+}
+
 async function pruefeGedanken(cdp: Cdp): Promise<void> {
   await cdp.evaluate(`app.workspace.trigger("active-leaf-change"); return { ok: true };`);
   const bereit = await pollUntil<{ ok: boolean }>(cdp, `const b = document.querySelector(".lt-run"); return b && !b.disabled ? { ok: true } : null;`, 5000, 250);
   if (bereit === null) {
     nichtGemessen("C8 Gedanken-Block waehrend des Streams", `Vorbedingung fehlt: .lt-run ist nicht bedienbar (Quelle: ${(await text(cdp, ".lt-source-line")) ?? "?"})`);
     nichtGemessen("C8b Gedanken-Text waechst waehrend des Streams", "C8 war nicht messbar (.lt-run nicht bedienbar)");
+    nichtGemessen(C8C, "C8 war nicht messbar (.lt-run nicht bedienbar)");
+    nichtGemessen(C8D, "C8 war nicht messbar (.lt-run nicht bedienbar)");
     return;
   }
   await schalteDenkenAn(cdp);
@@ -432,6 +473,7 @@ async function pruefeGedanken(cdp: Cdp): Promise<void> {
   } else {
     nichtGemessen("C8b Gedanken-Text waechst waehrend des Streams", "C8 hat keinen Gedanken-Block waehrend des Streams beobachtet — ohne Block gibt es nichts, das wachsen koennte");
   }
+  await messeDenkblockKopierbar(cdp, beob?.block === true);
   // Abbrechen: waehrend des Streams TRAEGT `.lt-run` die Abbrechen-Rolle.
   if (await hasClass(cdp, ".lt-status", "is-checking")) {
     await clickReal(cdp, `document.querySelector(".lt-run")`);
@@ -466,6 +508,8 @@ const C_AUSGAENGE = [
   "C6 Logbuch anlegen und anhaengen", "C7 Ersetzen-Ziel sperrt bei geaenderter Quelle",
   "C8 Gedanken-Block waehrend des Streams",
   "C8b Gedanken-Text waechst waehrend des Streams",
+  "C8c Denkblock kopierbar: der Knopf legt den Denktext in die Zwischenablage, der Block klappt nicht um",
+  "C8d Gegenprobe: lehnt die Zwischenablage ab, quittiert der Knopf nicht",
   "C9 jedes Bedienelement ist erreichbar (natuerliche Hoehe)",
   "C9b jedes Bedienelement ist erreichbar (kurzes Panel, 420 px)",
   "C9c Gegenprobe: ohne Rollbalken wird etwas unerreichbar",
@@ -526,7 +570,7 @@ async function pruefeUeberdeckung(cdp: Cdp): Promise<void> {
   zeichnePflicht(pflichtBilanz, C9, await messeErreichbarkeit(cdp, opts));
   // Zweite Lage: ein geteilter rechter Seitenbereich (zwei gestapelte Panels) ist der Normalfall, nicht die Verrenkung. Das Leaf ueber dem
   // Panel, nicht das erste `.workspace-leaf` des Dokuments (das waere der Editor): `:has(.lt-panel)`.
-  const kurz = await mitHoehe<PflichtTeilurteil>(cdp, { element: ".workspace-leaf:has(.lt-panel)", hoehe: 420 }, () => messeErreichbarkeit(cdp, opts));
+  const kurz = await mitHoehe<PflichtTeilurteil>(cdp, { element: ".workspace-leaf", enthaelt: ".lt-panel", hoehe: 420 }, () => messeErreichbarkeit(cdp, opts));
   zeichnePflicht(pflichtBilanz, C9b, kurz);
   zeichnePflicht(pflichtBilanz, C9c, await gegenprobeErreichbarkeit(cdp, { selektoren: BEDIENELEMENTE, nurErster: [".lt-dial-input"], rollbereich: ".lt-panel", fuelle: { in: ".okit-stream-body" } }));
 }
