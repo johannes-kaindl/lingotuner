@@ -24,7 +24,7 @@
 
 import { argv, cwd, exit } from "node:process";
 
-import { Cdp, attachTo, clickReal, pollUntil, requireUntil, requireVisible, setAppConfig, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
+import { Cdp, attachTo, clickReal, pollUntil, requireUntil, requireVisible, schliesseEinstellungen, setAppConfig, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
 import { startLlmStub, type LlmStub } from "../../tools/obsidian-cdp/llm-stub.js";
 import { boxAround, capture, setWindowSize, writeShot, type Rect } from "../../tools/obsidian-cdp/shot.js";
 import { buildVault, stagingVaultDir } from "../../tools/obsidian-cdp/vault.js";
@@ -214,7 +214,7 @@ const MOTIVE: Motiv[] = [
 
 /** Einstellungen: ab Obsidian 1.13 ein eigenes Fenster ohne `window.app`. */
 async function settingsBild(ws: Cdp, port: number, outDir: string): Promise<string> {
-  await ws.evaluate(`app.setting.close(); return { ok: true };`).catch(() => undefined);
+  await schliesseEinstellungen(ws);
   await sleep(800);
   await ws.evaluate(`
     app.setting.open();
@@ -251,7 +251,7 @@ async function settingsBild(ws: Cdp, port: number, outDir: string): Promise<stri
     return await writeShot(fenster, "settings.png", png, { outDir, captureWidth: CAPTURE_WIDTH, thumbWidth: THUMB_WIDTH });
   } finally {
     if (!modal.m) fenster.close();
-    await ws.evaluate(`app.setting.close(); return { ok: true };`).catch(() => undefined);
+    await schliesseEinstellungen(ws);
   }
 }
 

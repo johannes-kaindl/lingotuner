@@ -46,10 +46,10 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { join } from "node:path";
 import { cwd } from "node:process";
 
-import { Cdp, attachTo, beimAbbruch, bereiteInstanzVor, clickReal, closeExtraLeaves, entferneFakeManager, installFakeManager as installZentralFakeManager, istAbgebrochen, notices, pollUntil, requireVisible, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
+import { Cdp, attachTo, beimAbbruch, bereiteInstanzVor, clickReal, closeExtraLeaves, entferneFakeManager, installFakeManager as installZentralFakeManager, istAbgebrochen, notices, pollUntil, requireVisible, schliesseEinstellungen, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
 import { startLlmStub, type AntwortSpec } from "../../tools/obsidian-cdp/llm-stub.js";
 import { messeFolge, zeichneFolge } from "../../tools/obsidian-cdp/folge.js";
-import { gegenprobeErreichbarkeit, gegenprobeFokus, messeErreichbarkeit, messeFokusErhalt, messeFokusFenster, mitHoehe, zeichnePflicht, fokusAufraeumSkript, type PflichtBilanz, type PflichtTeilurteil } from "../../tools/obsidian-cdp/pflichtpunkte.js";
+import { gegenprobeErreichbarkeit, gegenprobeFokus, messeDenkblockKopierbar, messeErreichbarkeit, messeFokusErhalt, messeFokusFenster, mitHoehe, zeichneDenkblock, zeichnePflicht, fokusAufraeumSkript, type PflichtBilanz, type PflichtTeilurteil } from "../../tools/obsidian-cdp/pflichtpunkte.js";
 import { createBilanz, parseArgs, runDriver } from "../../tools/obsidian-cdp/bilanz.js";
 import { boxAround, capture } from "../../tools/obsidian-cdp/shot.js";
 import { buildVault, requireEigenerBuild, stagingVaultDir } from "../../tools/obsidian-cdp/vault.js";
@@ -399,45 +399,16 @@ async function stelleDenkenZurueck(cdp: Cdp): Promise<void> {
 const C8C = "C8c Denkblock kopierbar: der Knopf legt den Denktext in die Zwischenablage, der Block klappt nicht um";
 const C8D = "C8d Gegenprobe: lehnt die Zwischenablage ab, quittiert der Knopf nicht";
 
-/** C8c/C8d — der Kopier-Knopf am Gedankenblock (Kit 0.63.0). `navigator.clipboard.writeText` wird im Renderer ersetzt (Aufzeichnung statt der
- *  echten Zwischenablage, die dem Fenster-Fokus unterliegt), danach wiederhergestellt. C8d: lehnt `writeText` ab, darf der Knopf nicht
- *  „kopiert“ quittieren — sonst waere die Quittung von C8c kein Beleg fuer das Kopieren. */
-async function messeDenkblockKopierbar(cdp: Cdp, blockDa: boolean): Promise<void> {
-  if (!blockDa || (await count(cdp, ".okit-stream-reasoning-copy")) === 0) {
-    const grund = !blockDa ? "C8 hat keinen Gedanken-Block waehrend des Streams beobachtet" : "der Block traegt (noch) keinen Kopier-Knopf";
+/** C8c/C8d — der Kopier-Knopf am Gedankenblock (Kit 0.63.0): die Messung steht zentral in `pflichtpunkte.ts` (`messeDenkblockKopierbar`, mit Gegenprobe).
+ *  Das Plugin vendort `stream-area` ab Kit 0.63.0, der Knopf ist also Pflicht (`erwartetKnopf`): fehlt er, ist der Punkt rot statt „nichts gemessen“. */
+async function pruefeDenkblockKopierbar(cdp: Cdp, blockDa: boolean): Promise<void> {
+  if (!blockDa) {
+    const grund = "C8 hat keinen Gedanken-Block waehrend des Streams beobachtet";
     nichtGemessen(C8C, grund);
     nichtGemessen(C8D, grund);
     return;
   }
-  const probe = (modus: "ok" | "ablehnen") => `
-    const alt = Object.getOwnPropertyDescriptor(navigator.clipboard, "writeText");
-    window.__ltKopie = { text: null, n: 0 };
-    Object.defineProperty(navigator.clipboard, "writeText", { configurable: true, value: (t) => { window.__ltKopie.n += 1; window.__ltKopie.text = t; return ${modus === "ok" ? "Promise.resolve()" : 'Promise.reject(new Error("abgelehnt"))'}; } });
-    window.__ltKopieAlt = alt || null;
-    const d = document.querySelector(".okit-stream-reasoning");
-    const offenVorher = d.open;
-    document.querySelector(".okit-stream-reasoning-copy").click();
-    await new Promise((r) => setTimeout(r, 400));
-    const pre = d.querySelector("pre");
-    const btn = document.querySelector(".okit-stream-reasoning-copy");
-    return { n: window.__ltKopie.n, text: window.__ltKopie.text, preText: pre ? pre.textContent : "", offenVorher, offenNachher: d.open, quittiert: !!btn && btn.classList.contains("is-copied") };
-  `;
-  const aufraeumen = `
-    if (window.__ltKopieAlt) Object.defineProperty(navigator.clipboard, "writeText", window.__ltKopieAlt); else delete navigator.clipboard.writeText;
-    delete window.__ltKopie; delete window.__ltKopieAlt; return true;`;
-  try {
-    const ok = await cdp.evaluate<{ n: number; text: string | null; preText: string; offenVorher: boolean; offenNachher: boolean; quittiert: boolean }>(probe("ok"));
-    await cdp.evaluate(aufraeumen);
-    const gleich = ok.n === 1 && ok.text !== null && ok.text.trim() !== "" && ok.preText.trim().startsWith(ok.text.trim());  // der Strom laeuft: der Block darf seit dem Klick gewachsen sein, der Kopierte ist sein Anfang
-    record(C8C, gleich && ok.offenVorher === ok.offenNachher && ok.quittiert,
-      `${ok.n}× kopiert, ${ok.text === null ? "kein Text" : `${ok.text.length} Zeichen`} (Block jetzt ${ok.preText.length}, der Kopierte ist sein Anfang), Block ${ok.offenVorher === ok.offenNachher ? "unveraendert" : "UMGEKLAPPT"}, Quittung ${ok.quittiert ? "da" : "fehlt"}`);
-    // Quittung abwarten, bevor die Gegenprobe den Zustand liest.
-    await pollUntil<{ ok: boolean }>(cdp, `const b = document.querySelector(".okit-stream-reasoning-copy"); return b && !b.classList.contains("is-copied") ? { ok: true } : null;`, 4000, 150);
-    const nein = await cdp.evaluate<{ n: number; quittiert: boolean }>(probe("ablehnen"));
-    record(C8D, nein.n === 1 && !nein.quittiert, `writeText abgelehnt (${nein.n}× aufgerufen): Knopf ${nein.quittiert ? "quittiert trotzdem" : "quittiert nicht"}`);
-  } finally {
-    await cdp.evaluate(aufraeumen).catch(() => null);
-  }
+  zeichneDenkblock(pflichtBilanz, { kopie: C8C, gegen: C8D }, await messeDenkblockKopierbar(cdp, { block: ".okit-stream-reasoning", knopf: ".okit-stream-reasoning-copy", erwartetKnopf: true }));
 }
 
 async function pruefeGedanken(cdp: Cdp): Promise<void> {
@@ -473,7 +444,7 @@ async function pruefeGedanken(cdp: Cdp): Promise<void> {
   } else {
     nichtGemessen("C8b Gedanken-Text waechst waehrend des Streams", "C8 hat keinen Gedanken-Block waehrend des Streams beobachtet — ohne Block gibt es nichts, das wachsen koennte");
   }
-  await messeDenkblockKopierbar(cdp, beob?.block === true);
+  await pruefeDenkblockKopierbar(cdp, beob?.block === true);
   // Abbrechen: waehrend des Streams TRAEGT `.lt-run` die Abbrechen-Rolle.
   if (await hasClass(cdp, ".lt-status", "is-checking")) {
     await clickReal(cdp, `document.querySelector(".lt-run")`);
@@ -1078,7 +1049,7 @@ async function warteAufGeschlosseneSettings(port: number, timeoutMs = 3000): Pro
 async function openSettings(cdp: Cdp, port: number): Promise<SettingsStelle> {
   // Defensiv IMMER erst schliessen (auch wenn nichts offen war — dann no-op): der Grund
   // steht im Kommentar von warteAufGeschlosseneSettings.
-  await cdp.evaluate(`app.setting.close(); return { ok: true };`).catch(() => undefined);
+  await schliesseEinstellungen(cdp);
   await warteAufGeschlosseneSettings(port);
   await cdp.evaluate(`
     app.setting.open();
@@ -1106,9 +1077,9 @@ async function openSettings(cdp: Cdp, port: number): Promise<SettingsStelle> {
  *  hier nur als Existenz-Marker dient, nicht als gepruefter String. */
 function t_pluginName(): string { return "LingoTuner"; }
 
-function closeSettings(cdp: Cdp, stelle: SettingsStelle): void {
+async function closeSettings(cdp: Cdp, stelle: SettingsStelle): Promise<void> {
   if (stelle.eigenesFenster) stelle.cdp.close();
-  else void cdp.evaluate(`app.setting.close(); return { ok: true };`).catch(() => undefined);
+  else await schliesseEinstellungen(cdp);
 }
 
 async function stelleCount(stelle: SettingsStelle, selector: string): Promise<number> {
@@ -1150,7 +1121,7 @@ async function pruefeHilfeZeile(cdp: Cdp, port: number): Promise<void> {
   } catch (e) {
     record("H1 Die Hilfe-Zeile steht als erste Zeile im Tab, mit Text-Knopf und Icon-Knopf", false, `Fehler: ${(e as Error).message}`);
   } finally {
-    if (stelle) closeSettings(cdp, stelle);
+    if (stelle) await closeSettings(cdp, stelle);
   }
 }
 
@@ -1197,7 +1168,7 @@ async function pruefeGlobalesModell(cdp: Cdp, port: number): Promise<void> {
   } catch (e) {
     record(NAME1, false, `Fehler: ${(e as Error).message}`);
   } finally {
-    if (stelle) closeSettings(cdp, stelle);
+    if (stelle) await closeSettings(cdp, stelle);
     await cdp.evaluate(`
       await app.vault.adapter.write(${q(pfad)}, ${q(vor.roh ?? "{}")});
       await app.plugins.disablePlugin(${q(PLUGIN_ID)});
@@ -1242,7 +1213,7 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
     const managed = MANAGED_TEXT.some((s) => body.includes(s));
     const localRows = await stelleCount(stelle, ".okit-ep-row");
     record(REST[0]!, managed && localRows === 0, `managed-Text ${managed ? "da" : "fehlt"}, ${localRows} lokale Endpunkt-Zeilen`);
-    closeSettings(cdp, stelle);
+    await closeSettings(cdp, stelle);
     stelle = null;
 
     // M2 — ein Lauf nutzt den Manager-Endpunkt (Fake-Server sieht POST /v1/chat/completions)
@@ -1336,7 +1307,7 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
     const bodyNach = await stelleText(stelle);
     const managedNach = MANAGED_TEXT.some((s) => bodyNach.includes(s));
     const localRowsNach = await stelleCount(stelle, ".okit-ep-row");
-    closeSettings(cdp, stelle);
+    await closeSettings(cdp, stelle);
     stelle = null;
     const settingsZurueck = !managedNach && localRowsNach > 0;
 
@@ -1369,7 +1340,7 @@ async function pruefeManager(cdp: Cdp, port: number): Promise<void> {
       if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);
     }
   } finally {
-    if (stelle) closeSettings(cdp, stelle);
+    if (stelle) await closeSettings(cdp, stelle);
     await removeFakeManager(cdp).catch(() => null);
     if (vorherEndpoints !== null) {
       await cdp.evaluate(`
@@ -1460,7 +1431,7 @@ async function pruefeApple(cdp: Cdp, port: number): Promise<void> {
     record(NAMEN[2]!, gewaehlt !== null, gewaehlt !== null
       ? `Quelle traegt transport shortcuts; Hinweis zur Grenze im Tab: ${/4096/.test(hinweis) ? "da" : "FEHLT"}`
       : "Quelle blieb HTTP — die Dropdown-Wahl kam nicht an");
-    closeSettings(cdp, stelle);
+    await closeSettings(cdp, stelle);
     stelle = null;
 
     // S4/S5 — ein Lauf. `window.open`-Stub VOR dem Klick, Rueckbau im finally.
@@ -1489,7 +1460,7 @@ async function pruefeApple(cdp: Cdp, port: number): Promise<void> {
       if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);
     }
   } finally {
-    if (stelle) closeSettings(cdp, stelle);
+    if (stelle) await closeSettings(cdp, stelle);
     if (stubGesetzt) {
       await cdp.evaluate(`window.open = window.__smokeOrigOpen; delete window.__smokeOrigOpen; delete window.__smokeOpenUrls; return { ok: true };`).catch(() => null);
     }
@@ -1850,7 +1821,7 @@ async function halteEinstellungenBild(cdp: Cdp, port: number, name: string): Pro
   } catch (e) {
     console.log(`  · Bild ${name} nicht aufgenommen: ${(e as Error).message}`);
   } finally {
-    if (stelle) closeSettings(cdp, stelle);
+    if (stelle) await closeSettings(cdp, stelle);
   }
 }
 
@@ -2134,7 +2105,7 @@ async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
     } else {
       nichtGemessen(NAMEN[1]!, "Abschnitt liess sich nicht aufklappen — ohne ihn ist kein Feld erreichbar");
     }
-    closeSettings(cdp, stelle);
+    await closeSettings(cdp, stelle);
     stelle = null;
 
     // N3 — Denk-Knopf im Panel: ein Klick schaltet is-off um.
@@ -2173,7 +2144,7 @@ async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
       if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);
     }
   } finally {
-    if (stelle) closeSettings(cdp, stelle);
+    if (stelle) await closeSettings(cdp, stelle);
   }
 }
 
