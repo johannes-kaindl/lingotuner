@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The panel has its own icon, a speaking head (`speech`), in the ribbon and on the tab. It used the sliders icon, which the Settings Assistant also shows, so the two could not be told apart at a glance.
+
 ## [0.11.0] — 2026-10-18
 
 ### Changed

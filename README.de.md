@@ -62,7 +62,7 @@ Danach `main.js`, `manifest.json` und `styles.css` nach `<vault>/.obsidian/plugi
 
 ## Verwendung
 
-1. Panel öffnen — Ribbon-Icon (Regler) oder der Befehl **Panel öffnen**. Bei markiertem Text öffnet **Markierung tunen** das Panel und nimmt die Markierung mit.
+1. Panel öffnen — Ribbon-Icon (sprechender Kopf) oder der Befehl **Panel öffnen**. Bei markiertem Text öffnet **Markierung tunen** das Panel und nimmt die Markierung mit.
 2. Quelle wählen: **Markierung**, **Aktive Notiz** oder **Textfeld**. Die Statuszeile sagt, was aufgenommen wurde („Markierung: 412 Zeichen in Mail an X“) oder warum nichts läuft („Markiere zuerst Text in einer Notiz“, „Die Notiz ist im Lesemodus“).
 3. Regler stellen oder ein Preset wählen, bei Bedarf eine Anmerkung dazuschreiben.
 4. **Tunen** drücken. Das Ergebnis streamt herein; **Abbrechen** hält an und behält, was angekommen ist. Ab der zweiten Runde listet das Panel die Runden, ein Klick führt zu jeder zurück.

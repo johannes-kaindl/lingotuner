@@ -12,6 +12,8 @@ import { neutralizeModelMarkdown } from "../vendor/kit/safe-markdown";
 import { t } from "../vendor/kit/i18n";
 
 export const VIEW_TYPE_LINGOTUNER = "lingotuner-panel";
+/** Icon des Panels (Ribbon und Tab). Eigener Name: `sliders-horizontal` tragen schon settings-assistant und koda-agent. */
+export const PANEL_ICON = "speech";
 
 export interface RunRequest {
   text: string;
@@ -96,7 +98,7 @@ export class LingoTunerView extends ItemView {
 
   getViewType(): string { return VIEW_TYPE_LINGOTUNER; }
   getDisplayText(): string { return t("plugin.name"); }
-  getIcon(): string { return "sliders-horizontal"; }
+  getIcon(): string { return PANEL_ICON; }
 
   onOpen(): Promise<void> {
     this.draw();

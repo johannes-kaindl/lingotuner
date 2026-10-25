@@ -24,7 +24,7 @@ import { SelectionTracker, createTunedNote, replaceCapture } from "./obsidian/ed
 import { vaultOverrideReader } from "./obsidian/overrides-io";
 import { appendLogEntry } from "./obsidian/logbook-io";
 import { LingoTunerSettingTab } from "./obsidian/settings-tab";
-import { LingoTunerView, VIEW_TYPE_LINGOTUNER, type RunRequest } from "./obsidian/view";
+import { LingoTunerView, PANEL_ICON, VIEW_TYPE_LINGOTUNER, type RunRequest } from "./obsidian/view";
 
 const SELECTION_DEBOUNCE_MS = 150;
 
@@ -160,7 +160,7 @@ export default class LingoTunerPlugin extends Plugin {
     this.register(() => { if (this.selectionDebounce !== null) window.clearTimeout(this.selectionDebounce); });
     this.registerEvent(this.app.workspace.on("active-leaf-change", () => { this.tracker.capture(); this.panel()?.refresh(); }));
 
-    this.addRibbonIcon("sliders-horizontal", t("ribbon"), () => { void this.activatePanel(); });
+    this.addRibbonIcon(PANEL_ICON, t("ribbon"), () => { void this.activatePanel(); });
     this.addCommand({ id: "open-panel", name: t("cmd.openPanel"), callback: () => { void this.activatePanel(); } });
     this.addCommand({
       id: "tune-selection",

@@ -84,6 +84,7 @@ const PUNKTE = [
   "A1 Plugin geladen",
   "A2 Befehle registriert",
   "A3 Panel oeffnet",
+  "A4 Ribbon-Knopf und Tab tragen dasselbe eigene Icon",
   "B1 drei Quellen-Chips",
   "B2 vier Regler",
   "B3 vier Preset-Chips",
@@ -298,6 +299,23 @@ async function pruefeGrundlage(cdp: Cdp, vaultName: string): Promise<void> {
   await cdp.evaluate(`app.commands.executeCommandById(${q(`${PLUGIN_ID}:open-panel`)}); return { ok: true };`);
   const panel = await pollUntil<{ ok: boolean }>(cdp, `return document.querySelector(".lt-panel") ? { ok: true } : null;`, 10_000, 300);
   record("A3 Panel oeffnet", panel !== null, panel !== null ? "Leaf mit .lt-panel" : `kein .lt-panel; Leaves: ${(await cdp.evaluate<{ n: number }>(`return { n: app.workspace.getLeavesOfType(${q(VIEW_TYPE)}).length };`)).n}`);
+  // A4: ein Name an einem Ort (`PANEL_ICON`) — Ribbon und Tab muessen dasselbe SVG zeigen, und es darf nicht das Icon der
+  // Schwester-Plugins (settings-assistant, koda-agent) sein. Erwartet wird, was die Ansicht selbst als Icon nennt.
+  const icons = await cdp.evaluate<{ erwartet: string; ribbon: string | null; tab: string | null }>(`
+    const view = app.workspace.getLeavesOfType(${q(VIEW_TYPE)})[0]?.view;
+    const lucide = (el) => { const c = [...(el?.querySelector("svg")?.classList ?? [])].find((x) => x.startsWith("lucide-")); return c ?? null; };
+    return {
+      erwartet: view?.getIcon?.() ?? "",
+      ribbon: lucide(document.querySelector('.side-dock-ribbon-action[aria-label="LingoTuner"]')),
+      tab: lucide(document.querySelector('.workspace-tab-header[data-type=${q(VIEW_TYPE)}] .workspace-tab-header-inner-icon')),
+    };
+  `);
+  const soll = `lucide-${icons.erwartet}`;
+  record(
+    "A4 Ribbon-Knopf und Tab tragen dasselbe eigene Icon",
+    icons.erwartet !== "" && icons.erwartet !== "sliders-horizontal" && icons.ribbon === soll && icons.tab === soll,
+    `Ansicht: „${icons.erwartet}“ · Ribbon: ${icons.ribbon ?? "(kein SVG)"} · Tab: ${icons.tab ?? "(kein SVG)"}`,
+  );
 }
 
 /** Die Bilanz, wie der Baustein `pflichtpunkte` sie braucht (`zeichnePflicht`). */

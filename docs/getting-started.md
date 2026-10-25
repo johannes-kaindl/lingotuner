@@ -23,7 +23,7 @@ Each endpoint row has its own model. Leave it empty to let the server use whatev
 
 ## 4. Open the panel
 
-Click the sliders icon in the ribbon, or run the command **Open panel** from the command palette. The panel opens in the sidebar next to your note.
+Click the speaking-head icon in the ribbon, or run the command **Open panel** from the command palette. The panel opens in the sidebar next to your note.
 
 ## 5. Tune a text
 
