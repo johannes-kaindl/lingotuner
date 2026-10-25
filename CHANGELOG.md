@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-10-25
+
 ### Fixed
 
 - The settings tab rebuilds every time it is opened (last request, deviations from the profile), not only the first time after the plugin was loaded.
