@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The settings tab rebuilds every time it is opened (last request, deviations from the profile), not only the first time after the plugin was loaded.
+
 ### Changed
 
 - Vendored `obsidian-kit` 0.70.0 (was 0.63.0) and `code-kit` 0.37.5 (was 0.31.0). You will notice one thing: an `obsidian://` link in a generated text loses its target and stays as plain text (`file:` and `app:` targets go too); web, mail and note links are unchanged.

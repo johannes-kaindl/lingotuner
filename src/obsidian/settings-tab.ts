@@ -15,12 +15,12 @@ type GroupDef = { type?: string; heading?: string; items?: ItemDef[] };
 
 export class LingoTunerSettingTab extends PluginSettingTab {
   private cleanupPrevious: () => void = () => {};
-  private uninstallRefresh: () => void = () => {};
+  private removeRefreshHook: () => void = () => {};
 
   constructor(app: App, private readonly plugin: LingoTunerPlugin) {
     super(app, plugin);
     // „Letzte Anfrage" und Abweichungen sollen beim Oeffnen des Tabs aktuell sein (Rezept 6).
-    this.uninstallRefresh = installTabRefreshOnOpen(this, () => this.renderImperative());
+    this.removeRefreshHook = installTabRefreshOnOpen(this, () => this.renderImperative());
   }
 
   getSettingDefinitions(): SettingDefinitionItem[] {
@@ -115,7 +115,11 @@ export class LingoTunerSettingTab extends PluginSettingTab {
 
   display(): void { this.renderImperative(); }
 
-  hide(): void { this.plugin.llm.hideSettings(); this.uninstallRefresh(); }
+  // Der Oeffnen-Haken bleibt nach hide() installiert: das Oeffnen ruft renderTab(), und ohne Haken baute der Tab nur beim ersten Mal neu auf.
+  hide(): void { this.plugin.llm.hideSettings(); }
+
+  /** Nimmt den Oeffnen-Haken ab. Gehoert in `onunload` des Plugins, nicht in `hide()` (Kit-Vertrag `installTabRefreshOnOpen`). */
+  dispose(): void { this.removeRefreshHook(); }
 
   private refreshUi(): void { refreshSettingsTab(this, () => this.renderImperative()); }
 

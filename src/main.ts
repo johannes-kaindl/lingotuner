@@ -46,6 +46,7 @@ export default class LingoTunerPlugin extends Plugin {
   /** Die ganze LLM-Anbindung: Endpunkt-Quelle, Modellliste, Anfrage-Parameter, Client, Settings-Abschnitte. */
   llm!: LlmConnection;
   private unsubscribeManager: () => void = () => {};
+  private settingTab?: LingoTunerSettingTab;
   /** Zuletzt gemeldete Override-Probleme, als ein Schluessel. Ohne das meldet JEDER Lauf
    *  dieselbe kaputte Datei erneut — bei zehn Laeufen zehn Notices fuer denselben Befund. */
   private lastOverrideProblems = "";
@@ -171,10 +172,15 @@ export default class LingoTunerPlugin extends Plugin {
         return true;
       },
     });
-    this.addSettingTab(new LingoTunerSettingTab(this.app, this));
+    this.settingTab = new LingoTunerSettingTab(this.app, this);
+    this.addSettingTab(this.settingTab);
   }
 
-  onunload(): void { this.unsubscribeManager(); /* Views raeumt Obsidian selbst ab */ }
+  onunload(): void {
+    this.unsubscribeManager();
+    this.settingTab?.dispose();   // der Oeffnen-Haken des Tabs wird erst hier abgenommen, nicht in hide()
+    /* Views raeumt Obsidian selbst ab */
+  }
 
   async saveSettings(): Promise<void> { await this.saveData(this.settings); }
 
