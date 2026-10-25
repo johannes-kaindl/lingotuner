@@ -19,7 +19,7 @@ Follow one of the [install routes in the README](https://github.com/johannes-kai
 
 Open **Settings → Community plugins → LingoTuner**. In the **Endpoints** list the first row already holds `http://127.0.0.1:1234`. Its status line should read **Connected**. If your server runs elsewhere, change the address there.
 
-Each endpoint row has its own model. Leave it empty to let the server use whatever model it has loaded, or pick one in the model dropdown of the panel.
+Each endpoint row has its own model. Leave it empty to let the server use whatever model it has loaded, or pick one in the model row of the panel.
 
 ## 4. Open the panel
 

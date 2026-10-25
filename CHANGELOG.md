@@ -13,6 +13,13 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 
 - Vendored `obsidian-kit` 0.70.0 (was 0.63.0) and `code-kit` 0.37.5 (was 0.31.0). You will notice one thing: an `obsidian://` link in a generated text loses its target and stays as plain text (`file:` and `app:` targets go too); web, mail and note links are unchanged.
+- The panel's model row is now the shared model row: the model dropdown, a "Reload models" icon and the thinking toggle sit in one row above the run buttons, and the row wraps instead of cutting off in a narrow panel.
+- "— (server picks)" is now "Automatic" (with the endpoint's default model in brackets when it names one) and is always in the list.
+- A model you selected that is no longer loaded stays selected and is marked "(saved)". The list keeps the order the endpoint gives it; it used to be sorted alphabetically.
+- Reloading the models announces the count to screen readers ("2 models loaded").
+- A warning sign next to the dropdown says when the endpoint does not answer or returns no model list. With the LLM Endpoint Manager installed, the last entry "Other endpoint …" opens the manager's settings.
+- Switching the model no longer redraws the whole panel, so a text box you are typing in keeps its cursor. The row is locked while a run is in progress.
+- A failed model switch is shown in the status line.
 - The panel has its own icon, a speaking head (`speech`), in the ribbon and on the tab. It used the sliders icon, which the Settings Assistant also shows, so the two could not be told apart at a glance.
 
 ## [0.11.0] — 2026-10-18

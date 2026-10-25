@@ -56,7 +56,7 @@ Each entry starts with what you see — the wording is the plugin's own English 
 
 **Cause:** the server answered with an error, for instance because no model is loaded or the model of the endpoint row does not exist there.
 
-**Fix:** load a model in the server, or choose "let the server pick" in the panel's model dropdown, or pick another model from the list.
+**Fix:** load a model in the server, or choose "Automatic" in the panel's model row, or pick another model from the list.
 
 ## Tune does nothing
 

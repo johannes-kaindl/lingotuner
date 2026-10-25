@@ -78,7 +78,7 @@ export const STRINGS = {
     "run.reset": "Reset",
     "run.resetTitle": "Discard this session?",
     "run.resetBody": "{0} round(s), the preview and the note will be gone. The dials stay as they are.",
-    "run.modelAuto": "— (server picks)",
+    "model.error": "Could not change the model: {0}",
     "run.noop": "All dials are in the middle and the note is empty — nothing to change.",
     "run.noEndpoint": "No reachable endpoint. Check the connection in the settings.",
 
@@ -249,7 +249,7 @@ export const STRINGS = {
     "run.reset": "Zurücksetzen",
     "run.resetTitle": "Diese Sitzung verwerfen?",
     "run.resetBody": "{0} Runde(n), die Vorschau und die Anmerkung sind dann weg. Die Regler bleiben stehen.",
-    "run.modelAuto": "— (Server wählt)",
+    "model.error": "Das Modell ließ sich nicht wechseln: {0}",
     "run.noop": "Alle Regler stehen in der Mitte und die Anmerkung ist leer — nichts zu ändern.",
     "run.noEndpoint": "Kein erreichbarer Endpunkt. Verbindung in den Einstellungen prüfen.",
 

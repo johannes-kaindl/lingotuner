@@ -10,7 +10,6 @@ function model(over: Partial<PanelModel> = {}): PanelModel {
   return {
     source: "selection", readiness: { kind: "no-selection" }, freeText: "",
     dials: { ...NEUTRAL }, presets: [...BUILTIN_PRESETS], presetId: "neutral", note: "",
-    models: [], model: "", family: null, thinkingLevel: "off", thinkingOnLevel: "low", levelPickerInChat: false,
     phase: "idle", statusText: "Ready", truncated: false,
     session: EMPTY_SESSION, preview: "", reasoning: "", reasoningOpen: false,
     canReplaceSelection: false, canReplaceNote: false,
@@ -20,7 +19,7 @@ function model(over: Partial<PanelModel> = {}): PanelModel {
 
 function handlers(): PanelHandlers {
   const h: Record<string, ReturnType<typeof vi.fn>> = {};
-  for (const k of ["onSource","onFreeText","onDial","onPreset","onSavePreset","onNote","onTune","onRefine","onAbort","onReset","onSelectRound","onModel","onRefreshModels","onThinkingLevel","onToggleReasoning","onReplaceSelection","onReplaceNote","onCopy","onNewNote"]) h[k] = vi.fn();
+  for (const k of ["onSource","onFreeText","onDial","onPreset","onSavePreset","onNote","onTune","onRefine","onAbort","onReset","onSelectRound","onToggleReasoning","onReplaceSelection","onReplaceNote","onCopy","onNewNote","mountModelBar"]) h[k] = vi.fn();
   return h as unknown as PanelHandlers;
 }
 
@@ -98,7 +97,7 @@ describe("renderPanel", () => {
     expect(h.onPreset).toHaveBeenCalledWith("clarity");
   });
 
-  it("waehrend des Streams sind Chips, Modell, Refresh, Denken und Verlauf gesperrt", () => {
+  it("waehrend des Streams sind Chips und Verlauf gesperrt (die Modellzeile sperrt sich selbst, siehe view-model-bar.test.ts)", () => {
     const r = { dials: NEUTRAL, note: "", input: "a", output: "b", model: "m", at: 1, basedOn: null, sourceName: "Mail", aborted: false, truncated: false };
     const root = makeFakeEl();
     renderPanel(root, model({
@@ -112,29 +111,23 @@ describe("renderPanel", () => {
       expect(els.length).toBeGreaterThan(0);
       for (const el of els) expect(el.disabled).toBe(true);
     }
-    expect(findByClass<El>(root, "lt-model")?.disabled).toBe(true);
-    expect(findByClass<El>(root, "lt-model-refresh")?.disabled).toBe(true);
-    expect(findByClass<El>(root, "okit-thinking-toggle")?.disabled).toBe(true);
     expect(findByClass<El>(root, "lt-run")?.textContent).toBe("Cancel");
   });
 
-  it("Thinking-Toggle traegt aria-pressed passend zum Zustand (UI-STANDARD 8)", () => {
-    const off = makeFakeEl();
-    renderPanel(off, model({ model: "qwen3:8b", thinkingLevel: "off" }), handlers());
-    expect(findByClass<El>(off, "okit-thinking-toggle")?.getAttribute?.("aria-pressed")).toBe("false");
-
-    const on = makeFakeEl();
-    renderPanel(on, model({ model: "qwen3:8b", thinkingLevel: "low" }), handlers());
-    expect(findByClass<El>(on, "okit-thinking-toggle")?.getAttribute?.("aria-pressed")).toBe("true");
-  });
-
-  it("gpt-oss kann Denken nicht ganz abschalten — der Knopf zeigt die niedrigste Stufe, der Grund steht im Hinweis", () => {
+  it("die Modellzeile bekommt einen eigenen Platz ueber der Lauf-Zeile und wird dort eingehaengt (mountModelBar)", () => {
     const root = makeFakeEl();
-    renderPanel(root, model({ model: "gpt-oss:20b", family: "gpt-oss", thinkingLevel: "off" }), handlers());
-    const toggle = findByClass<El>(root, "okit-thinking-toggle");
-    expect(toggle?.getAttribute?.("aria-pressed")).toBe("false");
-    expect(toggle?.textContent).toContain("Thinking: lowest level");
-    expect(toggle?.getAttribute?.("aria-label")).toContain("can't be fully turned off");
+    const h = handlers();
+    renderPanel(root, model(), h);
+    expect(h.mountModelBar).toHaveBeenCalledTimes(1);
+    const host = (h.mountModelBar as unknown as { mock: { calls: El[][] } }).mock.calls[0][0];
+    expect(host.className).toContain("lt-model-row");
+    const kinder = (root as unknown as { children: El[] }).children.map((c) => c.className.split(" ")[0]);
+    expect(kinder.indexOf("lt-model-row")).toBeGreaterThanOrEqual(0);
+    expect(kinder.indexOf("lt-model-row")).toBeLessThan(kinder.indexOf("lt-run-row"));
+    // Der Eigenbau ist weg: kein Dropdown, kein Neu-laden, kein Denk-Host in der Lauf-Zeile.
+    expect(findByClass(root, "lt-model")).toBeNull();
+    expect(findByClass(root, "lt-model-refresh")).toBeNull();
+    expect(findByClass(root, "lt-think")).toBeNull();
   });
 
   it("paintStatus setzt Klasse, Icon-Form und aria-label je Phase", () => {

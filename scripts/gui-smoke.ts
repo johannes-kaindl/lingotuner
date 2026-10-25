@@ -128,6 +128,7 @@ const PUNKTE = [
   "S4 Lauf oeffnet die shortcuts://-URL mit dem gefalteten Prompt",
   "S5 Zeitueberschreitung des Kurzbefehls zeigt die Kurzbefehl-Meldung",
   "H1 Die Hilfe-Zeile steht als erste Zeile im Tab, mit Text-Knopf und Icon-Knopf",
+  "H2 Einstellungen: jedes Oeffnen baut den Tab neu auf, auch das zweite und dritte (der Oeffnen-Haken bleibt nach hide() installiert)",
   "L1 Ein Tunen erzeugt eine Lab-Aufzeichnung mit turnId (apiVersion 4)",
   "F1 Ohne CORS-Freigabe kommt das Ergebnis ueber den Fallback ohne Stream",
   "F2 Antwort bleibt nach dem Header aus: das Panel faellt nach der Frist in is-error, Knopf wieder Tune",
@@ -138,6 +139,11 @@ const PUNKTE = [
   "N2 Eigener Wert wird gesetzt und wieder zurueckgesetzt",
   "N3 Denk-Knopf im Panel schaltet um",
   "N4 Stufenwahl im Chat zeigt ein Dropdown",
+  "ML1 Modellzeile: eine Zeile im Panel, das Dropdown traegt „Automatisch“ und BEIDE Modelle, hat einen Namen, Neu laden sagt die Zahl an",
+  "ML2 Modellzeile: der Wechsel wirkt, die naechste Anfrage am Endpunkt traegt das gewaehlte Modell",
+  "ML3 Modellzeile: die Denk-Steuerung steht IN der Zeile, nicht in der Lauf-Zeile",
+  "ML4 Modellzeile: waehrend eines Laufs gesperrt, danach wieder frei",
+  "ML5 Modellzeile: ein Modellwechsel zeichnet das Panel nicht neu (kein Voll-Draw), ein Quellenwechsel schon",
   "R1 Runden-Zeile laeuft bei ~300 px nicht ueber",
   "R2 Rueckwahl: Klick auf die vorletzte Runde zeigt deren Ergebnis, die Zeile ist aktiv",
   "R3 Panel ragt bei ~230 px Sidebar-Breite nicht ueber den Rand",
@@ -2166,6 +2172,160 @@ async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
   }
 }
 
+/** ML1–ML5: die Modellzeile (Kit `model-bar`) im Panel, am echten DOM gegen einen Stub mit zwei Modellen. Die Zeile wird im Voll-Draw gebaut und sonst
+ *  nur per `update()` nachgezogen (AGENTS.md „View ist zweigeteilt“): ML5 belegt das mit einer Marke am Lauf-Knopf (dasselbe Element = kein Neuaufbau),
+ *  Gegenprobe im selben Punkt: ein Quellenwechsel baut neu auf, die Marke ist weg. */
+async function pruefeModellzeile(cdp: Cdp): Promise<void> {
+  console.log("\nML · Modellzeile (Kit model-bar)");
+  const [N1, N2, N3, N4, N5] = [
+    "ML1 Modellzeile: eine Zeile im Panel, das Dropdown traegt „Automatisch“ und BEIDE Modelle, hat einen Namen, Neu laden sagt die Zahl an",
+    "ML2 Modellzeile: der Wechsel wirkt, die naechste Anfrage am Endpunkt traegt das gewaehlte Modell",
+    "ML3 Modellzeile: die Denk-Steuerung steht IN der Zeile, nicht in der Lauf-Zeile",
+    "ML4 Modellzeile: waehrend eines Laufs gesperrt, danach wieder frei",
+    "ML5 Modellzeile: ein Modellwechsel zeichnet das Panel nicht neu (kein Voll-Draw), ein Quellenwechsel schon",
+  ] as const;
+  const A = "smoke-zeile-a", B = "smoke-zeile-b";
+  const stub = await startLlmStub({ models: [A, B], takt: STUB_TAKT_MS, nachlaufMs: 3 * STUB_TAKT_MS, standard: { text: "ok", model: A } });
+  let vorher: { eps: unknown } | null = null;
+  const lies = (): Promise<{ zeilen: number; optionen: string[]; ansage: string; label: string | null; gesperrt: boolean; neuLaden: boolean; wert: string }> => cdp.evaluate(`
+    const z = [...document.querySelectorAll(".okit-model-bar")];
+    const sel = z[0] ? z[0].querySelector("select") : null;
+    const neu = z[0] ? z[0].querySelector(".okit-model-bar-refresh") : null;
+    return {
+      zeilen: z.length, optionen: sel ? [...sel.options].map((o) => o.textContent) : [],
+      ansage: z[0] && z[0].querySelector(".okit-model-bar-status") ? z[0].querySelector(".okit-model-bar-status").textContent : "",
+      label: sel ? sel.getAttribute("aria-label") : null, gesperrt: !!(sel && sel.disabled), neuLaden: !!(neu && neu.disabled), wert: sel ? sel.value : "",
+    };
+  `);
+  try {
+    vorher = await cdp.evaluate<{ eps: unknown }>(`return { eps: app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints };`);
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.settings.endpoints = [{ url: ${q(stub.url)}, model: ${q(A)} }];
+      await p.saveSettings();
+      p.llm.invalidate();
+      await p.llm.resolve();
+      app.commands.executeCommandById(${q(`${PLUGIN_ID}:open-panel`)});
+      await new Promise((r) => setTimeout(r, 500));
+      return { ok: true };
+    `);
+    await waehleQuelle(cdp, 2);
+    await cdp.evaluate(`
+      const el = document.querySelector(".lt-freetext");
+      el.value = "Could you maybe send the report by Friday?";
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      return { ok: true };
+    `);
+    await setzeNotiz(cdp, "Keep it short.");
+
+    // ML1
+    await clickReal(cdp, `document.querySelector(".okit-model-bar-refresh")`);
+    await pollUntil<string>(cdp, `const z = document.querySelector(".okit-model-bar-status"); return z && /^2 (models? loaded|Modelle? geladen)/.test(z.textContent.trim()) ? z.textContent : null;`, 5000, 150);
+    const z1 = await lies();
+    const modelle = (o: string[]): number => o.filter((x) => x.startsWith("smoke-zeile-")).length;
+    record(N1, z1.zeilen === 1 && modelle(z1.optionen) === 2 && z1.optionen.some((o) => /^(Automatic|Automatisch)/.test(o)) && !!z1.label && /^2 (models? loaded|Modelle? geladen)/.test(z1.ansage.trim()),
+      `${z1.zeilen} Zeile, Eintraege ${JSON.stringify(z1.optionen)}, Name „${z1.label ?? ""}“, Ansage „${z1.ansage.trim()}“`);
+
+    // ML2 — Wahl B, dann ein Lauf; der Stub schneidet den Body mit.
+    await cdp.evaluate(`
+      const sel = document.querySelector(".okit-model-bar select");
+      sel.value = ${q(B)};
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+      return { ok: true };
+    `);
+    const inUse = await pollUntil<string>(cdp, `const p = app.plugins.plugins[${q(PLUGIN_ID)}]; return p.llm.modelInUse() === ${q(B)} ? p.llm.modelInUse() : null;`, 5000, 150);
+    const lauf = await laufeTune(cdp);
+    const gesendet = stub.anfragen().filter((a) => a.route === "chat").map((a) => (a.json as { model?: string } | undefined)?.model);
+    record(N2, !!inUse && lauf && gesendet.at(-1) === B,
+      `modelInUse ${inUse ? `„${inUse}“` : "nicht gewechselt"}, Lauf ${lauf ? "ok" : "fehlgeschlagen"}, Anfrage am Stub trug „${String(gesendet.at(-1))}“ (erwartet „${B}“; Gegenprobe: Zeilen-Modell war „${A}“)`);
+
+    // ML3
+    const d = await cdp.evaluate<{ inZeile: number; gesamt: number; inLauf: number }>(`
+      return {
+        inZeile: document.querySelectorAll(".okit-model-bar .okit-thinking-toggle").length,
+        gesamt: document.querySelectorAll(".okit-thinking-toggle").length,
+        inLauf: document.querySelectorAll(".lt-run-row .okit-thinking-toggle").length,
+      };
+    `);
+    record(N3, d.inZeile === 1 && d.gesamt === 1 && d.inLauf === 0, `Denk-Knopf in der Zeile ${d.inZeile}, im Panel insgesamt ${d.gesamt}, in der Lauf-Zeile (Gegenprobe, soll 0) ${d.inLauf}`);
+
+    // ML4 — Sperre im Lauf (verlangsamter Stub)
+    let waehrend: Awaited<ReturnType<typeof lies>> | null = null;
+    const davor = await lies();
+    const ok4 = await laufeTune(cdp, async () => { waehrend = await lies(); });
+    const danach = await lies();
+    const w = waehrend as Awaited<ReturnType<typeof lies>> | null;
+    record(N4, ok4 && !davor.gesperrt && !davor.neuLaden && !!w && w.gesperrt && w.neuLaden && !danach.gesperrt && !danach.neuLaden,
+      `gesperrt (Dropdown/Neu laden): davor ${davor.gesperrt}/${davor.neuLaden} (Gegenprobe: frei), waehrend ${w ? `${w.gesperrt}/${w.neuLaden}` : "nicht gemessen"}, danach ${danach.gesperrt}/${danach.neuLaden}`);
+
+    // ML5 — Marke am Lauf-Knopf: ein Modellwechsel laesst sie stehen, ein Quellenwechsel (Voll-Draw) nicht.
+    await cdp.evaluate(`document.querySelector(".lt-run").__w27 = 1; return { ok: true };`);
+    await cdp.evaluate(`
+      const sel = document.querySelector(".okit-model-bar select");
+      sel.value = ${q(A)};
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 400));
+      return { ok: true };
+    `);
+    const nachModell = await cdp.evaluate<{ marke: boolean; wert: string }>(`return { marke: document.querySelector(".lt-run").__w27 === 1, wert: document.querySelector(".okit-model-bar select").value };`);
+    await waehleQuelle(cdp, 1);
+    const nachQuelle = await cdp.evaluate<{ marke: boolean }>(`return { marke: document.querySelector(".lt-run").__w27 === 1 };`);
+    record(N5, nachModell.marke && nachModell.wert === A && !nachQuelle.marke,
+      `Marke nach dem Modellwechsel ${nachModell.marke ? "noch da" : "WEG (Voll-Draw)"}, Dropdown „${nachModell.wert}“; nach dem Quellenwechsel (Gegenprobe) ${nachQuelle.marke ? "noch da" : "weg"}`);
+  } catch (e) {
+    for (const n of [N1, N2, N3, N4, N5]) if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);
+  } finally {
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      if (!p) return { ok: false };
+      p.settings.endpoints = ${JSON.stringify(vorher?.eps ?? [])};
+      await p.saveSettings();
+      p.llm.invalidate();
+      await p.llm.resolve();
+      return { ok: true };
+    `).catch(() => null);
+    await stub.stop();
+  }
+}
+
+/** H2 — Kit-Vertrag `installTabRefreshOnOpen` (Obsidian 1.14.5): das Oeffnen ruft `renderTab()`, nicht `display()`. Wer den Haken in `hide()` abbaut,
+ *  baut nur beim ersten Oeffnen auf. Gemessen wird, wie oft der VOLLE Aufbau des Plugins (`renderImperative`, der Rueckruf des Hakens) laeuft: ein Zaehler
+ *  auf der Instanz, drei Mal oeffnen und schliessen, der Zaehler muss bei jedem Oeffnen steigen. (Eine Marke im Tab-Container reichte nicht: auch die
+ *  native Fassung leert ihn, der Punkt blieb mit abgebautem Haken gruen — gemessen 2026-10-25 an der Mutation.) */
+async function pruefeTabOeffnen(cdp: Cdp): Promise<void> {
+  const NAME = "H2 Einstellungen: jedes Oeffnen baut den Tab neu auf, auch das zweite und dritte (der Oeffnen-Haken bleibt nach hide() installiert)";
+  const zaehler: number[] = [];
+  try {
+    for (let i = 1; i <= 3; i++) {
+      const roh = await cdp.evaluate<string>(`
+        app.setting.open();
+        app.setting.openTabById(${q(PLUGIN_ID)});
+        await new Promise((r) => setTimeout(r, 900));
+        const tab = app.setting.activeTab;
+        if (!tab || tab.id !== ${q(PLUGIN_ID)}) return JSON.stringify({ fehler: "Tab ging nicht auf" });
+        if (!tab.__w27Aufbauten) {
+          tab.__w27Aufbauten = 0;
+          const orig = tab.renderImperative.bind(tab);
+          tab.renderImperative = () => { tab.__w27Aufbauten++; return orig(); };
+        }
+        return JSON.stringify({ n: tab.__w27Aufbauten });
+      `);
+      const d = JSON.parse(roh) as { n?: number; fehler?: string };
+      if (d.fehler) throw new Error(d.fehler);
+      zaehler.push(d.n ?? 0);
+      await schliesseEinstellungen(cdp);
+    }
+    // Der Zaehler wird beim ersten Oeffnen NACH dem Aufbau eingehaengt; gezaehlt werden also die Aufbauten ab dem zweiten Oeffnen:
+    // jedes weitere Oeffnen muss ihn um mindestens 1 erhoehen.
+    const ok = zaehler.length === 3 && zaehler[1]! > zaehler[0]! && zaehler[2]! > zaehler[1]!;
+    record(NAME, ok, `Aufbauten nach dem 1./2./3. Oeffnen: ${zaehler.join(" / ")} (je Oeffnen muss er steigen; mit abgebautem Haken bleibt er stehen)`);
+  } catch (e) {
+    if (!aufgezeichnet(NAME)) nichtGemessen(NAME, `Messung abgebrochen: ${(e as Error).message}`);
+  } finally {
+    await schliesseEinstellungen(cdp).catch(() => undefined);
+  }
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (parseArgs(argv).has("--setup")) { setupVault(); return; }
@@ -2215,11 +2375,13 @@ async function main(): Promise<void> {
     await pruefeManager(cdp, port);
     await pruefeApple(cdp, port);
     await pruefeHilfeZeile(cdp, port);
+    await pruefeTabOeffnen(cdp);
     await pruefeLab(cdp);
     await pruefeFallback(cdp);
     await pruefeFrist(cdp);
     await pruefeVerbindung(cdp);
     await pruefeAnfrage(cdp, port);
+    await pruefeModellzeile(cdp);
     await pruefeRundenZeile(cdp);
     await pruefeRueckwahl(cdp);
     await pruefeGemma(cdp);

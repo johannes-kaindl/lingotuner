@@ -182,7 +182,7 @@
    2026-09-07 war das mit `rows="6"` angeforderte Textfeld auf einen Streifen von einer halben
    Zeile eingedampft, in dem der eigene Text unlesbar war. */
 .lt-controls > * { flex: 0 0 auto; }
-.lt-run-row, .lt-status, .lt-warning, .lt-history, .lt-outputs { flex: 0 0 auto; }
+.lt-model-row, .lt-run-row, .lt-status, .lt-warning, .lt-history, .lt-outputs { flex: 0 0 auto; }
 .lt-label { color: var(--text-muted); font-size: var(--font-ui-small); }
 
 /* Quellen- und Preset-Chips: Zustand ueber Form (gefuellter Hintergrund) + aria-pressed, nicht nur Farbe. */
@@ -203,13 +203,13 @@
 .lt-dial-pole:last-child { text-align: right; }
 .lt-dial-input { flex: 1 1 auto; min-width: 0; }
 
+.lt-model-row { min-width: 0; }
 .lt-run-row { display: flex; flex-wrap: wrap; gap: var(--size-2-2); align-items: center; }
 /* Gesperrter Zustand fuer JEDES Bedienelement, das renderPanel waehrend eines Streams auf
    disabled setzt — sonst sieht ein gesperrter Chip aus wie ein anklickbarer. */
 .lt-run:disabled, .lt-refine:disabled, .lt-reset:disabled, .lt-out:disabled,
 .lt-source-chip:disabled, .lt-preset-chip:disabled, .lt-preset-save:disabled,
-.lt-history-row:disabled, .lt-model:disabled, .lt-model-refresh:disabled { opacity: 0.4; cursor: not-allowed; }
-.lt-model { flex: 1 1 8em; min-width: 0; font-size: var(--font-ui-small); }
+.lt-history-row:disabled { opacity: 0.4; cursor: not-allowed; }
 /* Denk-Knopf (obsidian-kit 0.60.0, THINKING_CONTROL_CSS) — Kit-Vertrag: wortgleich hierher kopiert. */
 .okit-thinking-control { display: inline-flex; align-items: center; }
 .okit-thinking-toggle {

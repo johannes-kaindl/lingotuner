@@ -97,7 +97,7 @@ export default class LingoTunerPlugin extends Plugin {
     void this.llm.resolve().catch(() => undefined);
     // Der Manager kann jederzeit installiert, aktiviert, deaktiviert oder umkonfiguriert werden —
     // bei jeder solchen Aenderung frisch aufloesen.
-    this.unsubscribeManager = onEndpointManagerChanged(this.app, () => { this.llm.invalidate(); void this.llm.resolve().then(() => { this.panel()?.refresh(); }).catch(() => undefined); });
+    this.unsubscribeManager = onEndpointManagerChanged(this.app, () => { this.llm.invalidate(); void this.llm.resolve().then(() => { this.panel()?.refresh(); this.panel()?.reloadModels(); }).catch(() => undefined); });
 
     // Sofort setzen: sobald das Plugin-Objekt in app.plugins.plugins auftaucht, soll `api` da sein.
     this.api = createLingoTunerApi({
@@ -114,20 +114,20 @@ export default class LingoTunerPlugin extends Plugin {
       presets: () => allPresets(this.settings),
       getDials: () => this.settings.lastDials,
       setDials: (d) => { this.settings.lastDials = { ...d }; void this.saveSettings(); },
-      listModels: async () => [...(await this.llm.models({ force: true })).models].sort(),
-      // Die Modellwahl gehoert der Verbindung: mit Manager `choice.model`, ohne Manager das Modell der aktiven
-      // Zeile; „Server waehlt“ ist `setModel("")`.
-      getModel: () => this.llm.modelInUse(),
-      setModel: (m) => { void this.llm.setModel(m).then(() => { this.panel()?.refresh(); }).catch(() => undefined); },
-      getFamily: () => this.llm.source().family,
-      getBackend: () => this.llm.source().backend,
-      getThinkingLevel: () => thinkingFor(this.settings.request, MODE),
-      getThinkingOnLevel: () => onLevelFor(this.settings.request, MODE),
-      getLevelPickerInChat: () => this.settings.request.levelPickerInChat,
-      setThinkingLevel: (l) => {
-        this.settings.request.thinking[MODE] = l;
-        if (l !== "off") this.settings.request.lastOnLevel[MODE] = l;
-        void this.saveSettings();
+      // Die Modellzeile (Kit model-bar) spricht die Verbindung direkt an. Die Wahl gehoert der Verbindung: mit Manager
+      // `choice.model`, ohne Manager das Modell der aktiven Zeile; „Automatisch“ ist `setModel("")`.
+      llm: this.llm,
+      thinking: {
+        family: () => this.llm.source().family,
+        backend: () => this.llm.source().backend,
+        current: () => thinkingFor(this.settings.request, MODE),
+        onLevel: () => onLevelFor(this.settings.request, MODE),
+        levelPicker: () => this.settings.request.levelPickerInChat,
+        setLevel: (l) => {
+          this.settings.request.thinking[MODE] = l;
+          if (l !== "off") this.settings.request.lastOnLevel[MODE] = l;
+          return this.saveSettings();
+        },
       },
       savePreset: (name, dials) => {
         const { list, replaced } = upsertUserPreset(this.settings.userPresets, name, dials);

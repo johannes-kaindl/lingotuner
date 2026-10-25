@@ -5,11 +5,12 @@ import { activeRound, pushRound, selectRound } from "../vendor/kit/rounds";
 import { type Readiness, type SourceKind } from "../core/source";
 import { errorMessageKey } from "../core/llm/errors";
 import type { TuneResult } from "../core/llm/client";
-import type { BackendId, FamilyId, ThinkingLevel } from "../vendor/kit/sampling-profiles";
 import { patchPanel, renderPanel, structureKey, type PanelHandlers, type PanelModel, type PanelParts, type RunPhase } from "./view-render";
 import { createStableWriter, type StableMarkdownWriter } from "../vendor/kit-obsidian/stable-writer";
 import { neutralizeModelMarkdown } from "../vendor/kit/safe-markdown";
-import { t } from "../vendor/kit/i18n";
+import { buildModelBar, type ModelBar, type ModelBarConnection } from "../vendor/kit-obsidian/model-bar";
+import { thinkingOffTexts, type ThinkingControlOptions } from "../vendor/kit-obsidian/thinking-control";
+import { getLang, t } from "../vendor/kit/i18n";
 
 export const VIEW_TYPE_LINGOTUNER = "lingotuner-panel";
 /** Icon des Panels (Ribbon und Tab). Eigener Name: `sliders-horizontal` tragen schon settings-assistant und koda-agent. */
@@ -35,16 +36,11 @@ export interface ViewDeps {
   presets(): Preset[];
   getDials(): Dials;
   setDials(d: Dials): void;
-  listModels(): Promise<string[]>;
-  getModel(): string;
-  setModel(m: string): void;
-  getFamily(): FamilyId | null;
-  /** Backend der aktiven Quelle (Kit 0.61.0): der Denk-Knopf zeigt damit „nicht ganz aus“ bei gemma4 auf LM Studio. */
-  getBackend?(): BackendId | undefined;
-  getThinkingLevel(): ThinkingLevel;
-  getThinkingOnLevel(): ThinkingLevel;
-  getLevelPickerInChat(): boolean;
-  setThinkingLevel(l: ThinkingLevel): void;
+  /** Die Verbindung fuer die Modellzeile (Kit `model-bar`): `models`, `setModel`, `modelInUse`, `source`. Die Wahl gehoert der Verbindung:
+   *  mit Manager `choice.model`, ohne Manager das Modell der aktiven Zeile; „Automatisch“ ist `setModel("")`. */
+  llm: ModelBarConnection;
+  /** Zustand und Schalter der Denk-Steuerung in der Modellzeile (ohne Texte: die kommen aus der View). `backend` (Kit 0.61.0): „nicht ganz aus“ bei gemma4 auf LM Studio. */
+  thinking: Pick<ThinkingControlOptions, "family" | "backend" | "current" | "onLevel" | "setLevel" | "levelPicker">;
   savePreset(name: string, dials: Dials): void;
   run(req: RunRequest): Promise<TuneResult>;
   output(kind: "replace-selection" | "replace-note" | "copy" | "new-note", text: string, sourceText: string, sourceName: string | null): Promise<void>;
@@ -77,7 +73,8 @@ export class LingoTunerView extends ItemView {
   private source: SourceKind = "selection";
   private freeText = "";
   private note = "";
-  private models: string[] = [];
+  /** Die Kit-Modellzeile; im Voll-Draw neu gebaut (die alte vorher abgemeldet), sonst nur per `update()` nachgezogen. */
+  private modelBar: ModelBar | null = null;
   private phase: RunPhase = "idle";
   private statusText = t("status.idle");
   private truncated = false;
@@ -101,16 +98,16 @@ export class LingoTunerView extends ItemView {
   getIcon(): string { return PANEL_ICON; }
 
   onOpen(): Promise<void> {
+    // Die Modellzeile laedt ihre Liste selbst und zeichnet nur sich: ein spaetes Ergebnis reisst keinen Stream ab.
     this.draw();
-    // Die Modell-Liste kommt asynchron und darf einen laufenden Stream NICHT neu zeichnen —
-    // ein Voll-Draw mitten im Stream reisst die Vorschau ab. Merken, zeichnen beim naechsten Draw.
-    void this.deps.listModels().then((m) => { this.models = m; this.softDraw(); });
     return Promise.resolve();
   }
 
   onClose(): Promise<void> {
     this.controller?.abort();
     this.controller = null;
+    this.modelBar?.destroy();
+    this.modelBar = null;
     this.writer?.destroy();
     this.writer = null;
     this.contentEl.empty();
@@ -122,6 +119,9 @@ export class LingoTunerView extends ItemView {
    *  Textarea feuert `selectionchange`, und ein Voll-Draw baute das Feld unter dem Cursor neu. */
   refresh(): void { this.softDraw(); }
 
+  /** Laedt die Modell-Liste der Zeile neu (Endpunkt oder Manager haben gewechselt). */
+  reloadModels(): void { void this.modelBar?.refresh(); }
+
   private model(): PanelModel {
     const dials = this.deps.getDials();
     const presets = this.deps.presets();
@@ -132,9 +132,6 @@ export class LingoTunerView extends ItemView {
       freeText: this.freeText,
       dials, presets, presetId: presetFor(dials, presets),
       note: this.note,
-      models: this.models, model: this.deps.getModel(),
-      family: this.deps.getFamily(), backend: this.deps.getBackend?.(), thinkingLevel: this.deps.getThinkingLevel(),
-      thinkingOnLevel: this.deps.getThinkingOnLevel(), levelPickerInChat: this.deps.getLevelPickerInChat(),
       phase: this.phase, statusText: this.statusText, truncated: this.truncated,
       session: this.session, preview: this.preview, reasoning: this.reasoning, reasoningOpen: this.reasoningOpen,
       canReplaceSelection: this.source === "selection" && sourceText !== null && this.deps.canReplace("selection", sourceText),
@@ -180,9 +177,7 @@ export class LingoTunerView extends ItemView {
         }
         this.draw();
       },
-      onModel: (m) => { this.deps.setModel(m); this.draw(); },
-      onRefreshModels: () => { void this.deps.listModels().then((m) => { this.models = m; if (this.phase === "streaming") return; this.draw(); }); },
-      onThinkingLevel: (l) => { this.deps.setThinkingLevel(l); this.draw(); },
+      mountModelBar: (host) => { this.mountModelBar(host); },
       onToggleReasoning: (open) => { this.reasoningOpen = open; },
       onReplaceSelection: () => {
         const s = rootInput(this.session);
@@ -249,6 +244,31 @@ export class LingoTunerView extends ItemView {
     neu.selectionEnd = merk.end;
   }
 
+  /** Baut die Modellzeile in `host`. Sperre und Denk-Steuerung lesen ihren Zustand bei jedem `update()` neu; ein Modellwechsel
+   *  braucht KEINEN Voll-Draw (die Zeile zeichnet sich selbst), und ein Wurf aus `setModel` steht in der Statuszeile. */
+  private mountModelBar(host: HTMLElement): void {
+    this.modelBar = buildModelBar({
+      app: this.app,
+      containerEl: host,
+      llm: this.deps.llm,
+      strings: { lang: getLang() },
+      disabled: () => this.phase === "streaming",
+      onError: (e) => {
+        this.statusText = t("model.error", e instanceof Error ? e.message : String(e));
+        this.softDraw();
+      },
+      thinking: {
+        ...this.deps.thinking,
+        strings: {
+          button: (level) => level === "off" ? t("think.button.off") : t("think.button.on", t(`request.level.${level}`)),
+          offNotPossible: thinkingOffTexts(getLang()),
+          level: (l) => t(`request.level.${l}`),
+          pickerLabel: t("think.pickerLabel"),
+        },
+      },
+    });
+  }
+
   /** Voll-Draw: baut das Panel neu auf. Zieht Eingabefelder unter dem Cursor weg — deshalb
    *  nur ueber `softDraw()` oder aus einer Aktion, die den Fokus ohnehin verliert. */
   private draw(): void {
@@ -259,6 +279,9 @@ export class LingoTunerView extends ItemView {
     // bei jedem Tastendruck, und in dem Moment, in dem niemand hinsieht. Der Wert ueberlebt
     // ohnehin (`onFreeText`/`onNote` halten ihn) — Fokus und Cursorposition nicht.
     const merk = this.merkeCursor();
+    // Die alte Modellzeile abmelden, bevor `renderPanel` den Container leert und eine neue haengt: sonst bliebe sie mit ihren Rueckrufen liegen.
+    this.modelBar?.destroy();
+    this.modelBar = null;
     if (this.mdComp !== null) this.removeChild(this.mdComp);
     this.mdComp = this.addChild(new Component());
     const m = this.model();
@@ -291,6 +314,7 @@ export class LingoTunerView extends ItemView {
     const gesperrt = m.phase === "streaming" || this.focusInPanel();
     if (strukturell && !gesperrt) { this.draw(); return; }
     patchPanel(this.contentEl, m, this.parts);
+    this.modelBar?.update();   // Modell, Endpunkt oder Denkstufe koennen sich ausserhalb geaendert haben: nur die Zeile zieht nach
   }
 
   /** Markdown in ein Element rendern. Fehler kosten die Formatierung, nicht den Text.

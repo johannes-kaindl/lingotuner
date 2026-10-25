@@ -15,6 +15,7 @@ import { findByClass, findAllByClass } from "./helpers/dom";
 import { LingoTunerView, type ViewDeps } from "../src/obsidian/view";
 import { NEUTRAL, BUILTIN_PRESETS, type Dials } from "../src/core/dials";
 import "../src/i18n/strings";
+import { mkLlm, mkThinking } from "./helpers/llm";
 
 type El = { className: string; children: El[]; value?: string; textContent?: string };
 
@@ -39,15 +40,9 @@ function baue(over: Partial<ViewDeps> = {}): Aufbau {
     presets: () => [...BUILTIN_PRESETS],
     getDials: () => dials.wert,
     setDials: (d) => { dials.wert = { ...d }; },
-    listModels: () => Promise.resolve([]),
     domGuard: false,
-    getModel: () => "",
-    setModel: () => { /* egal */ },
-    getFamily: () => null,
-    getThinkingLevel: () => "off",
-    getThinkingOnLevel: () => "low",
-    getLevelPickerInChat: () => false,
-    setThinkingLevel: () => { /* egal */ },
+    llm: mkLlm(),
+    thinking: mkThinking().thinking,
     savePreset: () => { /* egal */ },
     run: () => Promise.resolve({ ok: true, text: "x", reasoning: "", model: "m", truncated: false }),
     output: () => Promise.resolve(),

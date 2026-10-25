@@ -3,9 +3,7 @@ import { DIMENSIONS, isNoop, levelKey, type Dials, type Dimension, type Level, t
 import type { Session } from "../core/session";
 import { readinessKey, type Readiness, type SourceKind } from "../core/source";
 import { buildStreamArea, type StreamArea } from "../vendor/kit-obsidian/stream-area";
-import { buildThinkingControl, thinkingOffTexts } from "../vendor/kit-obsidian/thinking-control";
-import type { BackendId, FamilyId, ThinkingLevel } from "../vendor/kit/sampling-profiles";
-import { getLang, t } from "../vendor/kit/i18n";
+import { t } from "../vendor/kit/i18n";
 
 export type RunPhase = "idle" | "streaming" | "done" | "error" | "aborted";
 
@@ -17,13 +15,6 @@ export interface PanelModel {
   presets: Preset[];
   presetId: string | null;
   note: string;
-  models: string[];
-  model: string;
-  family: FamilyId | null;
-  backend?: BackendId | undefined;
-  thinkingLevel: ThinkingLevel;
-  thinkingOnLevel: ThinkingLevel;
-  levelPickerInChat: boolean;
   phase: RunPhase;
   statusText: string;
   truncated: boolean;
@@ -47,9 +38,8 @@ export interface PanelHandlers {
   onAbort(): void;
   onReset(): void;
   onSelectRound(i: number): void;
-  onModel(m: string): void;
-  onRefreshModels(): void;
-  onThinkingLevel(l: ThinkingLevel): void;
+  /** Haengt die Modellzeile (Kit `model-bar`, samt Denk-Steuerung) in den Platz `host`. Gerufen bei jedem Voll-Draw; die View meldet die alte Zeile vorher ab. */
+  mountModelBar(host: HTMLElement): void;
   onToggleReasoning(open: boolean): void;
   onReplaceSelection(): void;
   onReplaceNote(): void;
@@ -183,38 +173,6 @@ function runRow(parent: El, m: PanelModel, h: PanelHandlers): void {
     const reset = row.createEl("button", { text: t("run.reset"), cls: "lt-reset" });
     reset.addEventListener("click", () => h.onReset());
   }
-
-  const select = row.createEl("select", { cls: "lt-model dropdown" });
-  select.setAttribute("aria-label", t("set.model"));
-  select.disabled = busy;
-  select.createEl("option", { text: t("run.modelAuto"), value: "" });
-  const ids = m.models.includes(m.model) || m.model === "" ? m.models : [m.model, ...m.models];
-  for (const id of ids) select.createEl("option", { text: id, value: id });
-  select.value = m.model;
-  select.addEventListener("change", () => h.onModel(select.value));
-  const refresh = row.createEl("button", { cls: "lt-model-refresh clickable-icon" });
-  setIcon(refresh, "refresh-cw");
-  refresh.setAttribute("aria-label", t("ep.refreshModels"));
-  refresh.disabled = busy;
-  refresh.addEventListener("click", () => h.onRefreshModels());
-
-  const thinkHost = row.createDiv({ cls: "lt-think" });
-  buildThinkingControl({
-    containerEl: thinkHost,
-    family: () => m.family,
-    backend: () => m.backend,
-    current: () => m.thinkingLevel,
-    onLevel: () => m.thinkingOnLevel,
-    setLevel: (l) => { h.onThinkingLevel(l); return Promise.resolve(); },
-    levelPicker: () => m.levelPickerInChat,
-    strings: {
-      button: (level) => level === "off" ? t("think.button.off") : t("think.button.on", t(`request.level.${level}`)),
-      offNotPossible: thinkingOffTexts(getLang()),
-      level: (l) => t(`request.level.${l}`),
-      pickerLabel: t("think.pickerLabel"),
-    },
-  });
-  if (busy) for (const el of thinkHost.querySelectorAll("button, select")) (el as HTMLButtonElement | HTMLSelectElement).disabled = true;
 }
 
 function statusRow(parent: El): Pick<PanelParts, "statusEl" | "statusIconEl" | "statusLabelEl"> {
@@ -284,7 +242,6 @@ export function structureKey(m: PanelModel): string {
   return [
     m.source, m.phase,
     String(m.session.rounds.length), String(m.session.active),
-    m.models.join(" "), m.model, m.thinkingLevel, String(m.levelPickerInChat),
     m.presets.map((p) => p.id).join(" "),
     String(m.truncated),
     m.preview === "" ? "0" : "1",
@@ -365,6 +322,8 @@ export function renderPanel(root: El, m: PanelModel, h: PanelHandlers): PanelPar
   // Hauptaktion. Lag sie darin, war sie nach dem ersten Ergebnis aus dem Sichtfeld gerollt —
   // Nachschaerfen und Zuruecksetzen waren da, aber an ihrer Stelle traf ein Klick das Panel
   // statt des Knopfes. Gefunden hat das C9 im GUI-Smoke, nicht das Auge.
+  // Die Modellzeile (Kit `model-bar`) hat einen eigenen Platz ueber der Lauf-Zeile; sie zeichnet sich selbst, die View haengt sie hier ein.
+  h.mountModelBar(root.createDiv({ cls: "lt-model-row" }));
   runRow(root, m, h);
   const status = statusRow(root);
   // Streaming-Antwortbereich aus dem Kit (§8): Gedanken zuerst, Antwort darunter — dieselbe

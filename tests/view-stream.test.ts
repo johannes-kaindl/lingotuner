@@ -16,6 +16,7 @@ import { findAllByClass, findByClass } from "./helpers/dom";
 import { LingoTunerView, type RunRequest, type ViewDeps } from "../src/obsidian/view";
 import { NEUTRAL, BUILTIN_PRESETS, type Dials } from "../src/core/dials";
 import "../src/i18n/strings";
+import { mkLlm, mkThinking } from "./helpers/llm";
 
 type El = { className: string; children: El[]; textContent?: string; open?: boolean };
 
@@ -36,15 +37,9 @@ function baue(lauf: (req: RunRequest, root: unknown) => void, antwort = "Erster 
     presets: () => [...BUILTIN_PRESETS],
     getDials: () => dials,
     setDials: () => { /* egal */ },
-    listModels: () => Promise.resolve([]),
     domGuard: false,
-    getModel: () => "",
-    setModel: () => { /* egal */ },
-    getFamily: () => null,
-    getThinkingLevel: () => "off",
-    getThinkingOnLevel: () => "low",
-    getLevelPickerInChat: () => false,
-    setThinkingLevel: () => { /* egal */ },
+    llm: mkLlm(),
+    thinking: mkThinking().thinking,
     savePreset: () => { /* egal */ },
     run: (req) => {
       lauf(req, halter.root);
