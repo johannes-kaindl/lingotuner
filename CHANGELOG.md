@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Vendored `obsidian-kit` 0.70.0 (was 0.63.0) and `code-kit` 0.37.5 (was 0.31.0). You will notice one thing: an `obsidian://` link in a generated text loses its target and stays as plain text (`file:` and `app:` targets go too); web, mail and note links are unchanged.
 - The panel has its own icon, a speaking head (`speech`), in the ribbon and on the tab. It used the sliders icon, which the Settings Assistant also shows, so the two could not be told apart at a glance.
 
 ## [0.11.0] — 2026-10-18

@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.63.0, src/obsidian/stable-writer.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.70.0, src/obsidian/stable-writer.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { neutralizeModelMarkdown } from "../kit/safe-markdown";
 import { splitStable } from "../kit/stream-blocks";
 import type { ClockPort } from "./clock";
@@ -72,6 +72,13 @@ export interface StableWriterOptions {
   blockCls?: string;
   /** `true` reicht den Roh-Text an `render` (keine Neutralisierung). Nur mit Begründung im Konsumenten. */
   raw?: boolean;
+  /** Formt jeden stabilen Abschnitt für die ANZEIGE um, bevor er neutralisiert und an `render` geht (Default: Identität).
+   *  Gedacht für Zusätze, die nicht in die Anzeige gehören (settings-assistant nimmt die `settings-profile`-Zäune heraus und zeigt
+   *  sie als eigenen Block). **Vor** der Neutralisierung, damit ein Backtick, ein Bild oder ein `<`, das die Funktion erzeugt, mit
+   *  neutralisiert wird; die Grenze bleibt `neutralizeModelMarkdown`. Gesehen wird je Aufruf ein Abschnitt, der an einer Absatzgrenze
+   *  außerhalb offener Zäune endet (`splitStable`), nie der laufende Absatz. `raw()` und das Ergebnis des Chat-Clients bleiben
+   *  unverändert. */
+  transform?: (markdown: string) => string;
   /** Zweite Schicht gegen Fernquellen (DOM-Observer). Default `true`; `false` nur im Test mit dem Fake-DOM
    *  oder mit Begründung im Konsumenten; ein Objekt reicht `localSchemes`/`onRemoved` durch. */
   domGuard?: boolean | DomGuardOptions;
@@ -88,6 +95,10 @@ export interface StableMarkdownWriter {
   push(text: string): void;
   /** Der gesamte bisherige Rohstrom. */
   raw(): string;
+  /** Rendert den Rest des Stroms — den laufenden Absatz oder einen offenen Zaun ohne Schluss — als letzten Block und leert den Tail. Für das
+   *  Ende des Stroms; danach `settled()`. Geht durch dieselbe Kette wie `push` (`transform`, Neutralisierung, `domGuard`, Frist). Ohne Rest
+   *  (leer oder nur Leerraum) ohne Wirkung. `raw()` bleibt unverändert; ein `push` danach setzt hinter dem Rest an. */
+  flush(): void;
   /** Wartet auf die laufenden Renderings — z. B. um danach zu scrollen, wenn die
    *  endgültige Höhe feststeht. */
   settled(): Promise<void>;
@@ -132,6 +143,24 @@ export function createStableWriter(opts: StableWriterOptions): StableMarkdownWri
     }
   }
 
+  /** Legt einen Block für `fresh` an und rendert ihn über die ganze Kette: Umformung (fail-soft), Neutralisierung, Frist und Durchgang des Observers. */
+  function emit(fresh: string): void {
+    const blockEl = area.bodyEl.createDiv({ cls: blockCls });
+    blocks.push(blockEl);
+    // Eine werfende Umformung kostet die Umformung, nicht den Strom: gezeigt wird dann der Abschnitt unverändert (neutralisiert wird er danach trotzdem).
+    let shown = fresh;
+    try { if (opts.transform) shown = opts.transform(fresh); } catch { /* siehe oben */ }
+    const rendering = opts.render(blockEl, opts.raw ? shown : neutralizeModelMarkdown(shown));
+    // Der Durchgang steht in DERSELBEN Kette vor dem `catch`: eine Ausnahme darin fällt auf `setText`.
+    const p = (guard ? settleWithin(rendering, deadline, opts.clock).then(() => guard.run()) : rendering).catch(() => { blockEl.setText(shown); });
+    pending.push(p);
+    // Auch gleich nach dem Anstoßen des Renderns: was dessen synchroner Teil einfügt, wird vor allem Weiteren geprüft.
+    flushGuard();
+    // Der laufende Absatz gehört immer ans Ende: `createDiv` hängt den frischen Block
+    // hinter den Tail, also wandert der Tail danach wieder dahinter.
+    area.bodyEl.appendChild(area.tailEl);
+  }
+
   return {
     area,
 
@@ -148,21 +177,25 @@ export function createStableWriter(opts: StableWriterOptions): StableMarkdownWri
           // unangetastet. Das ist der Unterschied zum Voll-Rerender.
           const fresh = stable.slice(stableLen);
           stableLen = stable.length;
-          const blockEl = area.bodyEl.createDiv({ cls: blockCls });
-          blocks.push(blockEl);
-          const rendering = opts.render(blockEl, opts.raw ? fresh : neutralizeModelMarkdown(fresh));
-          // Der Durchgang steht in DERSELBEN Kette vor dem `catch`: eine Ausnahme darin fällt auf `setText`.
-          const p = (guard ? settleWithin(rendering, deadline, opts.clock).then(() => guard.run()) : rendering).catch(() => { blockEl.setText(fresh); });
-          pending.push(p);
-          // Auch gleich nach dem Anstoßen des Renderns: was dessen synchroner Teil einfügt, wird vor allem Weiteren geprüft.
-          flushGuard();
-          // Der laufende Absatz gehört immer ans Ende: `createDiv` hängt den frischen Block
-          // hinter den Tail, also wandert der Tail danach wieder dahinter.
-          area.bodyEl.appendChild(area.tailEl);
+          emit(fresh);
         }
         // Vor dem Layout-Lesen (`setTail`): sonst starten die Stil-Quellen, bevor der Observer läuft.
         flushGuard();
         area.setTail(tail);
+      });
+    },
+
+    flush(): void {
+      // Der Rest ab dem Schnitt-Zeiger: der laufende Absatz, oder ein offener Zaun ohne Schluss. Er geht durch DIESELBE Kette wie jeder
+      // stabile Abschnitt (Umformung, Neutralisierung, Frist und Durchgang des Observers, `pending`) — ein Rendern neben dem Schreiber
+      // liefe am Netz vorbei.
+      area.withFollow(() => {
+        const rest = raw.slice(stableLen);
+        stableLen = raw.length;
+        // Nur Leerraum ist nichts zu zeigen, wird aber verbraucht: der nächste Rest beginnt am Text.
+        if (rest.trim() !== "") emit(rest);
+        flushGuard();
+        area.setTail("");
       });
     },
 
