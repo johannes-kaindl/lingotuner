@@ -4,7 +4,7 @@ LingoTuner can send a request to Apple's on-device model instead of a server. Th
 
 ## Before you start
 
-- The [LLM Endpoint Manager](https://github.com/johannes-kaindl/llm-endpoint-manager) plugin, version 0.4.0 or newer, with the endpoint **Apple Intelligence (on-device)** set up. The endpoint and the shortcut it calls are created there, not in LingoTuner. The setup is described at <https://uplink.jkaindl.de/apple-shortcuts>.
+- The [LLM Endpoint Manager](https://github.com/johannes-kaindl/llm-endpoint-manager) plugin, version 0.4.0 or newer, with the endpoint **Apple Intelligence (on-device)** set up. The endpoint and the shortcut it calls are created there, not in LingoTuner. The setup is described at <https://jkaindl.de/uplink/apple-shortcuts/>.
 - Shortcuts and Apple Intelligence on the device that runs Obsidian.
 
 ## Choose the endpoint
