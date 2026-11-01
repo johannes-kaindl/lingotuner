@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-11-01
+
 ### Changed
 
 - Vendored `obsidian-kit` 0.74.0 (was 0.70.0) and `code-kit` 0.40.0 (was 0.37.5). You will notice the following.
