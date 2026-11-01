@@ -32,7 +32,7 @@ Each entry starts with what you see — the wording is the plugin's own English 
 
 **Cause:** a reasoning model used its whole token budget on thinking.
 
-**Fix:** switch thinking off with the thinking button in the panel, or raise the token budget under **Settings → LingoTuner → Request**.
+**Fix:** lower the thinking level in the model row of the panel (pick “off” where the model offers it), or raise the token budget under **Settings → LingoTuner → Request**.
 
 ## The answer was cut off
 

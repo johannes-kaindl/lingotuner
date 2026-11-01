@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Vendored `obsidian-kit` 0.74.0 (was 0.70.0) and `code-kit` 0.40.0 (was 0.37.5). You will notice the following.
+- **The model row is a single line.** Model, thinking level and "Reload models" sit side by side, without a visible label; a long model name is shortened (at least 6 em) and its full name is the tooltip of the dropdown. In a panel narrower than 260 px the small brain symbol before the thinking level goes away first.
+- **The thinking control in the model row is a dropdown with the levels of the chosen model, no longer an on/off button.** A local model offers "off" only where it can be turned off, then low, medium and high. A model without a recognised family offers the generic list on LM Studio and Open WebUI and no control on other servers, because nothing would be sent there. Its accessible name states the level and, where the model has one, the model's own default.
+- **Claude models get the levels of their own model**, including "extra high" and "maximum" where the model has them. A stored "off" on Claude now sends the model's default level (more thinking, more time and cost per answer, until you lower the level yourself). Claude behind Open WebUI has no thinking control any more, because its compatibility layer ignores the setting.
+- A stored "off" is mapped onto the levels of the model you use: on gpt-oss, which cannot switch thinking off, it is now sent as "low" (it went out as "minimal" before). The stored value itself stays untouched until you choose a level.
+- On Claude Opus 4.6, Sonnet 4.6 and Opus 4.5 no `temperature`, `top_p` and `top_k` are sent on any backend (these models are now recognised as the Claude family).
+- **"Reload models" is 44 × 44 px on a phone**, up from 30 × 26, so it is easier to hit; the symbol keeps its size.
+- A link in a generated text that LingoTuner had to cut (`javascript:`, or `obsidian://` while that is blocked) now looks like plain text: no colour, underline, pointer or arrow. It used to look like a link that does nothing.
+- The README images show the new model row.
+
+### Removed
+
+- The setting "Level picker in chat" (German: "Stufenwahl im Chat") is gone: the model row always shows the levels as a dropdown, so the switch decided nothing. The stored value stays in your data and is ignored.
+
 ## [0.12.0] — 2026-10-25
 
 ### Fixed
