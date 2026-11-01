@@ -75,8 +75,6 @@ export default class LingoTunerPlugin extends Plugin {
       caller: "lingotuner",
       capability: "chat",
       mode: MODE,
-      // Das Panel zeigt die Stufenwahl (view-render.ts, `getLevelPickerInChat`) — der Schalter wirkt hier.
-      levelPicker: true,
       lang: () => getLang(),
       // Apple Intelligence (Kurzbefehl): one-shot ueber die Bruecke; die Frist mindestens Kurzbefehl + 10 s setzt das Kit.
       // Claude (Anthropic API) ueber den LLM Endpoint Manager: Opt-in, ohne ihn sieht die Verbindung diese Endpunkte nie (Kit 0.62.0).
@@ -122,7 +120,8 @@ export default class LingoTunerPlugin extends Plugin {
         backend: () => this.llm.source().backend,
         current: () => thinkingFor(this.settings.request, MODE),
         onLevel: () => onLevelFor(this.settings.request, MODE),
-        levelPicker: () => this.settings.request.levelPickerInChat,
+        // Die Modellzeile zeigt die Stufen seit Kit 0.73.0 immer als Auswahl; die Einstellung „Stufenwahl im Chat“ gibt es nicht mehr, der gespeicherte Wert bleibt in den Daten.
+        levelPicker: () => false,
         setLevel: (l) => {
           this.settings.request.thinking[MODE] = l;
           if (l !== "off") this.settings.request.lastOnLevel[MODE] = l;

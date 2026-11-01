@@ -138,7 +138,7 @@ const PUNKTE = [
   "N1 Abschnitt Anfrage laesst sich aufklappen",
   "N2 Eigener Wert wird gesetzt und wieder zurueckgesetzt",
   "N3 Denk-Dropdown im Panel: eine Wahl wird gespeichert",
-  "N4 Denk-Dropdown steht mit und ohne „Stufenwahl im Chat“",
+  "N4 Die Einstellung „Stufenwahl im Chat“ entfaellt, die Modellzeile zeigt die Stufen immer als Auswahl",
   "ML1 Modellzeile: eine Zeile im Panel, das Dropdown traegt „Automatisch“ und BEIDE Modelle, hat einen Namen, Neu laden sagt die Zahl an",
   "ML2 Modellzeile: der Wechsel wirkt, die naechste Anfrage am Endpunkt traegt das gewaehlte Modell",
   "ML3 Modellzeile: die Denk-Steuerung steht IN der Zeile, nicht in der Lauf-Zeile",
@@ -2086,11 +2086,12 @@ async function pruefeVerbindung(cdp: Cdp): Promise<void> {
 async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
   console.log('\nN · Abschnitt "Anfrage" (Sampling-Profile)');
   let stelle: SettingsStelle | null = null;
+  let zeile: { feld: boolean; zeilen: number; stufenwahl: boolean } | null = null;
   const NAMEN = [
     "N1 Abschnitt Anfrage laesst sich aufklappen",
     "N2 Eigener Wert wird gesetzt und wieder zurueckgesetzt",
     "N3 Denk-Dropdown im Panel: eine Wahl wird gespeichert",
-    "N4 Denk-Dropdown steht mit und ohne „Stufenwahl im Chat“",
+    "N4 Die Einstellung „Stufenwahl im Chat“ entfaellt, die Modellzeile zeigt die Stufen immer als Auswahl",
   ];
   try {
     stelle = await openSettings(cdp, port);
@@ -2126,6 +2127,12 @@ async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
         return { own, zurueck };
       })()`)};`);
       record(NAMEN[1]!, gesetzt.own && gesetzt.zurueck, `eigener Wert gesetzt=${gesetzt.own}, zurueckgesetzt=${gesetzt.zurueck}`);
+      // N4 (erste Haelfte) — die Zeile „Stufenwahl im Chat“ steht nicht mehr im Abschnitt Anfrage (Gegenprobe: der Abschnitt ist offen und traegt sein Temperatur-Feld,
+      // sonst haette die Suche nichts durchsucht).
+      zeile = await stelle.cdp.evaluate<{ feld: boolean; zeilen: number; stufenwahl: boolean }>(`return ${stelle.el(`(() => {
+        const namen = [...root.querySelectorAll(".okit-collapsible-body .setting-item-name")].map((e) => (e.textContent || "").trim());
+        return { feld: !!root.querySelector('input[data-field="temperature"]'), zeilen: namen.length, stufenwahl: namen.some((n) => /Stufenwahl im Chat|Level picker in chat/i.test(n)) };
+      })()`)};`);
     } else {
       nichtGemessen(NAMEN[1]!, "Abschnitt liess sich nicht aufklappen — ohne ihn ist kein Feld erreichbar");
     }
@@ -2156,25 +2163,16 @@ async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
     record(NAMEN[2]!, wahl.gefunden && wahl.ziel !== wahl.vorher && wahl.gespeichert === wahl.ziel && wahl.nachher === wahl.ziel,
       `Dropdown ${wahl.gefunden ? "da" : "FEHLT"}: „${wahl.vorher}“ → „${wahl.ziel}“, gespeichert „${wahl.gespeichert}“, Dropdown danach „${wahl.nachher}“`);
 
-    // N4 — "Stufenwahl im Chat" (levelPickerInChat) war vor Kit 0.73.0 der Schalter zwischen Knopf und Dropdown. In der Modellzeile entscheidet er nichts mehr: das Dropdown steht
-    // mit ausgeschaltetem UND mit eingeschaltetem Schalter (Befund Welle 29, der Schalter ist fuer das Panel wirkungslos).
-    const dropdown = await cdp.evaluate<{ aus: boolean; an: boolean; knopf: boolean }>(`
-      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+    // N4 (zweite Haelfte) — das Dropdown steht in der Modellzeile, ein Denk-Knopf nie (die Einstellung „Stufenwahl im Chat“ gibt es nicht mehr, Welle 29).
+    const dropdown = await cdp.evaluate<{ select: boolean; knopf: boolean }>(`
       const leaf = app.workspace.getLeavesOfType(${q(VIEW_TYPE)})[0];
-      const messen = async (wert) => {
-        p.settings.request.levelPickerInChat = wert;
-        await p.saveSettings();
-        if (leaf && leaf.view && leaf.view.refresh) leaf.view.refresh();
-        await new Promise((r) => setTimeout(r, 300));
-        return !!document.querySelector(".okit-model-bar .okit-thinking-control select");
-      };
-      const aus = await messen(false);
-      const an = await messen(true);
-      const knopf = !!document.querySelector(".okit-thinking-toggle");
-      await messen(false);
-      return { aus, an, knopf };
+      if (leaf && leaf.view && leaf.view.refresh) leaf.view.refresh();
+      await new Promise((r) => setTimeout(r, 300));
+      return { select: !!document.querySelector(".okit-model-bar .okit-thinking-control select"), knopf: !!document.querySelector(".okit-thinking-toggle") };
     `);
-    record(NAMEN[3]!, dropdown.aus && dropdown.an && !dropdown.knopf, `Dropdown ohne Schalter=${dropdown.aus}, mit Schalter=${dropdown.an}, Denk-Knopf (Gegenprobe, soll es nicht geben)=${dropdown.knopf}`);
+    const z = zeile as { feld: boolean; zeilen: number; stufenwahl: boolean } | null;
+    record(NAMEN[3]!, z !== null && z.feld && z.zeilen > 0 && !z.stufenwahl && dropdown.select && !dropdown.knopf,
+      z === null ? "Abschnitt Anfrage nicht gemessen" : `Abschnitt offen (Temperatur-Feld ${z.feld}, ${z.zeilen} Zeilen), Zeile „Stufenwahl im Chat“ da=${z.stufenwahl} (soll false), Dropdown in der Modellzeile=${dropdown.select}, Denk-Knopf=${dropdown.knopf} (Gegenprobe, soll false)`);
   } catch (e) {
     for (const n of NAMEN) {
       if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);
