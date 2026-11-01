@@ -137,8 +137,8 @@ const PUNKTE = [
   "V3 Antwort mit Code-Block-Prozessor und Bild rendert als Text",
   "N1 Abschnitt Anfrage laesst sich aufklappen",
   "N2 Eigener Wert wird gesetzt und wieder zurueckgesetzt",
-  "N3 Denk-Knopf im Panel schaltet um",
-  "N4 Stufenwahl im Chat zeigt ein Dropdown",
+  "N3 Denk-Dropdown im Panel: eine Wahl wird gespeichert",
+  "N4 Denk-Dropdown steht mit und ohne „Stufenwahl im Chat“",
   "ML1 Modellzeile: eine Zeile im Panel, das Dropdown traegt „Automatisch“ und BEIDE Modelle, hat einen Namen, Neu laden sagt die Zahl an",
   "ML2 Modellzeile: der Wechsel wirkt, die naechste Anfrage am Endpunkt traegt das gewaehlte Modell",
   "ML3 Modellzeile: die Denk-Steuerung steht IN der Zeile, nicht in der Lauf-Zeile",
@@ -2089,8 +2089,8 @@ async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
   const NAMEN = [
     "N1 Abschnitt Anfrage laesst sich aufklappen",
     "N2 Eigener Wert wird gesetzt und wieder zurueckgesetzt",
-    "N3 Denk-Knopf im Panel schaltet um",
-    "N4 Stufenwahl im Chat zeigt ein Dropdown",
+    "N3 Denk-Dropdown im Panel: eine Wahl wird gespeichert",
+    "N4 Denk-Dropdown steht mit und ohne „Stufenwahl im Chat“",
   ];
   try {
     stelle = await openSettings(cdp, port);
@@ -2132,37 +2132,49 @@ async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
     await closeSettings(cdp, stelle);
     stelle = null;
 
-    // N3 — Denk-Knopf im Panel: ein Klick schaltet is-off um.
-    const vor = await hasClass(cdp, ".okit-thinking-toggle", "is-off");
-    await clickReal(cdp, `document.querySelector(".okit-thinking-toggle")`).catch(() => undefined);
-    await new Promise((r) => { setTimeout(r, 300); });
-    const nach = await hasClass(cdp, ".okit-thinking-toggle", "is-off");
-    record(NAMEN[2]!, vor !== nach, `is-off vorher=${vor}, nachher=${nach}`);
-    if (vor !== nach) await clickReal(cdp, `document.querySelector(".okit-thinking-toggle")`).catch(() => undefined); // zurueck
-
-    // N4 — "Stufenwahl im Chat" einschalten (direkt in den Settings, kein Umweg ueber einen
-    // zweiten Settings-Aufruf) und das Panel selbst neu zeichnen lassen (`refresh()`, das
-    // Kit-Muster fuer Aenderungen von aussen) — danach steht ein <select> statt des Knopfs.
-    const dropdown = await cdp.evaluate<{ vorher: boolean; nachher: boolean }>(`
+    // N3 — Denk-Dropdown im Panel (seit Kit 0.73.0 steht in der Modellzeile immer ein Dropdown mit den Stufen des Modells, kein Knopf): eine Wahl landet in den
+    // Einstellungen (`request.thinking[MODE]`) und im Dropdown, danach geht die Ausgangsstufe zurueck.
+    const wahl = await cdp.evaluate<{ gefunden: boolean; vorher: string; ziel: string; gespeichert: string; nachher: string }>(`
+      // Die vorigen Abschnitte (V, F) haben den Endpunkt am Plugin vorbei umgestellt: die Zeile zeichnet aus dem Zustand erst nach refresh() neu (Kit-Muster fuer Aenderungen von
+      // aussen, wie N4). Ohne das steht die Steuerung noch leer da (Backend war beim Zeichnen ein anderes), das wuerde den Punkt als „Dropdown fehlt“ messen.
+      const leaf0 = app.workspace.getLeavesOfType(${q(VIEW_TYPE)})[0];
+      if (leaf0 && leaf0.view && leaf0.view.refresh) leaf0.view.refresh();
+      let sel = null;
+      for (let i = 0; i < 30 && !sel; i++) { sel = document.querySelector(".okit-model-bar .okit-thinking-control select"); if (!sel) await new Promise((r) => setTimeout(r, 150)); }
+      if (!sel) { const pp = app.plugins.plugins[${q(PLUGIN_ID)}]; const so = pp.llm.source(); return { gefunden: false, vorher: JSON.stringify({ fam: so.family, be: so.backend, model: pp.llm.modelInUse && pp.llm.modelInUse(), html: (document.querySelector(".okit-model-bar")||{outerHTML:"keine Zeile"}).outerHTML.slice(0, 700) }), ziel: "", gespeichert: "", nachher: "" }; }
       const p = app.plugins.plugins[${q(PLUGIN_ID)}];
-      const vorher = !!document.querySelector(".okit-thinking-control select");
-      p.settings.request.levelPickerInChat = true;
-      await p.saveSettings();
-      const leaf = app.workspace.getLeavesOfType(${q(VIEW_TYPE)})[0];
-      if (leaf && leaf.view && leaf.view.refresh) leaf.view.refresh();
+      const vorher = sel.value;
+      const ziel = [...sel.options].map((o) => o.value).find((v) => v !== vorher) || vorher;
+      sel.value = ziel; sel.dispatchEvent(new Event("change", { bubbles: true }));
       await new Promise((r) => setTimeout(r, 300));
-      const nachher = !!document.querySelector(".okit-thinking-control select");
-      return { vorher, nachher };
+      const gespeichert = String(p.settings.request.thinking[${q("transform")}]);
+      const nachher = document.querySelector(".okit-model-bar .okit-thinking-control select").value;
+      sel.value = vorher; sel.dispatchEvent(new Event("change", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 300));
+      return { gefunden: true, vorher, ziel, gespeichert, nachher };
     `);
-    record(NAMEN[3]!, !dropdown.vorher && dropdown.nachher, `Dropdown vorher=${dropdown.vorher}, nachher=${dropdown.nachher}`);
-    await cdp.evaluate(`
+    record(NAMEN[2]!, wahl.gefunden && wahl.ziel !== wahl.vorher && wahl.gespeichert === wahl.ziel && wahl.nachher === wahl.ziel,
+      `Dropdown ${wahl.gefunden ? "da" : "FEHLT"}: „${wahl.vorher}“ → „${wahl.ziel}“, gespeichert „${wahl.gespeichert}“, Dropdown danach „${wahl.nachher}“`);
+
+    // N4 — "Stufenwahl im Chat" (levelPickerInChat) war vor Kit 0.73.0 der Schalter zwischen Knopf und Dropdown. In der Modellzeile entscheidet er nichts mehr: das Dropdown steht
+    // mit ausgeschaltetem UND mit eingeschaltetem Schalter (Befund Welle 29, der Schalter ist fuer das Panel wirkungslos).
+    const dropdown = await cdp.evaluate<{ aus: boolean; an: boolean; knopf: boolean }>(`
       const p = app.plugins.plugins[${q(PLUGIN_ID)}];
-      p.settings.request.levelPickerInChat = false;
-      await p.saveSettings();
       const leaf = app.workspace.getLeavesOfType(${q(VIEW_TYPE)})[0];
-      if (leaf && leaf.view && leaf.view.refresh) leaf.view.refresh();
-      return { ok: true };
-    `).catch(() => undefined);
+      const messen = async (wert) => {
+        p.settings.request.levelPickerInChat = wert;
+        await p.saveSettings();
+        if (leaf && leaf.view && leaf.view.refresh) leaf.view.refresh();
+        await new Promise((r) => setTimeout(r, 300));
+        return !!document.querySelector(".okit-model-bar .okit-thinking-control select");
+      };
+      const aus = await messen(false);
+      const an = await messen(true);
+      const knopf = !!document.querySelector(".okit-thinking-toggle");
+      await messen(false);
+      return { aus, an, knopf };
+    `);
+    record(NAMEN[3]!, dropdown.aus && dropdown.an && !dropdown.knopf, `Dropdown ohne Schalter=${dropdown.aus}, mit Schalter=${dropdown.an}, Denk-Knopf (Gegenprobe, soll es nicht geben)=${dropdown.knopf}`);
   } catch (e) {
     for (const n of NAMEN) {
       if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);
@@ -2242,12 +2254,12 @@ async function pruefeModellzeile(cdp: Cdp): Promise<void> {
     // ML3
     const d = await cdp.evaluate<{ inZeile: number; gesamt: number; inLauf: number }>(`
       return {
-        inZeile: document.querySelectorAll(".okit-model-bar .okit-thinking-toggle").length,
-        gesamt: document.querySelectorAll(".okit-thinking-toggle").length,
-        inLauf: document.querySelectorAll(".lt-run-row .okit-thinking-toggle").length,
+        inZeile: document.querySelectorAll(".okit-model-bar .okit-thinking-control").length,
+        gesamt: document.querySelectorAll(".okit-thinking-control").length,
+        inLauf: document.querySelectorAll(".lt-run-row .okit-thinking-control").length,
       };
     `);
-    record(N3, d.inZeile === 1 && d.gesamt === 1 && d.inLauf === 0, `Denk-Knopf in der Zeile ${d.inZeile}, im Panel insgesamt ${d.gesamt}, in der Lauf-Zeile (Gegenprobe, soll 0) ${d.inLauf}`);
+    record(N3, d.inZeile === 1 && d.gesamt === 1 && d.inLauf === 0, `Denk-Steuerung in der Zeile ${d.inZeile}, im Panel insgesamt ${d.gesamt}, in der Lauf-Zeile (Gegenprobe, soll 0) ${d.inLauf}`);
 
     // ML4 — Sperre im Lauf (verlangsamter Stub)
     let waehrend: Awaited<ReturnType<typeof lies>> | null = null;
