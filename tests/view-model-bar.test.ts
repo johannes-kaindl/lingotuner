@@ -202,42 +202,55 @@ describe("Modellzeile im Panel (Kit model-bar)", () => {
 });
 
 describe("Denk-Steuerung in der Modellzeile", () => {
-  it("steht IN der Zeile; ein Neuaufbau des Panels laesst genau einen Knopf zurueck", async () => {
+  // Seit Kit 0.73.0 ist die Denk-Steuerung IN der Modellzeile immer ein Dropdown mit den Stufen des Modells (kein Knopf mehr). Das Fake-DOM kennt keine
+  // Tag-Selektoren: das <select> ist das Kind der Steuerung, das eine Komponente traegt (`__component`).
+  type Dd = El & { __component?: { getValue(): string; options: Record<string, string>; onChangeCB: ((v: string) => unknown) | null } };
+  const stufenWahl = (root: El): Dd => {
+    const ctl = findByClass<El>(root, "okit-thinking-control");
+    const dd = (ctl?.children ?? []).find((c) => (c as Dd).__component !== undefined) as Dd | undefined;
+    if (dd === undefined) throw new Error("kein Denk-Dropdown in der Steuerung");
+    return dd;
+  };
+
+  it("steht IN der Zeile als Dropdown; ein Neuaufbau des Panels laesst genau eine Steuerung zurueck", async () => {
     const a = baue({}, undefined, { family: "qwen3.8" });
     await tick();
     const bar = findByClass<El>(a.root, "okit-model-bar");
-    expect(findAllByClass(bar, "okit-thinking-toggle")).toHaveLength(1);
-    expect(findAllByClass(a.root, "okit-thinking-toggle")).toHaveLength(1);
+    expect(findAllByClass(bar, "okit-thinking-control")).toHaveLength(1);
+    expect(findAllByClass(a.root, "okit-thinking-control")).toHaveLength(1);
+    expect(findAllByClass(a.root, "okit-thinking-toggle")).toHaveLength(0);
     findAllByClass<El>(a.root, "lt-source-chip")[1].click?.();
     await tick();
-    expect(findAllByClass(a.root, "okit-thinking-toggle")).toHaveLength(1);
+    expect(findAllByClass(a.root, "okit-thinking-control")).toHaveLength(1);
   });
 
-  it("traegt aria-pressed passend zum Zustand (UI-STANDARD 8)", async () => {
+  it("zeigt die gespeicherte Stufe und nennt sie im Namen (Wert und aria-label des Dropdowns)", async () => {
     const aus = baue({}, undefined, { family: "qwen3.8", level: "off" });
     await tick();
-    expect(findByClass<El>(aus.root, "okit-thinking-toggle")?.getAttribute?.("aria-pressed")).toBe("false");
+    expect(stufenWahl(aus.root).__component?.getValue()).toBe("off");
+    expect(stufenWahl(aus.root).getAttribute?.("aria-label")).toContain("Thinking level: off");
     const an = baue({}, undefined, { family: "qwen3.8", level: "low" });
     await tick();
-    expect(findByClass<El>(an.root, "okit-thinking-toggle")?.getAttribute?.("aria-pressed")).toBe("true");
+    expect(stufenWahl(an.root).__component?.getValue()).toBe("low");
+    expect(stufenWahl(an.root).getAttribute?.("aria-label")).toContain("Thinking level: low");
   });
 
-  it("gpt-oss kann Denken nicht ganz abschalten — der Knopf zeigt die niedrigste Stufe, der Grund steht im Hinweis", async () => {
+  it("gpt-oss kann Denken nicht ganz abschalten — das Dropdown zeigt die niedrigste Stufe, gespeichert wird nichts", async () => {
     const a = baue({}, undefined, { family: "gpt-oss", level: "off" });
     await tick();
-    const toggle = findByClass<El>(a.root, "okit-thinking-toggle");
-    expect(toggle?.getAttribute?.("aria-pressed")).toBe("false");
-    expect(toggle?.textContent).toContain("Thinking: lowest level");
-    expect(toggle?.getAttribute?.("aria-label")).toContain("can't be fully turned off");
+    const dd = stufenWahl(a.root);
+    expect(dd.__component?.getValue()).toBe("low");
+    expect(Object.keys(dd.__component?.options ?? {})).not.toContain("off");
+    expect(a.denk.st.level).toBe("off");
   });
 
-  it("ein Klick schaltet ueber deps.thinking.setLevel, ohne das Panel neu zu zeichnen", async () => {
-    const a = baue({}, undefined, { family: "qwen3.8", level: "off", onLevel: "medium" });
+  it("eine Wahl im Dropdown schaltet ueber deps.thinking.setLevel, ohne das Panel neu zu zeichnen", async () => {
+    const a = baue({}, undefined, { family: "qwen3.8", level: "off" });
     await tick();
     const lauf = findByClass<El & { marke?: number }>(a.root, "lt-run");
     if (lauf === null) throw new Error("Vorbedingung fehlt");
     lauf.marke = 1;
-    findByClass<El>(a.root, "okit-thinking-toggle")?.click?.();
+    await stufenWahl(a.root).__component?.onChangeCB?.("medium");
     await tick(); await tick();
     expect(a.denk.st.level).toBe("medium");
     expect(findByClass<El & { marke?: number }>(a.root, "lt-run")?.marke).toBe(1);

@@ -9,7 +9,7 @@ import { patchPanel, renderPanel, structureKey, type PanelHandlers, type PanelMo
 import { createStableWriter, type StableMarkdownWriter } from "../vendor/kit-obsidian/stable-writer";
 import { neutralizeModelMarkdown } from "../vendor/kit/safe-markdown";
 import { buildModelBar, type ModelBar, type ModelBarConnection } from "../vendor/kit-obsidian/model-bar";
-import { thinkingOffTexts, type ThinkingControlOptions } from "../vendor/kit-obsidian/thinking-control";
+import { thinkingLevelTexts, thinkingOffTexts, type ThinkingControlOptions } from "../vendor/kit-obsidian/thinking-control";
 import { getLang, t } from "../vendor/kit/i18n";
 
 export const VIEW_TYPE_LINGOTUNER = "lingotuner-panel";
@@ -264,6 +264,9 @@ export class LingoTunerView extends ItemView {
           offNotPossible: thinkingOffTexts(getLang()),
           level: (l) => t(`request.level.${l}`),
           pickerLabel: t("think.pickerLabel"),
+          name: thinkingLevelTexts(getLang()).name,
+          costNote: thinkingLevelTexts(getLang()).costNote,
+          lockedLevel: thinkingLevelTexts(getLang()).lockedLevel,
         },
       },
     });

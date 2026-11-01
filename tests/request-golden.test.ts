@@ -41,10 +41,12 @@ describe("goldene Requests — transform, Denkstufe aus, ohne Ueberschreibung", 
       unknown: { temperature: 0.2, top_p: 0.95, reasoning_effort: "none" },
       ollama: {}, openai: {}, anthropic: {},
     },
+    // code-kit 0.39.0 (resolveThinkingLevel): ein gespeichertes "off" wird mit `model` auf die Stufenliste des Modells geklemmt; gpt-oss kennt kein "off",
+    // seine niedrigste Stufe ist "low" (vorher "minimal"). Welle 29, Falle 12.
     "gpt-oss": {
-      lmstudio: { temperature: 0.2, top_p: 1.0, reasoning_effort: "minimal" },
-      openwebui: { temperature: 0.2, top_p: 1.0, reasoning_effort: "minimal" },
-      unknown: { temperature: 0.2, top_p: 1.0, reasoning_effort: "minimal" },
+      lmstudio: { temperature: 0.2, top_p: 1.0, reasoning_effort: "low" },
+      openwebui: { temperature: 0.2, top_p: 1.0, reasoning_effort: "low" },
+      unknown: { temperature: 0.2, top_p: 1.0, reasoning_effort: "low" },
       ollama: {}, openai: {}, anthropic: {},
     },
     "null": {

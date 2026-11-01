@@ -164,6 +164,8 @@ export const STRINGS = {
     "request.level.low": "low",
     "request.level.medium": "medium",
     "request.level.high": "high",
+    "request.level.xhigh": "extra high",
+    "request.level.max": "maximum",
     "request.dropped": "{0} saved request setting(s) were invalid and were reset to the profile.",
 
     "logbook.heading": "## {0} · {1}",
@@ -335,6 +337,8 @@ export const STRINGS = {
     "request.level.low": "niedrig",
     "request.level.medium": "mittel",
     "request.level.high": "hoch",
+    "request.level.xhigh": "sehr hoch",
+    "request.level.max": "maximal",
     "request.dropped": "{0} gespeicherte Anfrage-Einstellung(en) waren ungültig und wurden auf den Profilwert zurückgesetzt.",
 
     "logbook.heading": "## {0} · {1}",

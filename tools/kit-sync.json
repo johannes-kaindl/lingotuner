@@ -1,7 +1,7 @@
 {
   "sources": {
-    "obsidian-kit": { "ref": "0.70.0" },
-    "code-kit": { "ref": "0.37.5" }
+    "obsidian-kit": { "ref": "0.74.0" },
+    "code-kit": { "ref": "0.40.0" }
   },
   "targets": [
     { "dir": "src/vendor/kit", "source": "code-kit", "from": "src/ts/web", "modules": ["clipboard", "link-guard", "remote-resources"], "rewrite": [["../pure/", "./"]] },
@@ -11,11 +11,11 @@
         "sse", "endpoint", "endpoint_config", "endpoint_diagnostics", "model-choice",
         "model-list-cache", "reasoning", "capabilities", "think-splitter", "think-toggle",
         "timeout", "error_body", "i18n", "settings", "stream-blocks", "sampling-profiles",
-        "backend-probe", "redact", "safe-markdown", "secrets", "rounds", "model-context", "embeddings-client", "slug", "local-stamp"
+        "backend-probe", "redact", "safe-markdown", "secrets", "rounds", "model-context", "embeddings-client", "slug", "local-stamp", "anthropic-wire"
       ]
     },
     {
-      "dir": "src/vendor/kit", "source": "obsidian-kit", "from": "src/pure", "modules": ["endpoint-source", "endpoint-secret-hook", "shortcut-failure", "anthropic-wire", "override-guard"],
+      "dir": "src/vendor/kit", "source": "obsidian-kit", "from": "src/pure", "modules": ["endpoint-source", "endpoint-secret-hook", "shortcut-failure", "override-guard"],
       "rewrite": [["../vendor/code-kit/pure/", "./"], ["../vendor/code-kit/web/", "./"], ["../pure/", "./"]]
     },
     {
