@@ -145,6 +145,7 @@ const PUNKTE = [
   "ML4 Modellzeile: waehrend eines Laufs gesperrt, danach wieder frei",
   "ML5 Modellzeile: ein Modellwechsel zeichnet das Panel nicht neu (kein Voll-Draw), ein Quellenwechsel schon",
   "ML6 Endpunktwechsel in den Einstellungen: die Stufenwahl der Modellzeile erscheint im offenen Panel ohne weitere Handlung (kein refresh())",
+  "ML7 Modellzeile im Seitenleisten-Panel (unter 340 px Zeilenbreite): die Denkstufe ist auf ihr Zeichen gefaltet und der Modellname bleibt lesbar (Kit 0.77.1)",
   "R1 Runden-Zeile laeuft bei ~300 px nicht ueber",
   "R2 Rueckwahl: Klick auf die vorletzte Runde zeigt deren Ergebnis, die Zeile ist aktiv",
   "R3 Panel ragt bei ~230 px Sidebar-Breite nicht ueber den Rand",
@@ -2188,12 +2189,13 @@ async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
  *  Gegenprobe im selben Punkt: ein Quellenwechsel baut neu auf, die Marke ist weg. */
 async function pruefeModellzeile(cdp: Cdp): Promise<void> {
   console.log("\nML · Modellzeile (Kit model-bar)");
-  const [N1, N2, N3, N4, N5] = [
+  const [N1, N2, N3, N4, N5, N7] = [
     "ML1 Modellzeile: eine Zeile im Panel, das Dropdown traegt „Automatisch“ und BEIDE Modelle, hat einen Namen, Neu laden sagt die Zahl an",
     "ML2 Modellzeile: der Wechsel wirkt, die naechste Anfrage am Endpunkt traegt das gewaehlte Modell",
     "ML3 Modellzeile: die Denk-Steuerung steht IN der Zeile, nicht in der Lauf-Zeile",
     "ML4 Modellzeile: waehrend eines Laufs gesperrt, danach wieder frei",
     "ML5 Modellzeile: ein Modellwechsel zeichnet das Panel nicht neu (kein Voll-Draw), ein Quellenwechsel schon",
+    "ML7 Modellzeile im Seitenleisten-Panel (unter 340 px Zeilenbreite): die Denkstufe ist auf ihr Zeichen gefaltet und der Modellname bleibt lesbar (Kit 0.77.1)",
   ] as const;
   const A = "smoke-zeile-a", B = "smoke-zeile-b";
   const stub = await startLlmStub({ models: [A, B], takt: STUB_TAKT_MS, nachlaufMs: 3 * STUB_TAKT_MS, standard: { text: "ok", model: A } });
@@ -2283,8 +2285,49 @@ async function pruefeModellzeile(cdp: Cdp): Promise<void> {
     const nachQuelle = await cdp.evaluate<{ marke: boolean }>(`return { marke: document.querySelector(".lt-run").__w27 === 1 };`);
     record(N5, nachModell.marke && nachModell.wert === A && !nachQuelle.marke,
       `Marke nach dem Modellwechsel ${nachModell.marke ? "noch da" : "WEG (Voll-Draw)"}, Dropdown „${nachModell.wert}“; nach dem Quellenwechsel (Gegenprobe) ${nachQuelle.marke ? "noch da" : "weg"}`);
+
+    // ML7 — die Seitenleiste auf 300 px (Panel 277 bis 328 px breit): unter 340 px Zeilenbreite faltet die Denkstufe auf ihr Zeichen (Kit 0.77.1, vorher 260), der Modellname behaelt den Platz.
+    // Lesbar heisst: der ganze gewaehlte Name passt in den Text-Platz des Dropdowns (Canvas-Breite gegen Innenbreite); Gegenprobe ist der Pin 0.76.1 (Schwelle 260): dort bleibt die Stufenwahl breit.
+    // Die Stufenwahl steht nur da, wenn die Verbindung ein Backend meldet (die Modelle A und B der Punkte davor haben keines): ML7 stellt den Endpunkt auf einen eigenen Stub mit LM-Studio-Pfad (wie ML6) und einem Qwen3-Namen,
+    // Zeichnen wie in ML6 (resolve, dann refresh), und der ganze Block laeuft im selben Versuch, damit der Stub und die Seitenleiste in jedem Fall wieder abgebaut werden.
+    const M7 = "qwen3-8b";
+    const stub7 = await startLlmStub({ models: [M7], kontext: { geladen: 4096 }, standard: { text: "ok", model: M7 } });
+    const breite0 = await cdp.evaluate<number>(`return app.workspace.rightSplit.size ?? 300;`);
+    try {
+      await cdp.evaluate(`
+        const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+        p.settings.endpoints = [{ url: ${q(stub7.url)}, model: ${q(M7)} }];
+        await p.saveSettings();
+        p.llm.invalidate();
+        await p.llm.resolve();
+        const leaf = app.workspace.getLeavesOfType(${q(VIEW_TYPE)})[0];
+        if (leaf && leaf.view && leaf.view.refresh) leaf.view.refresh();
+        for (let i = 0; i < 30 && !document.querySelector(".okit-model-bar .okit-thinking-control select"); i++) await new Promise((r) => setTimeout(r, 150));
+        return { ok: true };
+      `);
+      await cdp.evaluate(`app.workspace.rightSplit.setSize(300); await new Promise((r) => setTimeout(r, 600)); return { ok: true };`);
+      const m7 = await cdp.evaluate<{ zeile: number; stufe: number; modell: number; name: string; textBreite: number; platz: number; zeichen: number; gesamt: number } | null>(`
+        const bar = document.querySelector(".okit-model-bar"); const ms = bar && bar.querySelector(".okit-model-bar-select, select"); const ts = bar && bar.querySelector(".okit-thinking-control select");
+        if (!bar || !ms || !ts) return null;
+        const cs = getComputedStyle(ms); const name = ms.options[ms.selectedIndex].textContent;
+        const c = document.createElement("canvas").getContext("2d"); c.font = cs.fontWeight + " " + cs.fontSize + " " + cs.fontFamily;
+        const platz = ms.getBoundingClientRect().width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+        let zeichen = 0; while (zeichen < name.length && c.measureText(name.slice(0, zeichen + 1)).width <= platz) zeichen++;
+        return { zeile: Math.round(bar.getBoundingClientRect().width), stufe: Math.round(ts.getBoundingClientRect().width), modell: Math.round(ms.getBoundingClientRect().width), name, textBreite: Math.round(c.measureText(name).width), platz: Math.round(platz), zeichen, gesamt: name.length };
+      `);
+      if (!m7) {
+        const diag = await cdp.evaluate<string>(`const bar = document.querySelector(".okit-model-bar"); const tc = document.querySelector(".okit-thinking-control"); return JSON.stringify({ zeilen: document.querySelectorAll(".okit-model-bar").length, selects: bar ? bar.querySelectorAll("select").length : -1, steuerung: tc ? tc.outerHTML.slice(0, 160) : null, modell: bar && bar.querySelector("select") ? bar.querySelector("select").value : null, aktiv: app.plugins.plugins[${q(PLUGIN_ID)}].llm.modelInUse() });`).catch(() => "Diagnose fehlgeschlagen");
+        nichtGemessen(N7, `keine Modellzeile, kein Modell-Dropdown oder keine Denk-Steuerung im Panel (${diag})`);
+      }
+      else if (m7.zeile >= 340) nichtGemessen(N7, `die Zeile ist ${m7.zeile} px breit (Seitenleiste 300 px gesetzt): die Faltschwelle (340 px) ist nicht unterschritten, nichts zu messen`);
+      else record(N7, m7.stufe <= 80 && m7.zeichen === m7.gesamt,
+        `Zeile ${m7.zeile} px · Stufenwahl ${m7.stufe} px (gefaltet: bis 80 px verlangt) · Modell-Dropdown ${m7.modell} px, Name „${m7.name}“ ${m7.textBreite} px bei ${m7.platz} px Platz: ${m7.zeichen} von ${m7.gesamt} Zeichen lesbar`);
+    } finally {
+      await cdp.evaluate(`app.workspace.rightSplit.setSize(${Number(breite0)}); return { ok: true };`).catch(() => null);
+      await stub7.stop();
+    }
   } catch (e) {
-    for (const n of [N1, N2, N3, N4, N5]) if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);
+    for (const n of [N1, N2, N3, N4, N5, N7]) if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);
   } finally {
     await cdp.evaluate(`
       const p = app.plugins.plugins[${q(PLUGIN_ID)}];
