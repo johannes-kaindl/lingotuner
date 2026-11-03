@@ -84,6 +84,9 @@ export default class LingoTunerPlugin extends Plugin {
         choice: this.settings.choice,
         request: this.settings.request,
       }),
+      // Die Verbindung meldet eine geaenderte Aufloesung (Endpunkt, Backend, Familie) — auch die aus den Einstellungen: das offene Panel zeichnet seine Modellzeile neu.
+      // Ohne den Rueckruf fehlte die Stufenwahl nach einem Wechsel in den Einstellungen, bis irgendein `refresh()` kam (Smoke ML6). Der Rueckruf loest nicht auf (Kit-Vertrag).
+      onResolved: () => { this.onLlmResolved(); },
       // Erst in die Settings schreiben, dann speichern: die Endpunkt-Liste liest ihre Zeilen danach zurueck.
       persist: (patch) => {
         Object.assign(this.settings, patch);
@@ -184,6 +187,9 @@ export default class LingoTunerPlugin extends Plugin {
   async saveSettings(): Promise<void> { await this.saveData(this.settings); }
 
   /** Ist der LLM Endpoint Manager da? Dann entscheidet er (Kit `resolveEndpointSource`: kein lokaler Rueckfall). */
+
+  /** Rueckruf der Verbindung (`onResolved`): das offene Panel zieht Modellzeile und Rest aus dem neuen Zustand nach. Loest nie auf. */
+  private onLlmResolved(): void { this.panel()?.refresh(); }
 
   private panel(): LingoTunerView | null {
     const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_LINGOTUNER)[0];

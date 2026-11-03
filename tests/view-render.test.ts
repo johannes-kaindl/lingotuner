@@ -141,17 +141,27 @@ describe("renderPanel", () => {
     for (const [phase, cls] of cases) {
       const root = makeFakeEl();
       const parts = renderPanel(root, model({ phase, statusText: `text-${phase}` }), handlers());
-      const statusEl = parts.statusEl as unknown as El;
+      const statusEl = parts.status.statusEl as unknown as El;
       expect(statusEl.className).toContain(cls);
       for (const other of all) if (other !== cls) expect(statusEl.className).not.toContain(other);
       expect((statusEl as unknown as { getAttribute(k: string): string | null }).getAttribute("aria-label")).toBe(`text-${phase}`);
     }
   });
 
+  it("die Statuszeile ist der Kit-Baustein (okit-status mit lt-status als Haken des Plugins), Symbol und Text stehen in den Kit-Klassen", () => {
+    const root = makeFakeEl();
+    renderPanel(root, model({ phase: "done", statusText: "Fertig" }), handlers());
+    expect(findByClass<El>(root, "okit-status")?.className).toContain("lt-status");
+    expect(findByClass<El>(root, "okit-status-icon")).not.toBeNull();
+    expect(findByClass<El>(root, "okit-status-label")?.textContent).toBe("Fertig");
+    expect(findByClass(root, "lt-status-icon")).toBeNull();
+    expect(findByClass(root, "lt-status-label")).toBeNull();
+  });
+
   it("Phase idle ist neutral: keine is-*-Klasse, aria-label bleibt", () => {
     const root = makeFakeEl();
     const parts = renderPanel(root, model({ phase: "idle", statusText: "Ready" }), handlers());
-    const statusEl = parts.statusEl as unknown as El;
+    const statusEl = parts.status.statusEl as unknown as El;
     for (const cls of ["is-checking", "is-ok", "is-error", "is-warning"]) {
       expect(statusEl.className, cls).not.toContain(cls);
     }

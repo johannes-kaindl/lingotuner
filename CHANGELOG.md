@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The thinking level in the model row is a symbol where the row is narrow** (○ for off, ▄ for medium, next to the brain icon), so the model name keeps its room. The list of levels still shows the full names, and an entry now reads "▄ Medium"; the name of the dropdown for screen readers is unchanged (obsidian-kit 0.76.0).
+- **The status line under the run buttons is the shared status component** (a circle while idle, a spinner while the model writes, a check, a cross, a warning when you stopped the run) with the same look as before; the text is still announced as the label (obsidian-kit 0.76.0).
+- The shared library moved from obsidian-kit 0.74.0 to 0.76.1. Nothing else of the skipped releases reaches this plugin: 0.75.0 adds a writer for code-block bodies, 0.76.1 a helper for the chat spacing of plugins with a chat window (LingoTuner has none), and the new choice dialog of 0.76.0 is not used here yet. The row "Level picker in chat" in Settings → Request is not shown by the library any more when the plugin has a model row (it is gone here since 0.13.0).
+
+### Fixed
+
+- **After you switch the endpoint in the settings, the thinking-level dropdown of the open panel now appears on its own.** It used to stay missing until something else redrew the panel (for example a click in another note), because the model row read the model family and backend only when it was drawn and the settings did not tell the panel that the resolution had changed. Found with the library update (the dropdown showed up only after a manual refresh); measured at the real change in the settings, with a test that turns red without the fix.
+
+### Documentation
+
+- The README pictures show the thinking level in the model row: the demo model now has a name with a recognised family, so the row behaves like it does with a real model.
+
 ## [0.13.0] — 2026-11-01
 
 ### Changed

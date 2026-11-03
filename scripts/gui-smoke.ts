@@ -144,6 +144,7 @@ const PUNKTE = [
   "ML3 Modellzeile: die Denk-Steuerung steht IN der Zeile, nicht in der Lauf-Zeile",
   "ML4 Modellzeile: waehrend eines Laufs gesperrt, danach wieder frei",
   "ML5 Modellzeile: ein Modellwechsel zeichnet das Panel nicht neu (kein Voll-Draw), ein Quellenwechsel schon",
+  "ML6 Endpunktwechsel in den Einstellungen: die Stufenwahl der Modellzeile erscheint im offenen Panel ohne weitere Handlung (kein refresh())",
   "R1 Runden-Zeile laeuft bei ~300 px nicht ueber",
   "R2 Rueckwahl: Klick auf die vorletzte Runde zeigt deren Ergebnis, die Zeile ist aktiv",
   "R3 Panel ragt bei ~230 px Sidebar-Breite nicht ueber den Rand",
@@ -485,7 +486,7 @@ async function pruefeGedanken(cdp: Cdp): Promise<void> {
     // Eine Modelleigenschaft zu melden, wo ein Endpunktfehler vorlag, ist genau die Sorte
     // Skip-Grund, gegen die CORE-TEST-19 steht.
     if (await hasClass(cdp, ".lt-status", "is-error")) {
-      nichtGemessen("C8 Gedanken-Block waehrend des Streams", `Lauf gescheitert, bevor ein Gedanke kam: ${(await text(cdp, ".lt-status-label")) ?? "?"}`);
+      nichtGemessen("C8 Gedanken-Block waehrend des Streams", `Lauf gescheitert, bevor ein Gedanke kam: ${(await text(cdp, ".lt-status .okit-status-label")) ?? "?"}`);
     } else {
       nichtGemessen("C8 Gedanken-Block waehrend des Streams", "das gewaehlte Modell lieferte keinen Gedankenstrom (kein reasoning_content) — ohne einen ist der Punkt nicht messbar");
     }
@@ -829,18 +830,18 @@ async function pruefeLaufKern(cdp: Cdp): Promise<void> {
     const anim = await pollUntil<{ a: string; reduced: boolean }>(cdp, `
       const s = document.querySelector(".lt-status");
       if (!s || !s.classList.contains("is-checking")) return null;
-      const svg = document.querySelector(".lt-status-icon svg");
+      const svg = document.querySelector(".lt-status .okit-status-icon svg");
       if (!svg) return null;
       return { a: getComputedStyle(svg).animationName, reduced: matchMedia("(prefers-reduced-motion: reduce)").matches };
     `, 15_000, 150);
     // C5 wird waehrend des Streams gemessen und deshalb auch hier protokolliert — vor C1,
     // damit die Reihenfolge im Protokoll die Reihenfolge der Messung ist.
     if (anim === null) {
-      nichtGemessen("C5 is-checking animiert", "der Zustand is-checking war in 15 s nie zusammen mit einem .lt-status-icon svg zu sehen");
+      nichtGemessen("C5 is-checking animiert", "der Zustand is-checking war in 15 s nie zusammen mit einem .lt-status .okit-status-icon svg zu sehen");
     } else if (anim.reduced) {
       skipped("C5 is-checking animiert", `System steht auf prefers-reduced-motion: reduce — styles.css schaltet die Animation dort absichtlich ab (animationName=${anim.a})`);
     } else {
-      record("C5 is-checking animiert", anim.a === "lt-spin", `animationName=${anim.a}`);
+      record("C5 is-checking animiert", anim.a === "okit-status-spin", `animationName=${anim.a}`);
     }
 
     // B11: WAEHREND des Streams in die Anmerkung tippen — gemessen wird nach dem Schluss-Draw.
@@ -1475,7 +1476,7 @@ async function pruefeApple(cdp: Cdp, port: number): Promise<void> {
       url ? `${url.u.slice(0, 60)}… (${url.u.length} Zeichen), Name ${dekodiert.includes(APPLE_SHORTCUT) ? "da" : "fehlt"}` : "window.open wurde nicht aufgerufen");
 
     const ende = await pollUntil<{ ok: boolean }>(cdp, `const s = document.querySelector(".lt-status"); return s && (s.classList.contains("is-ok") || s.classList.contains("is-error")) ? { ok: true } : null;`, 30_000, 500);
-    const meldung = (await text(cdp, ".lt-status-label")) ?? "";
+    const meldung = (await text(cdp, ".lt-status .okit-status-label")) ?? "";
     const istFehler = ende !== null && (await hasClass(cdp, ".lt-status", "is-error"));
     record(NAMEN[4]!, istFehler && /Apple[ -]Intelligence/.test(meldung) && !/\(\d{3}\)/.test(meldung),
       `Status ${istFehler ? "is-error" : "nicht is-error"}, Meldung: ${JSON.stringify(meldung)}`);
@@ -1791,7 +1792,7 @@ async function pruefeClaude(cdp: Cdp, port: number): Promise<void> {
     await clickReal(cdp, `document.querySelector(".lt-run")`);
     const fertig = await pollUntil<{ ok: boolean }>(cdp, `const s = document.querySelector(".lt-status"); return s && (s.classList.contains("is-ok") || s.classList.contains("is-error")) ? { ok: true } : null;`, 30_000, 300);
     const fehler = await hasClass(cdp, ".lt-status", "is-error");
-    const label = (await text(cdp, ".lt-status-label")) ?? "";
+    const label = (await text(cdp, ".lt-status .okit-status-label")) ?? "";
     const teil = (await cdp.evaluate<string>(`return (document.querySelector(".lt-preview")?.textContent || "").trim();`));
     record(CL3, fertig !== null && fehler && /overload/i.test(label) && teil.includes("Teilantwort"),
       `Status ${fertig === null ? "nie fertig" : fehler ? "is-error" : "is-ok"}, Meldung ${JSON.stringify(label.slice(0, 80))}, Vorschau beginnt ${JSON.stringify(teil.slice(0, 30))}`);
@@ -2298,6 +2299,85 @@ async function pruefeModellzeile(cdp: Cdp): Promise<void> {
   }
 }
 
+/** ML6 — der echte Wechsel (Task „Denk-Steuerung der Modellzeile fuellt sich erst nach refresh()“, Welle 29/30): Endpunkt IN DEN EINSTELLUNGEN umstellen (Adressfeld der ersten
+ *  Zeile, Commit bei blur wie fuer einen Nutzer), Panel offen lassen, Einstellungen schliessen, und die Stufenwahl der Modellzeile muss ohne `view.refresh()` da sein.
+ *  Vorbedingung (sonst „nichts gemessen“): vor dem Wechsel steht KEINE Stufenwahl da (Stub A ohne LM-Studio-Pfad, Modell ohne erkannte Familie → keine Stufen) und nach dem Wechsel
+ *  meldet die Verbindung `lmstudio` (Stub B mit `/api/v0/models`). Gegenprobe im selben Punkt: nach einem `refresh()` steht die Stufenwahl (die Zeile KANN sie zeigen). */
+async function pruefeWechsel(cdp: Cdp, port: number): Promise<void> {
+  const NAME = "ML6 Endpunktwechsel in den Einstellungen: die Stufenwahl der Modellzeile erscheint im offenen Panel ohne weitere Handlung (kein refresh())";
+  const MODELL = "smoke-wechsel";
+  const stubA = await startLlmStub({ models: [MODELL], standard: { text: "ok", model: MODELL } });
+  const stubB = await startLlmStub({ models: [MODELL], kontext: { geladen: 4096 }, standard: { text: "ok", model: MODELL } });
+  let vorher: { eps: unknown } | null = null;
+  let stelle: SettingsStelle | null = null;
+  const stufenwahl = (): Promise<number> => cdp.evaluate<number>(`return document.querySelectorAll(".okit-model-bar .okit-thinking-control select").length;`);
+  try {
+    vorher = await cdp.evaluate<{ eps: unknown }>(`return { eps: app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints };`);
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.settings.endpoints = [{ url: ${q(stubA.url)}, model: ${q(MODELL)} }];
+      await p.saveSettings();
+      p.llm.invalidate();
+      await p.llm.resolve();
+      app.commands.executeCommandById(${q(`${PLUGIN_ID}:open-panel`)});
+      await new Promise((r) => setTimeout(r, 800));
+      const leaf = app.workspace.getLeavesOfType(${q(VIEW_TYPE)})[0];
+      if (leaf && leaf.view && leaf.view.refresh) leaf.view.refresh();
+      await new Promise((r) => setTimeout(r, 500));
+      return { ok: true };
+    `);
+    const davor = await stufenwahl();
+    const quelleVor = await cdp.evaluate<{ fam: string | null; be: string }>(`const s = app.plugins.plugins[${q(PLUGIN_ID)}].llm.source(); return { fam: s.family, be: String(s.backend) };`);
+    // Der echte Weg: Einstellungen oeffnen, Adressfeld der ersten Zeile ueberschreiben, blur (Commit), Einstellungen schliessen.
+    stelle = await openSettings(cdp, port);
+    const feld = await stelle.cdp.evaluate<{ ok: boolean }>(`
+      const root = document.body;
+      const zeile = root.querySelector(".okit-ep-row");
+      const inp = zeile ? zeile.querySelector("input[type=text]") : null;
+      if (!inp) return { ok: false };
+      inp.focus();
+      inp.value = ${q(stubB.url)};
+      inp.dispatchEvent(new Event("input", { bubbles: true }));
+      inp.blur();
+      await new Promise((r) => setTimeout(r, 1500));
+      return { ok: true };
+    `);
+    await closeSettings(cdp, stelle);
+    stelle = null;
+    if (!feld.ok) { nichtGemessen(NAME, "kein Adressfeld in der ersten Endpunkt-Zeile gefunden"); return; }
+    // Genug Zeit fuer Aufloesung und Zeichnen (die Probe laeuft im Hintergrund), dann messen: ohne refresh().
+    await new Promise((r) => setTimeout(r, 4500));
+    const quelleNach = await cdp.evaluate<{ fam: string | null; be: string; url: string }>(`const p = app.plugins.plugins[${q(PLUGIN_ID)}]; const s = p.llm.source(); return { fam: s.family, be: String(s.backend), url: String(p.settings.endpoints[0] && p.settings.endpoints[0].url) };`);
+    const danach = await stufenwahl();
+    // Gegenprobe: nach refresh() steht sie.
+    await cdp.evaluate(`const leaf = app.workspace.getLeavesOfType(${q(VIEW_TYPE)})[0]; if (leaf && leaf.view && leaf.view.refresh) leaf.view.refresh(); return { ok: true };`);
+    const nachRefreshGefunden = await pollUntil<{ n: number }>(cdp, `const n = document.querySelectorAll(".okit-model-bar .okit-thinking-control select").length; return n > 0 ? { n } : null;`, 8000, 200).catch(() => null);
+    const nachRefresh = nachRefreshGefunden?.n ?? (await stufenwahl());
+    const aufbau = await cdp.evaluate<{ leaves: number; zeilen: number; steuerungen: number }>(`return { leaves: app.workspace.getLeavesOfType(${q(VIEW_TYPE)}).length, zeilen: document.querySelectorAll(".okit-model-bar").length, steuerungen: document.querySelectorAll(".okit-thinking-control").length };`);
+    const wechsel = quelleNach.url === stubB.url && quelleNach.be === "lmstudio";
+    const beschr = `Quelle vorher Familie ${String(quelleVor.fam)}/Backend ${quelleVor.be}, Stufenwahl ${davor}; nach dem Wechsel in den Einstellungen Familie ${String(quelleNach.fam)}/Backend ${quelleNach.be} (Adresse ${quelleNach.url === stubB.url ? "umgestellt" : "NICHT umgestellt"}), Stufenwahl ohne refresh() ${danach}, nach refresh() ${nachRefresh} (Panels ${aufbau.leaves}, Modellzeilen ${aufbau.zeilen}, Denk-Steuerungen ${aufbau.steuerungen})`;
+    if (davor !== 0) { nichtGemessen(NAME, `Vorbedingung fehlt: die Stufenwahl stand schon vor dem Wechsel da (${beschr})`); return; }
+    if (!wechsel) { nichtGemessen(NAME, `der Wechsel kam nicht an (${beschr})`); return; }
+    if (nachRefresh < 1) { nichtGemessen(NAME, `auch nach refresh() keine Stufenwahl — die Zeile kann sie hier nicht zeigen (${beschr})`); return; }
+    record(NAME, danach >= 1, beschr);
+  } catch (e) {
+    if (!aufgezeichnet(NAME)) nichtGemessen(NAME, `Messung abgebrochen: ${(e as Error).message}`);
+  } finally {
+    if (stelle) await closeSettings(cdp, stelle).catch(() => undefined);
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      if (!p) return { ok: false };
+      p.settings.endpoints = ${JSON.stringify(vorher?.eps ?? [])};
+      await p.saveSettings();
+      p.llm.invalidate();
+      await p.llm.resolve();
+      return { ok: true };
+    `).catch(() => null);
+    await stubA.stop();
+    await stubB.stop();
+  }
+}
+
 /** H2 — Kit-Vertrag `installTabRefreshOnOpen` (Obsidian 1.14.5): das Oeffnen ruft `renderTab()`, nicht `display()`. Wer den Haken in `hide()` abbaut,
  *  baut nur beim ersten Oeffnen auf. Gemessen wird, wie oft der VOLLE Aufbau des Plugins (`renderImperative`, der Rueckruf des Hakens) laeuft: ein Zaehler
  *  auf der Instanz, drei Mal oeffnen und schliessen, der Zaehler muss bei jedem Oeffnen steigen. (Eine Marke im Tab-Container reichte nicht: auch die
@@ -2392,6 +2472,7 @@ async function main(): Promise<void> {
     await pruefeVerbindung(cdp);
     await pruefeAnfrage(cdp, port);
     await pruefeModellzeile(cdp);
+    await pruefeWechsel(cdp, port);
     await pruefeRundenZeile(cdp);
     await pruefeRueckwahl(cdp);
     await pruefeGemma(cdp);

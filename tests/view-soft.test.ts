@@ -116,7 +116,7 @@ describe("patchPanel — aktualisiert ohne Neuaufbau", () => {
     patchPanel(root, model({ phase: "done", statusText: "Fertig" }), parts);
 
     expect(findByClass<El>(root, "lt-status")?.className).toContain("is-ok");
-    expect(findByClass<El>(root, "lt-status-label")?.textContent).toBe("Fertig");
+    expect(findByClass<El>(root, "okit-status-label")?.textContent).toBe("Fertig");
   });
 
   it("laesst den Status-Indikator unveraendert, wenn keine PanelParts uebergeben werden", () => {
@@ -126,7 +126,7 @@ describe("patchPanel — aktualisiert ohne Neuaufbau", () => {
     patchPanel(root, model({ phase: "done", statusText: "Fertig" }));
 
     expect(findByClass<El>(root, "lt-status")?.className).not.toContain("is-ok");
-    expect(findByClass<El>(root, "lt-status-label")?.textContent).toBe("Ready");
+    expect(findByClass<El>(root, "okit-status-label")?.textContent).toBe("Ready");
   });
 });
 

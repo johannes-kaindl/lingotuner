@@ -11,16 +11,16 @@ Skill `readme-shots` (global). Treiber `scripts/shots.ts`, Brücke importiert au
 
 ## Das Modell ist eine Attrappe
 
-Der Treiber startet auf Port 1236 den zentralen LLM-Stub (`tools/obsidian-cdp/llm-stub.ts`), der einen festen, redaktionell gewählten Text streamt (Modellname `local-model`). Die Bilder zeigen dadurch immer dasselbe Ergebnis, unabhängig davon, was auf dem Rechner geladen ist; der echte LM-Studio-Port 1234 bleibt unberührt. Endpunkt und Modell setzt der Treiber selbst und stellt sie am Ende zurück (`http://127.0.0.1:1234`, Modell leer, Regler neutral).
+Der Treiber startet auf Port 1236 den zentralen LLM-Stub (`tools/obsidian-cdp/llm-stub.ts`), der einen festen, redaktionell gewählten Text streamt (Modellname `qwen3.8-27b`, ein Name mit erkannter Familie, damit die Modellzeile die Denkstufe zeigt wie bei einem echten Modell). Die Bilder zeigen dadurch immer dasselbe Ergebnis, unabhängig davon, was auf dem Rechner geladen ist; der echte LM-Studio-Port 1234 bleibt unberührt. Endpunkt und Modell setzt der Treiber selbst und stellt sie am Ende zurück (`http://127.0.0.1:1234`, Modell leer, Regler neutral).
 
 ## Bildvertrag
 
 | Datei | Klasse | referenziert von | muss zeigen |
 |---|---|---|---|
-| `hero.png` | hero | README.md, README.de.md (Kopf) | Das ganze Fenster: Notiz „Draft reply to Sam" im Editor, rechts das LingoTuner-Panel mit Quelle „Selection: 175 characters", Preset „Maximum clarity" aktiv, vier Reglern am linken Anschlag, dem gestreamten Ergebnis und den vier Ausgängen (Replace selection, Replace note, Copy, New note) |
-| `rounds.png` | feature | README.md, README.de.md (Usage) | Dasselbe Fenster nach zwei Runden: die Anmerkung „Keep the offer of another day.", das Ergebnis von Runde 2 und die Liste „Rounds" mit „Round 1 · from source · no note" und der aktiven „Round 2 · refined from round 1 · …". Aufgenommen in der Standardbreite der Seitenleiste (~300 px) |
+| `hero.png` | hero | README.md, README.de.md (Kopf) | Das ganze Fenster: Notiz „Draft reply to Sam" im Editor, rechts das LingoTuner-Panel mit Quelle „Selection: 175 characters", Preset „Maximum clarity" aktiv, vier Reglern am linken Anschlag, der Modellzeile (Modellname und die Denkstufe „○ off“ mit dem Gehirn-Symbol, Neu laden), dem gestreamten Ergebnis und den vier Ausgängen (Replace selection, Replace note, Copy, New note) |
+| `rounds.png` | feature | README.md, README.de.md (Usage) | Dasselbe Fenster nach zwei Runden: die Anmerkung „Keep the offer of another day.", die Modellzeile mit der Denkstufe, das Ergebnis von Runde 2 und die Liste „Rounds" mit „Round 1 · from source · no note" und der aktiven „Round 2 · refined from round 1 · …". Aufgenommen in der Standardbreite der Seitenleiste (~300 px) |
 | `settings.png` | feature | README.md, README.de.md (Configuration) | Den Einstellungen-Tab von „Connection" bis zum Ende von „Style": Endpunkt-Zeile mit grünem Haken und „active — this one is used", aufklappbares „Request" (zugeklappt), Modell, Override-Ordner, „Write shipped texts into the folder", „No saved presets yet." Die Gruppe „Output" fehlt bewusst: der Tab ist länger als der Bildschirm |
-| `dials.png` | detail | README.md, README.de.md (Usage) | Nur das Panel, Preset „Collegial" aktiv, die vier Regler auf verschiedenen Stufen mit ihren Stufennamen („somewhat more direct", „somewhat warmer"), leere Anmerkung, Knopf „Tune", Statuszeile „Ready" und der leere Vorschaubereich „The tuned text appears here." |
+| `dials.png` | detail | README.md, README.de.md (Usage) | Nur das Panel, Preset „Collegial" aktiv, die vier Regler auf verschiedenen Stufen mit ihren Stufennamen („somewhat more direct", „somewhat warmer"), leere Anmerkung, die Modellzeile mit Modellname und Denkstufe „○ off“, Knopf „Tune", Statuszeile „Ready" und der leere Vorschaubereich „The tuned text appears here." |
 
 Kein GIF: der Stream ist das einzige bewegte Ereignis, und ein Standbild des Ergebnisses trägt die Aussage.
 

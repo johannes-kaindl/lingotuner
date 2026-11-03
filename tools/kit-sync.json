@@ -1,6 +1,6 @@
 {
   "sources": {
-    "obsidian-kit": { "ref": "0.74.0" },
+    "obsidian-kit": { "ref": "0.76.1" },
     "code-kit": { "ref": "0.40.0" }
   },
   "targets": [
@@ -22,7 +22,7 @@
       "dir": "src/vendor/kit-obsidian", "source": "obsidian-kit", "from": "src/obsidian",
       "modules": [
         "clipboard", "confirm", "endpoint-list", "model-picker", "settings_walker", "folder-suggest",
-        "stream-area", "stable-writer", "dom-guard", "endpoint-source", "request-section", "request-session",
+        "stream-area", "stable-writer", "dom-guard", "endpoint-source", "request-section", "status-indicator", "request-session",
         "thinking-control", "collapsible", "chat-client", "chat-transport", "shortcuts-bridge", "clock", "lab-client", "help-setting",
         "llm-connection", "llm-connection-strings", "model-bar", "model-bar-strings", "endpoint-status-text", "endpoint-plumbing", "embedding-connection", "backend-probe", "endpoint-secrets", "secrets", "anthropic-transport", "plugin-api"
       ],

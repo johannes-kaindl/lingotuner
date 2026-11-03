@@ -24,7 +24,7 @@
 
 import { argv, cwd, exit } from "node:process";
 
-import { Cdp, attachTo, clickReal, pollUntil, requireUntil, requireVisible, schliesseEinstellungen, setAppConfig, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
+import { Cdp, attachTo, bereiteInstanzVor, clickReal, pollUntil, requireUntil, requireVisible, schliesseEinstellungen, setAppConfig, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
 import { startLlmStub, type LlmStub } from "../../tools/obsidian-cdp/llm-stub.js";
 import { boxAround, capture, setWindowSize, writeShot, type Rect } from "../../tools/obsidian-cdp/shot.js";
 import { buildVault, stagingVaultDir } from "../../tools/obsidian-cdp/vault.js";
@@ -34,7 +34,8 @@ const VAULT_NAME = "lingotuner-shots";
 const VIEW_TYPE = "lingotuner-panel";
 const NOTE = "Draft reply to Sam.md";
 const FAKE_PORT = 1236;
-const FAKE_MODEL = "local-model";
+// Ein Name mit erkannter Familie (qwen3): die Modellzeile zeigt dann die Denkstufe, wie bei einem echten Modell; „local-model“ hatte keine, die Bilder zeigten die Stufenwahl nie.
+const FAKE_MODEL = "qwen3.8-27b";
 const CAPTURE_WIDTH = 1200;
 const THUMB_WIDTH = 380;
 const WINDOW = { width: 1200, height: 1000 };
@@ -151,7 +152,7 @@ async function tune(ws: Cdp, selector = ".lt-run"): Promise<void> {
     return s && s.classList.contains("is-ok") ? { ok: true } : null;
   `, 30_000, 300);
   if (fertig === null) {
-    const st = await ws.evaluate<{ cls: string; label: string }>(`const s = document.querySelector(".lt-status"); const l = document.querySelector(".lt-status-label"); return { cls: s ? s.className : "kein .lt-status", label: l ? l.textContent : "" };`);
+    const st = await ws.evaluate<{ cls: string; label: string }>(`const s = document.querySelector(".lt-status"); const l = document.querySelector(".lt-status .okit-status-label"); return { cls: s ? s.className : "kein .lt-status", label: l ? l.textContent : "" };`);
     throw new Error(`Lauf wird nicht fertig (Status nie is-ok): ${st.cls} · „${st.label}"`);
   }
   await sleep(500);
@@ -287,16 +288,9 @@ async function main(): Promise<void> {
     if (!sprache.lang.startsWith("en")) {
       throw new Error(`Oberflaeche ist „${sprache.lang}", nicht Englisch — obsidian.json UND localStorage["language"] auf "en", dann Neustart.`);
     }
-    const geladen = (await ws.evaluate<{ g: boolean }>(`return { g: Boolean(app.plugins.plugins[${q(PLUGIN_ID)}]) };`)).g;
-    if (!geladen) {
-      // Frisches Profil = Restricted Mode: jede Einzelpruefung gibt Entwarnung, nur plugins ist leer.
-      await ws.evaluate(`
-        if (app.plugins.setEnable) await app.plugins.setEnable(true);
-        await app.plugins.enablePluginAndSave(${q(PLUGIN_ID)});
-        await new Promise((r) => setTimeout(r, 1200));
-        return { ok: true };
-      `);
-    }
+    // Vertrauensdialog, Restricted Mode und Plugin laden, das Hauptfenster als activeDocument zurueckholen (ein frisches Profil zeigt sonst den Dialog im Bild).
+    const vor = await bereiteInstanzVor(ws, { pluginIds: [PLUGIN_ID], nurVault: VAULT_NAME, sprache: "en" });
+    console.log(`Instanz: ${vor.hinweis}`);
     // Helles Theme zur Laufzeit: obsidian.json/appearance.json greifen bei laufender Instanz nicht.
     await setAppConfig(ws, "theme", "moonstone");
     await setWindowSize(ws, WINDOW.width, WINDOW.height);

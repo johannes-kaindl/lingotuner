@@ -197,7 +197,7 @@ describe("Modellzeile im Panel (Kit model-bar)", () => {
     sel.value = "qwen-b";
     (sel._listeners["change"] ?? []).forEach((cb) => cb());
     await tick(); await tick();
-    expect(findByClass<El>(a.root, "lt-status-label")?.textContent).toContain("boom");
+    expect(findByClass<El>(a.root, "okit-status-label")?.textContent).toContain("boom");
   });
 });
 

@@ -2,6 +2,7 @@ import { setIcon } from "obsidian";
 import { DIMENSIONS, isNoop, levelKey, type Dials, type Dimension, type Level, type Preset } from "../core/dials";
 import type { Session } from "../core/session";
 import { readinessKey, type Readiness, type SourceKind } from "../core/source";
+import { buildStatus, paintStatus as paintKitStatus, type StatusParts, type StatusPhase } from "../vendor/kit-obsidian/status-indicator";
 import { buildStreamArea, type StreamArea } from "../vendor/kit-obsidian/stream-area";
 import { t } from "../vendor/kit/i18n";
 
@@ -48,9 +49,8 @@ export interface PanelHandlers {
 }
 
 export interface PanelParts {
-  statusEl: HTMLElement;
-  statusIconEl: HTMLElement;
-  statusLabelEl: HTMLElement;
+  /** Die Statuszeile: der Kit-Baustein `status-indicator` (Wurzel `okit-status`, dazu `lt-status` als Haken des Plugins). */
+  status: StatusParts;
   /** Der Streaming-Antwortbereich aus `obsidian-kit` (UI-STANDARD §8, `buildStreamArea`).
    *  Gedankenblock, Antwort-Body und laufender Absatz liegen darin; die Wurzel traegt
    *  zusaetzlich `.lt-preview` als Design-Scope dieses Plugins.
@@ -175,33 +175,19 @@ function runRow(parent: El, m: PanelModel, h: PanelHandlers): void {
   }
 }
 
-function statusRow(parent: El): Pick<PanelParts, "statusEl" | "statusIconEl" | "statusLabelEl"> {
-  const statusEl = parent.createDiv({ cls: "lt-status" });
-  const statusIconEl = statusEl.createSpan({ cls: "lt-status-icon" });
-  const statusLabelEl = statusEl.createSpan({ cls: "lt-status-label" });
-  return { statusEl, statusIconEl, statusLabelEl };
+function statusRow(parent: El): Pick<PanelParts, "status"> {
+  // `idle` bleibt neutral mit dem leeren Kreis (Vorgabe des Bausteins, wie die frühere eigene Fassung).
+  return { status: buildStatus(parent, "lt-status") };
 }
 
-/** §8 Status-Indikator: Form (Icon) UND Klasse UND aria-label — nie Farbe allein.
+/** Phasen des Laufs auf die des Kit-Bausteins: `streaming` dreht (`checking`), `aborted` ist eine Warnung (`warning`), `done` ist `ok`. */
+const STATUS_PHASE: Record<RunPhase, StatusPhase> = { idle: "idle", streaming: "checking", done: "ok", error: "error", aborted: "warning" };
+
+/** §8 Status-Indikator: Form (Icon) UND Klasse UND aria-label — nie Farbe allein; gezeichnet vom Kit (`status-indicator`).
  *  `idle` ist bewusst NEUTRAL: ein leerer Ausgangszustand ist kein Erfolg, und ein gruenes
  *  is-ok vor dem ersten Lauf behauptete genau das (leerer Kreis, keine Zustandsklasse). */
 export function paintStatus(parts: PanelParts, phase: RunPhase, text: string): void {
-  const el = parts.statusEl;
-  el.removeClass("is-checking", "is-ok", "is-error", "is-warning");
-  const icon = phase === "streaming" ? "loader"
-    : phase === "error" ? "circle-x"
-    : phase === "aborted" ? "alert-triangle"
-    : phase === "idle" ? "circle"
-    : "circle-check";
-  const cls = phase === "streaming" ? "is-checking"
-    : phase === "error" ? "is-error"
-    : phase === "aborted" ? "is-warning"
-    : phase === "idle" ? null
-    : "is-ok";
-  if (cls !== null) el.addClass(cls);
-  setIcon(parts.statusIconEl, icon);
-  parts.statusLabelEl.setText(text);
-  el.setAttribute("aria-label", text);
+  paintKitStatus(parts.status, STATUS_PHASE[phase], text);
 }
 
 function historyList(parent: El, m: PanelModel, h: PanelHandlers, busy: boolean): void {

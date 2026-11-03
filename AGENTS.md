@@ -53,7 +53,7 @@ src/core/                pure, obsidian-frei, Vitest
   logbook.ts             Abschnitt der Logbuch-Notiz rendern
 src/obsidian/            view · view-render · editor-io · settings-tab ·
                          lab · logbook-io · overrides-io
-src/vendor/kit/          obsidian-kit 0.74.0 + code-kit 0.40.0, pure — nie von Hand aendern
+src/vendor/kit/          obsidian-kit 0.76.1 + code-kit 0.40.0, pure — nie von Hand aendern
 src/vendor/kit-obsidian/ Kit-Module, die `obsidian` importieren — nie von Hand aendern
 src/i18n/strings.ts      EN kanonisch + DE, beide vollstaendig
 src/main.ts
