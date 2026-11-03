@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-11-03
+
 ### Changed
 
 - **The thinking level in the model row is a symbol where the row is narrow** (○ for off, ▄ for medium, next to the brain icon), so the model name keeps its room (in the side panel, 277 to 328 px wide, the row now folds the level at a width below 340 px instead of 260 px, so the model name stays readable; obsidian-kit 0.77.1). The list of levels still shows the full names, and an entry now reads "▄ Medium"; the name of the dropdown for screen readers is unchanged (obsidian-kit 0.76.0).
