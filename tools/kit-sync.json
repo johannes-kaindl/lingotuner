@@ -11,7 +11,7 @@
         "sse", "endpoint", "endpoint_config", "endpoint_diagnostics", "model-choice",
         "model-list-cache", "reasoning", "capabilities", "think-splitter", "think-toggle",
         "timeout", "error_body", "i18n", "settings", "stream-blocks", "sampling-profiles",
-        "backend-probe", "redact", "safe-markdown", "secrets", "rounds", "model-context", "embeddings-client", "slug", "local-stamp", "anthropic-wire"
+        "backend-probe", { "name": "redact", "ref": "0.60.0" }, "safe-markdown", "secrets", "rounds", "model-context", "embeddings-client", "slug", "local-stamp", "anthropic-wire"
       ]
     },
     {
