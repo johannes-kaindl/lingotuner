@@ -161,6 +161,7 @@ export const STRINGS = {
     "think.pickerLabel": "Thinking level",
 
     "request.level.off": "off",
+    "request.level.minimal": "minimal",
     "request.level.low": "low",
     "request.level.medium": "medium",
     "request.level.high": "high",
@@ -334,6 +335,7 @@ export const STRINGS = {
     "think.pickerLabel": "Denkstufe",
 
     "request.level.off": "aus",
+    "request.level.minimal": "minimal",
     "request.level.low": "niedrig",
     "request.level.medium": "mittel",
     "request.level.high": "hoch",

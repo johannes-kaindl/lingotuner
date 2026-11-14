@@ -6,7 +6,7 @@
 import { describe, it, expect } from "vitest";
 import { makeFakeEl } from "./__mocks__/obsidian";
 import { findAllByClass, findByClass } from "./helpers/dom";
-import { mkLlm, mkThinking } from "./helpers/llm";
+import { mkLlm, mkThinking, type FakeEndpoints } from "./helpers/llm";
 import { LingoTunerView, type ViewDeps } from "../src/obsidian/view";
 import { NEUTRAL, BUILTIN_PRESETS, type Dials } from "../src/core/dials";
 import "../src/i18n/strings";
@@ -235,11 +235,11 @@ describe("Denk-Steuerung in der Modellzeile", () => {
     expect(stufenWahl(an.root).getAttribute?.("aria-label")).toContain("Thinking level: low");
   });
 
-  it("gpt-oss kann Denken nicht ganz abschalten — das Dropdown zeigt die niedrigste Stufe, gespeichert wird nichts", async () => {
+  it("gpt-oss kann Denken nicht ganz abschalten — das Dropdown zeigt die niedrigste Stufe (minimal, seit code-kit 0.65.0), gespeichert wird nichts", async () => {
     const a = baue({}, undefined, { family: "gpt-oss", level: "off" });
     await tick();
     const dd = stufenWahl(a.root);
-    expect(dd.__component?.getValue()).toBe("low");
+    expect(dd.__component?.getValue()).toBe("minimal");
     expect(Object.keys(dd.__component?.options ?? {})).not.toContain("off");
     expect(a.denk.st.level).toBe("off");
   });
@@ -254,5 +254,72 @@ describe("Denk-Steuerung in der Modellzeile", () => {
     await tick(); await tick();
     expect(a.denk.st.level).toBe("medium");
     expect(findByClass<El & { marke?: number }>(a.root, "lt-run")?.marke).toBe(1);
+  });
+});
+
+describe("Modellzeile mit Endpunkten (Kit 0.89.0: Gruppen, verwaiste Wahl, Selbst-Abo)", () => {
+  const zwei = (): FakeEndpoints => ({
+    list: [{ id: "a", label: "Lokal", defaultModel: "qwen-a" }, { id: "b", label: "Zweiter" }],
+    active: "a",
+    choice: {},
+    lists: { a: { models: ["qwen-a", "qwen-b"], reachable: true }, b: { models: ["x1"], reachable: true } },
+  });
+  const optGruppen = (root: unknown): El[] => {
+    const sel = findByClass<El>(root as never, "okit-model-bar-select");
+    return (sel?.children ?? []).filter((c) => (c.getAttribute?.("label") ?? null) !== null);
+  };
+  const texte = (g: El): string[] => (g.children ?? []).map((o) => o.textContent ?? "");
+
+  it("zeigt je Endpunkt eine Gruppe mit dessen Modellen", async () => {
+    const a = baue({}, { models: ["qwen-a", "qwen-b"], model: "qwen-a", endpoints: zwei() });
+    await tick(); await tick();
+    const g = optGruppen(a.root);
+    expect(g.length).toBe(2);
+    expect(g[0].getAttribute?.("label")).toBe("Lokal");
+    expect(g[1].getAttribute?.("label")).toBe("Zweiter");
+    expect(texte(g[0])).toEqual(expect.arrayContaining(["qwen-a", "qwen-b"]));
+    expect(texte(g[1])).toContain("x1");
+  });
+
+  it("eine Wahl unter einem anderen Endpunkt ruft setChoice mit Endpunkt UND Modell, nie setModel", async () => {
+    const a = baue({}, { models: ["qwen-a"], model: "qwen-a", endpoints: zwei() });
+    await tick(); await tick();
+    const sel = findByClass<El>(a.root, "okit-model-bar-select")!;
+    const wert = optGruppen(a.root)[1].children.find((o) => o.textContent === "x1")?.getAttribute?.("value");
+    expect(wert).toBeTruthy();
+    sel.value = wert as string;
+    sel._listeners.change?.forEach((cb) => cb());
+    await tick(); await tick();
+    expect(a.llm.setChoice).toHaveBeenCalledWith({ endpointId: "b", model: "x1" });
+    expect(a.llm.setModel).not.toHaveBeenCalled();
+  });
+
+  it("verwaiste Wahl: Automatisch mit Warnzeichen und Grund, die gespeicherte Wahl bleibt unangetastet", async () => {
+    const e = zwei();
+    e.choice = { endpointId: "gone", model: "alt" };
+    e.reason = "not-found";
+    const a = baue({}, { models: ["qwen-a"], model: "qwen-a", endpoints: e });
+    await tick(); await tick();
+    const warn = findByClass<El>(a.root, "okit-model-bar-warn")!;
+    expect(warn.className).not.toContain("is-hidden");
+    expect((warn.getAttribute?.("aria-label") ?? "").length).toBeGreaterThan(0);
+    expect(findByClass<El>(a.root, "okit-model-bar-select")?.value).toBe("");
+    expect(e.choice).toEqual({ endpointId: "gone", model: "alt" });
+    expect(a.llm.setChoice).not.toHaveBeenCalled();
+  });
+
+  it("Selbst-Abo: ein Wechsel, den die Verbindung meldet, zeichnet die Zeile ohne update() des Panels neu; das Schliessen meldet ab", async () => {
+    const e = zwei();
+    const a = baue({}, { models: ["qwen-a"], model: "qwen-a", endpoints: e });
+    await tick(); await tick();
+    expect(a.llm.subs.size).toBe(1);
+    expect(findByClass<El>(a.root, "okit-model-bar-select")?.value).toBe("");
+    e.choice = { endpointId: "b", model: "x1" };
+    e.active = "b";
+    a.llm.notify();
+    await tick();
+    expect(findByClass<El>(a.root, "okit-model-bar-select")?.value).not.toBe("");
+    await a.view.onClose();
+    expect(a.llm.subs.size).toBe(0);
   });
 });

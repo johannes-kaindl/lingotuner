@@ -1,33 +1,198 @@
 {
   "sources": {
-    "obsidian-kit": { "ref": "0.77.1" },
-    "code-kit": { "ref": "0.40.0" }
+    "obsidian-kit": {
+      "ref": "0.77.1"
+    },
+    "code-kit": {
+      "ref": "0.40.0"
+    }
   },
   "targets": [
-    { "dir": "src/vendor/kit", "source": "code-kit", "from": "src/ts/web", "modules": ["clipboard", { "name": "link-guard", "ref": "0.68.0" }, { "name": "remote-resources", "ref": "0.68.0" }], "rewrite": [["../pure/", "./"]] },
     {
-      "dir": "src/vendor/kit", "source": "code-kit", "from": "src/ts/pure",
+      "dir": "src/vendor/kit",
+      "source": "code-kit",
+      "from": "src/ts/web",
       "modules": [
-        "sse", "endpoint", "endpoint_config", "endpoint_diagnostics", "model-choice",
-        "model-list-cache", "reasoning", "capabilities", "think-splitter", "think-toggle",
-        "timeout", "error_body", "i18n", "settings", "stream-blocks", "sampling-profiles",
-        "backend-probe", { "name": "redact", "ref": "0.60.0" }, { "name": "safe-markdown", "ref": "0.68.0" }, "secrets", "rounds", "model-context", "embeddings-client", "slug", "local-stamp", "anthropic-wire"
+        "clipboard",
+        {
+          "name": "link-guard",
+          "ref": "0.68.0"
+        },
+        {
+          "name": "remote-resources",
+          "ref": "0.68.0"
+        }
+      ],
+      "rewrite": [
+        [
+          "../pure/",
+          "./"
+        ]
       ]
     },
     {
-      "dir": "src/vendor/kit", "source": "obsidian-kit", "from": "src/pure", "modules": ["endpoint-source", "endpoint-secret-hook", "shortcut-failure", "override-guard"],
-      "rewrite": [["../vendor/code-kit/pure/", "./"], ["../vendor/code-kit/web/", "./"], ["../pure/", "./"]]
+      "dir": "src/vendor/kit",
+      "source": "code-kit",
+      "from": "src/ts/pure",
+      "modules": [
+        "sse",
+        "endpoint",
+        "endpoint_config",
+        "endpoint_diagnostics",
+        "model-choice",
+        "model-list-cache",
+        "reasoning",
+        "capabilities",
+        "think-splitter",
+        "think-toggle",
+        "timeout",
+        "error_body",
+        "i18n",
+        "settings",
+        "stream-blocks",
+        {
+          "name": "sampling-profiles",
+          "ref": "0.68.0"
+        },
+        "backend-probe",
+        {
+          "name": "redact",
+          "ref": "0.60.0"
+        },
+        {
+          "name": "safe-markdown",
+          "ref": "0.68.0"
+        },
+        "secrets",
+        "rounds",
+        "model-context",
+        "embeddings-client",
+        "slug",
+        "local-stamp",
+        "anthropic-wire",
+        {
+          "name": "error-message",
+          "ref": "0.68.0"
+        }
+      ]
     },
     {
-      "dir": "src/vendor/kit-obsidian", "source": "obsidian-kit", "from": "src/obsidian",
+      "dir": "src/vendor/kit",
+      "source": "obsidian-kit",
+      "from": "src/pure",
       "modules": [
-        "clipboard", "confirm", "endpoint-list", "model-picker", "settings_walker", "folder-suggest",
-        "stream-area", "stable-writer", { "name": "dom-guard", "ref": "0.88.0" }, "endpoint-source", "request-section", "status-indicator", "request-session",
-        "thinking-control", "collapsible", "chat-client", "chat-transport", "shortcuts-bridge", "clock", "lab-client", "help-setting",
-        "llm-connection", "llm-connection-strings", "model-bar", "model-bar-strings", "endpoint-status-text", "endpoint-plumbing", "embedding-connection", "backend-probe", "endpoint-secrets", "secrets", "anthropic-transport", "plugin-api"
+        {
+          "name": "endpoint-source",
+          "ref": "0.89.0"
+        },
+        "endpoint-secret-hook",
+        "shortcut-failure",
+        "override-guard"
       ],
-      "rewrite": [["../pure/", "../kit/"], ["../vendor/code-kit/pure/", "../kit/"], ["../vendor/code-kit/web/", "../kit/"]]
+      "rewrite": [
+        [
+          "../vendor/code-kit/pure/",
+          "./"
+        ],
+        [
+          "../vendor/code-kit/web/",
+          "./"
+        ],
+        [
+          "../pure/",
+          "./"
+        ]
+      ]
     },
-    { "dir": "tests/vendor/kit", "source": "obsidian-kit", "from": "src/testing", "modules": ["obsidian-mock", "kit-css"] }
+    {
+      "dir": "src/vendor/kit-obsidian",
+      "source": "obsidian-kit",
+      "from": "src/obsidian",
+      "modules": [
+        "clipboard",
+        "confirm",
+        "endpoint-list",
+        "model-picker",
+        "settings_walker",
+        "folder-suggest",
+        "stream-area",
+        "stable-writer",
+        {
+          "name": "dom-guard",
+          "ref": "0.88.0"
+        },
+        {
+          "name": "endpoint-source",
+          "ref": "0.89.0"
+        },
+        "request-section",
+        "status-indicator",
+        "request-session",
+        {
+          "name": "thinking-control",
+          "ref": "0.89.0"
+        },
+        "collapsible",
+        "chat-client",
+        "chat-transport",
+        "shortcuts-bridge",
+        "clock",
+        "lab-client",
+        "help-setting",
+        {
+          "name": "llm-connection",
+          "ref": "0.89.0"
+        },
+        {
+          "name": "llm-connection-strings",
+          "ref": "0.89.0"
+        },
+        {
+          "name": "model-bar",
+          "ref": "0.89.0"
+        },
+        {
+          "name": "model-bar-strings",
+          "ref": "0.89.0"
+        },
+        "endpoint-status-text",
+        {
+          "name": "endpoint-plumbing",
+          "ref": "0.89.0"
+        },
+        "embedding-connection",
+        "backend-probe",
+        "endpoint-secrets",
+        "secrets",
+        "anthropic-transport",
+        "plugin-api"
+      ],
+      "rewrite": [
+        [
+          "../pure/",
+          "../kit/"
+        ],
+        [
+          "../vendor/code-kit/pure/",
+          "../kit/"
+        ],
+        [
+          "../vendor/code-kit/web/",
+          "../kit/"
+        ]
+      ]
+    },
+    {
+      "dir": "tests/vendor/kit",
+      "source": "obsidian-kit",
+      "from": "src/testing",
+      "modules": [
+        "obsidian-mock",
+        {
+          "name": "kit-css",
+          "ref": "0.89.0"
+        }
+      ]
+    }
   ]
 }

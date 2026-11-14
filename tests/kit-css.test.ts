@@ -9,4 +9,8 @@ describe("Kit-CSS", () => {
     expect(findVendoredCss("src/vendor/kit-obsidian").length).toBeGreaterThan(0);
     expect(missingKitCss("src/vendor/kit-obsidian", readFileSync("styles.css", "utf8"))).toEqual([]);
   });
+
+  it("styles.css traegt keine Einsetzung `${...}` (Rohtext-Kopie einer Kit-Konstante mit Einsetzung: Store-Scorecard \"Caution\", Unknown word)", () => {
+    expect(readFileSync("styles.css", "utf8")).not.toContain("${");
+  });
 });
