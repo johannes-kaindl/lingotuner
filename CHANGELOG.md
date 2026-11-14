@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-11-14
+
 ### Changed
 
 - **The model dropdown in the panel lists the models of all your endpoints, grouped by endpoint** (shared model row of obsidian-kit 0.89.0). The first entry is "Automatic" (with the endpoint and its default model), every endpoint has its own group with "Default (…)" and its models, the last entry "Manage endpoints …" opens the settings of the endpoint manager and selects nothing. A choice fixes endpoint and model for this plugin only, never the model of another plugin; an endpoint that does not answer keeps its group with a disabled note ("not reachable", "no models reported"). If the chosen endpoint was switched off, deleted or lost its key, the row shows "Automatic" with a warning symbol and the reason in its tooltip, and your saved choice stays untouched. The row redraws itself when the endpoint or the choice changes elsewhere, and the open list is never redrawn while you are choosing. Without the endpoint manager the row stays a plain list as before.
