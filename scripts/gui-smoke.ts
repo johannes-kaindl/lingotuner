@@ -46,6 +46,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { join } from "node:path";
 import { cwd } from "node:process";
 
+import { fakeManagerAendereMit as fakeManagerAendere } from "../../tools/obsidian-cdp/fake-manager.js";
 import { Cdp, attachTo, beimAbbruch, bereiteInstanzVor, clickReal, closeExtraLeaves, entferneFakeManager, installFakeManager as installZentralFakeManager, istAbgebrochen, notices, pollUntil, requireVisible, schliesseEinstellungen, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
 import { startLlmStub, type AntwortSpec } from "../../tools/obsidian-cdp/llm-stub.js";
 import { messeFolge, zeichneFolge } from "../../tools/obsidian-cdp/folge.js";
@@ -146,6 +147,9 @@ const PUNKTE = [
   "ML5 Modellzeile: ein Modellwechsel zeichnet das Panel nicht neu (kein Voll-Draw), ein Quellenwechsel schon",
   "ML6 Endpunktwechsel in den Einstellungen: die Stufenwahl der Modellzeile erscheint im offenen Panel ohne weitere Handlung (kein refresh())",
   "ML7 Modellzeile im Seitenleisten-Panel (unter 340 px Zeilenbreite): die Denkstufe ist auf ihr Zeichen gefaltet und der Modellname bleibt lesbar (Kit 0.77.1)",
+  "GR1 Modellzeile mit Gruppen (obsidian-kit 0.89.0, Fake-Manager mit drei Endpunkten): ohne Manager keine Gruppe, mit Manager eine Gruppe je Endpunkt (der unerreichbare mit gesperrtem Hinweis), die Wahl unter dem zweiten Endpunkt bindet Endpunkt UND Modell",
+  "GR2 Verwaiste Wahl: schaltet der Manager den gewaehlten Endpunkt ab, zeigt die Zeile „Automatisch“ mit Warnzeichen und Text, die gespeicherte Wahl bleibt in der data.json und gilt wieder, sobald der Endpunkt zurueck ist",
+  "GR3 Selbst-Abo: meldet der Manager eine Aenderung (Endpunkt entfernt), zeichnet die Zeile neu, auch wenn das Plugin Panel-Neuzeichnung und Modell-Neuladen nicht ausfuehrt",
   "R1 Runden-Zeile laeuft bei ~300 px nicht ueber",
   "R2 Rueckwahl: Klick auf die vorletzte Runde zeigt deren Ergebnis, die Zeile ist aktiv",
   "R3 Panel ragt bei ~230 px Sidebar-Breite nicht ueber den Rand",
@@ -2445,6 +2449,133 @@ async function pruefeModellzeile(cdp: Cdp): Promise<void> {
   }
 }
 
+/** GR1–GR3: Modellzeile mit Gruppen je Endpunkt am echten Fenster (obsidian-kit 0.89.0, Welle 34). Im Staging-Vault gibt es keinen echten Endpoint Manager; der zentrale Fake (`installFakeManager`) traegt drei
+ *  Endpunkte (`lm`, `zwei`, `aus` unerreichbar), `fakeManagerAendere` aendert ihn und meldet „changed“. Gegenproben im Punkt: GR1 misst die flache Liste VOR dem Manager, GR2 den Zustand VOR dem Abschalten,
+ *  GR3 die Zahl der Hoerer. Das Plugin selbst haengt am Manager (`main.ts`: `onEndpointManagerChanged` → `panel().refresh()` + `reloadModels()`, ein Voll-Draw baut die Zeile neu): GR3 sperrt beide Aufrufe
+ *  fuer die Dauer der Messung (Zaehler ohne Durchruf); zeichnet die Zeile trotzdem neu, hat sie sich selbst abonniert (Kit 0.87.0). */
+/** `--mutation endpoints|abo`: Gegenprobe des Treibers fuer GR1–GR3 (siehe pruefeGruppen). */
+let MUTATION_GR: string | undefined;
+interface ZeileGr { alle: string[]; gruppen: Array<{ label: string; optionen: Array<{ text: string; disabled: boolean; wert: string }> }>; erste: string; wert: string; text: string; warn: boolean; warnText: string }
+const LIES_GR = (bedingung: string): string => `
+  const s = document.querySelector(".okit-model-bar-select");
+  if (!s) return null;
+  const w = document.querySelector(".okit-model-bar-warn");
+  const z = { alle: [...s.options].map((o) => o.textContent ?? ""),
+    gruppen: [...s.querySelectorAll("optgroup")].map((g) => ({ label: g.label, optionen: [...g.querySelectorAll("option")].map((o) => ({ text: o.textContent ?? "", disabled: o.disabled, wert: o.value })) })),
+    erste: s.options[0] ? s.options[0].textContent ?? "" : "", wert: s.value, text: s.selectedOptions[0] ? s.selectedOptions[0].textContent ?? "" : "",
+    warn: !!w && !w.classList.contains("is-hidden"), warnText: w ? (w.getAttribute("aria-label") ?? "") : "" };
+  return (${bedingung}) ? z : null;`;
+
+async function pruefeGruppen(cdp: Cdp): Promise<void> {
+  console.log("\nGR · Modellzeile mit Gruppen je Endpunkt (Fake-Manager)");
+  const [N1, N2, N3] = [
+    "GR1 Modellzeile mit Gruppen (obsidian-kit 0.89.0, Fake-Manager mit drei Endpunkten): ohne Manager keine Gruppe, mit Manager eine Gruppe je Endpunkt (der unerreichbare mit gesperrtem Hinweis), die Wahl unter dem zweiten Endpunkt bindet Endpunkt UND Modell",
+    "GR2 Verwaiste Wahl: schaltet der Manager den gewaehlten Endpunkt ab, zeigt die Zeile „Automatisch“ mit Warnzeichen und Text, die gespeicherte Wahl bleibt in der data.json und gilt wieder, sobald der Endpunkt zurueck ist",
+    "GR3 Selbst-Abo: meldet der Manager eine Aenderung (Endpunkt entfernt), zeichnet die Zeile neu, auch wenn das Plugin Panel-Neuzeichnung und Modell-Neuladen nicht ausfuehrt",
+  ] as const;
+  const PLG = `app.plugins.plugins[${q(PLUGIN_ID)}]`;
+  const stub = await startLlmStub({ models: ["qwen-smoke"], standard: { text: "ok", model: "qwen-smoke" } });
+  let vorher: { eps: unknown; choice: unknown } | null = null;
+  const warte = (bedingung: string, ms = 15_000): Promise<ZeileGr | null> => pollUntil<ZeileGr>(cdp, LIES_GR(bedingung), ms, 250).catch(() => null);
+  const oeffnePanel = async (): Promise<void> => {
+    await cdp.evaluate(`app.workspace.detachLeavesOfType(${q(VIEW_TYPE)}); await new Promise((r) => setTimeout(r, 300)); app.commands.executeCommandById(${q(`${PLUGIN_ID}:open-panel`)}); await new Promise((r) => setTimeout(r, 500)); return { ok: true };`);
+  };
+  const gespeicherteWahl = (): Promise<unknown> => cdp.evaluate<unknown>(`
+    try { return JSON.parse(await app.vault.adapter.read(app.vault.configDir + "/plugins/" + ${q(PLUGIN_ID)} + "/data.json")).choice ?? null; } catch { return "unlesbar"; }`);
+  const neuAufloesen = (): Promise<unknown> => cdp.evaluate(`const p = ${PLG}; p.llm.invalidate(); await p.llm.resolve(); return { ok: true };`);
+  try {
+    vorher = await cdp.evaluate<{ eps: unknown; choice: unknown }>(`const p = ${PLG}; return { eps: p.settings.endpoints, choice: p.settings.choice };`);
+    // Ohne Manager: die flache Liste (Gegenprobe zu GR1).
+    await cdp.evaluate(`const p = ${PLG}; p.settings.endpoints = [{ url: ${q(stub.url)}, model: "qwen-smoke" }]; p.settings.choice = {}; await p.saveSettings(); p.llm.invalidate(); await p.llm.resolve(); return { ok: true };`);
+    await oeffnePanel();
+    const flach = await warte(`z.alle.length >= 1`);
+    if (flach === null) { for (const n of [N1, N2, N3]) nichtGemessen(n, "die Modellzeile ist ohne Manager nicht erschienen (kein .okit-model-bar-select im Panel)"); return; }
+    const ep = (id: string, models: string[], extra: Record<string, unknown> = {}) => ({ id, label: `Smoke ${id}`, url: stub.url, models, ...extra });
+    const inst = await installZentralFakeManager(cdp, { pluginId: MANAGER_PLUGIN_ID, endpunkte: [ep("lm", ["qwen-smoke", "lm-zwei"]), ep("zwei", ["z-eins", "z-zwei"]), ep("aus", ["aus-std"], { unerreichbar: true })], invalidiere: [PLUGIN_ID] });
+    if (!inst.installiert) throw new Error(`Fake-Manager nicht eingebaut: ${inst.grund ?? "?"}`);
+    await cdp.evaluate(`const p = ${PLG}; p.settings.choice = {}; await p.saveSettings(); p.llm.invalidate(); await p.llm.resolve(); return { ok: true };`);
+    // Gegenprobe des Treibers (`--mutation endpoints|abo`): macht die Modellzeile blind, damit der Punkt rot werden MUSS. `endpoints`: die Verbindung kennt keine Endpunkte (flache Liste), `abo`: weder Verbindung
+    // noch Manager melden der Zeile etwas. Ohne den Schalter bleibt alles unberuehrt.
+    if (MUTATION_GR === "endpoints") await cdp.evaluate(`const l = ${PLG}.llm; window.__ltMut = { e: l.endpoints }; l.endpoints = () => []; return { ok: true };`);
+    if (MUTATION_GR === "abo") await cdp.evaluate(`const l = ${PLG}.llm; const a = app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}].api; window.__ltMut = { s: l.subscribe, o: a.on }; l.subscribe = () => () => {}; a.on = () => () => {}; return { ok: true };`);
+    await oeffnePanel();
+
+    // GR1
+    const z = await warte(`z.gruppen.length === 3 && z.gruppen.every((g) => g.optionen.length > 0) && !z.gruppen.some((g) => g.optionen.some((o) => /loading|laedt|lädt/i.test(o.text)))`);
+    if (z === null) {
+      // Der Fake steht nachweislich im Slot (list liefert drei Chat-Endpunkte): zeigt die Zeile trotzdem keine Gruppen, ist das ein Befund am Plugin (rot), nicht „nichts gemessen“.
+      const jetzt = await cdp.evaluate<{ endpunkte: number; optionen: string[] }>(`const a = app.plugins.plugins[${q(MANAGER_PLUGIN_ID)}]?.api; const s = document.querySelector(".okit-model-bar-select"); return { endpunkte: a ? a.list({ capability: "chat" }).length : -1, optionen: s ? [...s.options].map((o) => o.textContent ?? "") : [] };`);
+      if (jetzt.endpunkte !== 3) nichtGemessen(N1, `der Fake-Manager liefert ${jetzt.endpunkte} statt 3 Chat-Endpunkte: die Ausgangslage fehlt`);
+      else record(N1, false, `der Manager liefert 3 Endpunkte, die Zeile zeigte nach 15 s keine drei fertigen Gruppen · Optionen ${JSON.stringify(jetzt.optionen)}`);
+    }
+    else {
+      const gr = (label: string) => z.gruppen.find((g) => g.label === label);
+      const lm = gr("Smoke lm"), zwei = gr("Smoke zwei"), aus = gr("Smoke aus");
+      const texte = (g?: { optionen: Array<{ text: string }> }) => (g ? g.optionen.map((o) => o.text).join("|") : "");
+      const gruppenOk = !!lm && !!zwei && !!aus && texte(lm) === "Default (qwen-smoke)|qwen-smoke|lm-zwei" && texte(zwei) === "Default (z-eins)|z-eins|z-zwei"
+        && aus.optionen.some((o) => o.disabled && o.wert === "" && /not reachable|nicht erreichbar/i.test(o.text));
+      const waehle = await cdp.evaluate<boolean>(`
+        const s = document.querySelector(".okit-model-bar-select");
+        const o = [...s.querySelectorAll("optgroup")].filter((g) => g.label === "Smoke zwei").flatMap((g) => [...g.querySelectorAll("option")]).find((x) => x.textContent === "z-zwei");
+        if (!o) return false;
+        s.value = o.value; s.dispatchEvent(new Event("change", { bubbles: true })); return true;`);
+      const nach = await pollUntil<{ text: string }>(cdp, `
+        const w = ${PLG}.settings.choice; const s = document.querySelector(".okit-model-bar-select");
+        return w && w.endpointId === "zwei" && w.model === "z-zwei" ? { text: s.selectedOptions[0] ? s.selectedOptions[0].textContent : "" } : null;`, 10_000, 250).catch(() => null);
+      const gespeichert = await gespeicherteWahl();
+      record(N1, gruppenOk && waehle && nach !== null && nach.text === "z-zwei" && JSON.stringify(gespeichert) === JSON.stringify({ endpointId: "zwei", model: "z-zwei" }) && flach.gruppen.length === 0 && /Automatic|Automatisch/i.test(z.erste),
+        `ohne Manager ${flach.gruppen.length} Gruppen (Optionen ${JSON.stringify(flach.alle)}) · mit Manager ${z.gruppen.map((g) => `${g.label}[${g.optionen.map((o) => o.text + (o.disabled ? " (gesperrt)" : "")).join(", ")}]`).join(" · ")} · erste Option „${z.erste}“ · nach der Wahl: gewaehlt ${waehle ? "ja" : "NEIN"}, gezeigt „${nach?.text ?? "?"}“, data.json ${JSON.stringify(gespeichert)}`);
+    }
+
+    // GR2
+    const vorWaise = await warte(`z.text === "z-zwei"`, 5000);
+    if (vorWaise === null) nichtGemessen(N2, "die Wahl z-zwei war vor dem Abschalten nicht gezeigt (GR1 hat sie nicht gesetzt): die Ausgangslage fehlt");
+    else {
+      const a1 = await fakeManagerAendere(cdp, { enabled: { zwei: false } });
+      if ("fehler" in a1) throw new Error(a1.fehler);
+      await neuAufloesen();
+      const w = await warte(`z.warn && z.wert === "" && /Automatic|Automatisch/i.test(z.text)`, 10_000);
+      const waehrend = await gespeicherteWahl();
+      await fakeManagerAendere(cdp, { enabled: { zwei: true } });
+      await neuAufloesen();
+      const zurueck = await warte(`z.text === "z-zwei" && !z.warn`, 10_000);
+      if (w === null) record(N2, false, `nach dem Abschalten von „zwei“ zeigte die Zeile kein Warnzeichen mit „Automatisch“ (vorher gezeigt „${vorWaise.text}“, Warnzeichen ${String(vorWaise.warn)}) · data.json ${JSON.stringify(waehrend)}`);
+      else record(N2, !vorWaise.warn && /switched off|abgeschaltet/i.test(w.warnText) && /zwei/.test(w.warnText) && JSON.stringify(waehrend) === JSON.stringify({ endpointId: "zwei", model: "z-zwei" }) && zurueck !== null,
+        `vorher „${vorWaise.text}“ ohne Warnzeichen · abgeschaltet: gezeigt „${w.text}“, Warnzeichen „${w.warnText}“, data.json ${JSON.stringify(waehrend)} · wieder an: ${zurueck === null ? "Wahl NICHT zurueck" : `gezeigt „${zurueck.text}“, ohne Warnzeichen`}`);
+    }
+
+    // GR3
+    const vor = await warte(`z.gruppen.length === 3`, 5000);
+    if (vor === null) nichtGemessen(N3, "vor der Aenderung standen nicht drei Gruppen: die Ausgangslage fehlt");
+    else {
+      await cdp.evaluate(`
+        const v = app.workspace.getLeavesOfType(${q(VIEW_TYPE)})[0].view;
+        window.__ltGr3 = { refresh: v.refresh, reload: v.reloadModels, n: 0, view: v, select: document.querySelector(".okit-model-bar-select") };
+        v.refresh = function () { window.__ltGr3.n += 1; }; v.reloadModels = function () { window.__ltGr3.n += 1; };
+        return { ok: true };`);
+      const a2 = await fakeManagerAendere(cdp, { entferne: ["aus"] });
+      if ("fehler" in a2) throw new Error(a2.fehler);
+      const nach = await warte(`z.gruppen.length === 2 && !z.gruppen.some((g) => g.label === "Smoke aus")`, 8000);
+      const host = await cdp.evaluate<{ gesperrt: number; gleich: boolean }>(`
+        const g = window.__ltGr3; const r = { gesperrt: g.n, gleich: document.querySelector(".okit-model-bar-select") === g.select };
+        g.view.refresh = g.refresh; g.view.reloadModels = g.reload; delete window.__ltGr3; return r;`);
+      record(N3, a2.hoerer >= 1 && a2.gemeldet >= 1 && nach !== null && host.gleich,
+        `Hoerer am Manager ${a2.hoerer}, gemeldet ${a2.gemeldet} · Gruppen vorher ${vor.gruppen.length}, nachher ${nach === null ? "unveraendert/anders" : String(nach.gruppen.length)} (soll 2, ohne „Smoke aus“) · refresh()/reloadModels() des Plugins ${host.gesperrt}-mal gerufen (gesperrt, ohne Durchruf; sie sind nicht der Grund der Neuzeichnung) · dieselbe Zeile (select) ${String(host.gleich)}`);
+    }
+  } catch (e) {
+    for (const n of [N1, N2, N3]) if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);
+  } finally {
+    await cdp.evaluate(`
+      const p = ${PLG}; if (!p) return { ok: false };
+      const g = window.__ltGr3; if (g) { g.view.refresh = g.refresh; g.view.reloadModels = g.reload; delete window.__ltGr3; }
+      const m = window.__ltMut; if (m) { if (m.e) p.llm.endpoints = m.e; if (m.s) p.llm.subscribe = m.s; delete window.__ltMut; }
+      p.settings.endpoints = ${JSON.stringify(vorher?.eps ?? [])}; p.settings.choice = ${JSON.stringify(vorher?.choice ?? {})}; await p.saveSettings(); return { ok: true };`).catch(() => undefined);
+    await entferneFakeManager(cdp, { pluginId: MANAGER_PLUGIN_ID, invalidiere: [PLUGIN_ID] }).catch(() => undefined);
+    await cdp.evaluate(`const p = ${PLG}; if (p) { p.llm.invalidate(); await p.llm.resolve().catch(() => undefined); } return { ok: true };`).catch(() => undefined);
+    await stub.stop();
+  }
+}
+
 /** ML6 — der echte Wechsel (Task „Denk-Steuerung der Modellzeile fuellt sich erst nach refresh()“, Welle 29/30): Endpunkt IN DEN EINSTELLUNGEN umstellen (Adressfeld der ersten
  *  Zeile, Commit bei blur wie fuer einen Nutzer), Panel offen lassen, Einstellungen schliessen, und die Stufenwahl der Modellzeile muss ohne `view.refresh()` da sein.
  *  Vorbedingung (sonst „nichts gemessen“): vor dem Wechsel steht KEINE Stufenwahl da (Stub A ohne LM-Studio-Pfad, Modell ohne erkannte Familie → keine Stufen) und nach dem Wechsel
@@ -2572,6 +2703,7 @@ async function main(): Promise<void> {
   }
   const vaultFilter = args.value("vault") ?? REPO_NAME;
   MODELL_FLAG = args.value("model");
+  MUTATION_GR = args.value("mutation");
   if (args.value("stub-laenge") === "kurz") STUB_LAENGE = "kurz";
   if (args.value("stub-stuecke") === "absatz") STUB_STUECKE = "absatz";
 
@@ -2619,6 +2751,7 @@ async function main(): Promise<void> {
     await pruefeAnfrage(cdp, port);
     await pruefeModellzeile(cdp);
     await pruefeWechsel(cdp, port);
+    await pruefeGruppen(cdp);
     await pruefeRundenZeile(cdp);
     await pruefeRueckwahl(cdp);
     await pruefeGemma(cdp);
