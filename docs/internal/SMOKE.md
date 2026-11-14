@@ -535,3 +535,10 @@ CL1 bis CL3 laufen gegen den Anthropic-Modus des zentralen LLM-Stubs, mit einem 
 | nach der Hebung | Pin 0.61.0/0.28.0, `onContentReset` | 60 grün · 0 rot · 1 übersprungen von 61 |
 | Pflichtpunkte über den Baustein | wie zuvor, B10b neu | 61 grün · 0 rot · 1 übersprungen von 62 |
 | Claude-Pilot | Pin 0.62.0/0.28.1, CL1–CL3 neu | 64 grün · 0 rot · 1 übersprungen von 65 |
+
+LS1 (Welle 34, Linkschutz-Härtung) misst den Wächter am echten Fenster: rohes HTML mit `onclick`, `onmouseover`, `ping`, `formaction`, `<form>`, `form`, `commandfor`, `command`, `popovertarget`, `popovertargetaction` und `label for` plus einem https-Link wird per `innerHTML` (kein Obsidian-Sanitizer) mitten im laufenden Strom in `.lt-preview .okit-stream-body` gesetzt, den Körper, den der Beobachter des `createStableWriter` überwacht (derselbe Beobachter deckt den Vorschau-Block aus `draw()`, der unter `area.bodyEl` liegt). Erwartung: form 0, formaction 0, on* 0, ping 0, Seitenbezug-Attribute 0, Marker nicht ausgeführt, https-Link bleibt. Gültig nur, wenn die Statuszeile am Anfang und am Ende der Probe `is-checking` zeigt; Gegenprobe im Punkt: dasselbe HTML außerhalb eines Beobachters behält alle Marker (form 1, formaction 1, on* 2, ping 1, Seitenbezug-Attribute 6), sonst „nichts gemessen“. Modelltext selbst erreicht den Wächter im Normalfall nie, weil `neutralizeModelMarkdown` `<` maskiert; gemessen wird das Netz dahinter.
+
+| Lauf | Stand | Bilanz |
+|---|---|---|
+| Linkschutz neu | Pin code-kit 0.68.0 / obsidian-kit 0.88.0 (Einzelpins), LS1 neu | 76 grün · 0 rot · 1 übersprungen · 0 nichts gemessen von 77 |
+| Linkschutz-Gegenprobe | alte Vendor-Dateien, LS1 neu | 75 grün · 1 rot (LS1: Anker behielt `onclick`/`ping`, form 1, formaction 1, on* 2, ping 1, Seitenbezug-Attribute 6) · 1 übersprungen von 77 |

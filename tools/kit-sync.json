@@ -4,14 +4,14 @@
     "code-kit": { "ref": "0.40.0" }
   },
   "targets": [
-    { "dir": "src/vendor/kit", "source": "code-kit", "from": "src/ts/web", "modules": ["clipboard", "link-guard", "remote-resources"], "rewrite": [["../pure/", "./"]] },
+    { "dir": "src/vendor/kit", "source": "code-kit", "from": "src/ts/web", "modules": ["clipboard", { "name": "link-guard", "ref": "0.68.0" }, { "name": "remote-resources", "ref": "0.68.0" }], "rewrite": [["../pure/", "./"]] },
     {
       "dir": "src/vendor/kit", "source": "code-kit", "from": "src/ts/pure",
       "modules": [
         "sse", "endpoint", "endpoint_config", "endpoint_diagnostics", "model-choice",
         "model-list-cache", "reasoning", "capabilities", "think-splitter", "think-toggle",
         "timeout", "error_body", "i18n", "settings", "stream-blocks", "sampling-profiles",
-        "backend-probe", { "name": "redact", "ref": "0.60.0" }, "safe-markdown", "secrets", "rounds", "model-context", "embeddings-client", "slug", "local-stamp", "anthropic-wire"
+        "backend-probe", { "name": "redact", "ref": "0.60.0" }, { "name": "safe-markdown", "ref": "0.68.0" }, "secrets", "rounds", "model-context", "embeddings-client", "slug", "local-stamp", "anthropic-wire"
       ]
     },
     {
@@ -22,7 +22,7 @@
       "dir": "src/vendor/kit-obsidian", "source": "obsidian-kit", "from": "src/obsidian",
       "modules": [
         "clipboard", "confirm", "endpoint-list", "model-picker", "settings_walker", "folder-suggest",
-        "stream-area", "stable-writer", "dom-guard", "endpoint-source", "request-section", "status-indicator", "request-session",
+        "stream-area", "stable-writer", { "name": "dom-guard", "ref": "0.88.0" }, "endpoint-source", "request-section", "status-indicator", "request-session",
         "thinking-control", "collapsible", "chat-client", "chat-transport", "shortcuts-bridge", "clock", "lab-client", "help-setting",
         "llm-connection", "llm-connection-strings", "model-bar", "model-bar-strings", "endpoint-status-text", "endpoint-plumbing", "embedding-connection", "backend-probe", "endpoint-secrets", "secrets", "anthropic-transport", "plugin-api"
       ],

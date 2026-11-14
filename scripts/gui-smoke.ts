@@ -156,6 +156,7 @@ const PUNKTE = [
   "CL3 Fehler mitten im Strom: das Panel zeigt is-error mit der Meldung der API, das Teilergebnis bleibt",
   "G1 Altwert wandert in die Zeile, kein globales Modell in den Einstellungen",
   "G2 Panel-Modellwahl schreibt in die aktive Zeile, „Server waehlt“ leert sie",
+  "LS1 Linkschutz-Haertung (code-kit 0.68.0, dom-guard 0.88.0): rohes HTML mit on*, ping, formaction, form, commandfor, popovertarget und label-for, mitten im laufenden Strom in die Vorschau gesetzt, verliert diese Marker, der https-Link bleibt; Gegenprobe: dasselbe HTML ausserhalb des Beobachters behaelt alle Marker",
   "Markierung ersetzen (Rand-Whitespace)",
 ] as const;
 
@@ -1705,6 +1706,108 @@ async function pruefeGemma(cdp: Cdp): Promise<void> {
   }
 }
 
+/** L1 — Haertung des Linkschutzes (code-kit 0.68.0 `link-guard`, obsidian-kit 0.88.0 `dom-guard`). Modelltext erreicht den Waechter im Normalfall nie: `neutralizeModelMarkdown` maskiert `<` vor dem
+ *  Parser (Kit-Doku `dom-guard.ts`). Gemessen wird deshalb das Netz selbst, am echten Fenster: rohes HTML mit `on*`, `ping`, `formaction`, `form`, `commandfor`, `popovertarget`, `label for` und einem
+ *  sicheren Link wird per `innerHTML` (kein Obsidian-Sanitizer) mitten im Strom in die Vorschau gesetzt, deren Koerper der Beobachter des `createStableWriter` ueberwacht (`domGuard` ist hier an;
+ *  derselbe Beobachter deckt den Vorschau-Block aus `draw()`, der unter `area.bodyEl` liegt). Gegenprobe: dasselbe HTML ausserhalb eines Beobachters muss alle Marker behalten, sonst haette der Punkt nie rot werden koennen. */
+async function pruefeLinkschutz(cdp: Cdp): Promise<void> {
+  const L1 = "LS1 Linkschutz-Haertung (code-kit 0.68.0, dom-guard 0.88.0): rohes HTML mit on*, ping, formaction, form, commandfor, popovertarget und label-for, mitten im laufenden Strom in die Vorschau gesetzt, verliert diese Marker, der https-Link bleibt; Gegenprobe: dasselbe HTML ausserhalb des Beobachters behaelt alle Marker";
+  const MODELL = "link-modell";
+  const MARKER = "__ltOnMarker";
+  const HTML = [
+    `<a href="https://example.org/ok" onclick="window.${MARKER} = 1" ping="https://example.invalid/ping">h-ok</a>`,
+    `<p onmouseover="window.${MARKER} = 2">h-p</p>`,
+    '<form action="https://example.invalid/form"><button formaction="https://example.invalid/fa">h-form</button></form>',
+    '<button form="kf" commandfor="kd" popovertarget="kd" command="show-modal" popovertargetaction="show">h-ref</button><label for="kc">h-label</label>',
+  ].join("");
+  type Zahl = { anker: { h: string | null; attrs: string[] } | null; forms: number; formaction: number; on: number; ping: number; seite: number };
+  const ZAEHLE = `
+    const zaehle = (root) => {
+      const all = Array.from(root.querySelectorAll("*"));
+      const anker = all.find((e) => e.localName === "a" && e.textContent === "h-ok");
+      const mit = (...n) => all.filter((e) => n.some((x) => e.hasAttribute(x))).length;
+      return {
+        anker: anker ? { h: anker.getAttribute("href"), attrs: anker.getAttributeNames().filter((n) => n.startsWith("on") || n === "ping") } : null,
+        forms: all.filter((e) => e.localName === "form").length,
+        formaction: mit("formaction"),
+        on: all.filter((e) => e.getAttributeNames().some((n) => n.startsWith("on"))).length,
+        ping: mit("ping"),
+        seite: all.reduce((n, e) => n + ["form", "commandfor", "command", "popovertarget", "popovertargetaction"].filter((x) => e.hasAttribute(x)).length + (e.localName === "label" && e.hasAttribute("for") ? 1 : 0), 0),
+      };
+    };`;
+  let stub: Awaited<ReturnType<typeof startLlmStub>> | null = null;
+  let vorher: unknown = null;
+  try {
+    // Langsamer Strom: der Beobachter lebt nur bis zum Ende der Antwort, die Probe muss mitten im Strom einfallen.
+    stub = await startLlmStub({ models: [MODELL], takt: 500, standard: { text: "x", model: MODELL }, antwort: () => ({ stuecke: Array.from({ length: 12 }, (_, i) => `Stueck ${i + 1} laeuft, bitte warten. `), model: MODELL }) });
+    vorher = await cdp.evaluate<unknown>(`return app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints;`);
+    await cdp.evaluate(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      p.settings.endpoints = [{ url: ${q(stub.url)}, model: ${q(MODELL)} }];
+      await p.saveSettings();
+      p.llm.invalidate();
+      await p.llm.resolve();
+      return { ok: true };
+    `);
+    await waehleQuelle(cdp, 2);
+    await cdp.evaluate(`
+      const el = document.querySelector(".lt-freetext");
+      el.value = "Could you maybe send the report by Friday?";
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      return { ok: true };
+    `);
+    await setzeNotiz(cdp, "Keep the offer of another day.");
+    await cdp.evaluate(`delete window.${MARKER}; return { ok: true };`);
+    let d: { laeuft: boolean; laeuftNoch: boolean; gegen: Zahl; mess: Zahl; marker: string } | null = null;
+    await laufeTune(cdp, async () => {
+      d = await pollUntil<{ laeuft: boolean; laeuftNoch: boolean; gegen: Zahl; mess: Zahl; marker: string }>(cdp, `
+        const body = document.querySelector(".lt-preview .okit-stream-body");
+        if (!body || body.textContent.trim().length === 0) return null;
+        ${ZAEHLE}
+        const lauf = () => !!document.querySelector(".lt-status.is-checking");
+        const laeuft = lauf();
+        const aussen = document.body.createDiv();
+        aussen.innerHTML = ${q(HTML)};
+        const gegen = zaehle(aussen);
+        const innen = body.createDiv({ cls: "lt-l1-probe" });
+        innen.innerHTML = ${q(HTML)};
+        await new Promise((r) => setTimeout(r, 800));
+        const mess = zaehle(innen);
+        const laeuftNoch = lauf();
+        innen.remove(); aussen.remove();
+        return { laeuft, laeuftNoch, gegen, mess, marker: String(window.${MARKER}) };`, 20_000, 150);
+    });
+    const m = d as { laeuft: boolean; laeuftNoch: boolean; gegen: Zahl; mess: Zahl; marker: string } | null;
+    if (m === null) { nichtGemessen(L1, "kein Antwortbereich im laufenden Strom gefunden (nach 20 s)"); return; }
+    // Gueltig nur, wenn der Strom waehrend der ganzen Probe lief: danach ist der Beobachter getrennt, „nicht gekappt“ waere kein Befund ueber den Waechter.
+    if (!m.laeuft || !m.laeuftNoch) { nichtGemessen(L1, `der Strom lief nicht waehrend der Probe (Beginn ${String(m.laeuft)}, Ende ${String(m.laeuftNoch)}): der Beobachter war nicht angehaengt`); return; }
+    const g = m.gegen;
+    const gegenText = `form ${g.forms}, formaction ${g.formaction}, on* ${g.on}, ping ${g.ping}, Seitenbezug-Attribute ${g.seite}, Anker-Attribute [${g.anker?.attrs.join(",")}]`;
+    if (!(g.forms >= 1 && g.formaction >= 1 && g.on >= 2 && g.ping >= 1 && g.seite >= 6 && g.anker !== null && g.anker.attrs.length >= 2)) {
+      nichtGemessen(L1, `die Gegenprobe ausserhalb des Beobachters behielt nicht alle Marker (${gegenText}): „gekappt“ waere ohne sie nichts wert`);
+      return;
+    }
+    const e = m.mess;
+    const ok = e.anker !== null && e.anker.h === "https://example.org/ok" && e.anker.attrs.length === 0 && e.forms === 0 && e.formaction === 0 && e.on === 0 && e.ping === 0 && e.seite === 0 && m.marker === "undefined";
+    record(L1, ok, `in der Vorschau (Strom lief): https-Anker ${e.anker ? `da, href ${String(e.anker.h)}, on*/ping [${e.anker.attrs.join(",")}]` : "FEHLT"} · form ${e.forms} · formaction ${e.formaction} · on* ${e.on} · ping ${e.ping} · Seitenbezug-Attribute ${e.seite} · Marker ${m.marker} (verlangt: undefined) · Gegenprobe ausserhalb: ${gegenText} (alle verlangt: Marker da)`);
+  } catch (e) {
+    if (!aufgezeichnet(L1)) nichtGemessen(L1, `Messung abgebrochen: ${(e as Error).message}`);
+  } finally {
+    if (vorher !== null) {
+      await cdp.evaluate(`
+        const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+        p.settings.endpoints = ${JSON.stringify(vorher)};
+        await p.saveSettings();
+        p.llm.invalidate();
+        await p.llm.resolve();
+        return { ok: true };
+      `).catch(() => null);
+    }
+    await waehleQuelle(cdp, 1).catch(() => "");
+    if (stub) await stub.stop();
+  }
+}
+
 /** CL1–CL3 — Claude (Anthropic API) ueber den LLM Endpoint Manager, Pilot Welle 23 (Kit 0.62.0, Opt-in `transports.anthropic`).
  *  Gegenstelle: der zentrale LLM-Stub im Anthropic-Modus (Messages-API, geprueft: `x-api-key`, `anthropic-version`, Pflichtfelder). Kein
  *  Aufruf an api.anthropic.com. Der Fake-Manager (Bruecke) kennt `transport: "anthropic"` noch nicht im Typ; sein `list()` filtert
@@ -2519,6 +2622,7 @@ async function main(): Promise<void> {
     await pruefeRundenZeile(cdp);
     await pruefeRueckwahl(cdp);
     await pruefeGemma(cdp);
+    await pruefeLinkschutz(cdp);
     await pruefeClaude(cdp, port);
     await pruefeGlobalesModell(cdp, port);
     skipped("Markierung ersetzen (Rand-Whitespace)", "Editor-Selektion per CDP ist im Unit-Test abgedeckt (editor-io.test.ts); im Smoke muesste sie ueber CodeMirror gesetzt werden — Handarbeit");
