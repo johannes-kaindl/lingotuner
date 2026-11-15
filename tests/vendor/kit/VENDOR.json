@@ -2,7 +2,7 @@
   "source": "obsidian-kit",
   "version": "0.77.1",
   "sha": "3fc29e1",
-  "vendored": "obsidian-mock.ts, kit-css.ts (obsidian-kit@0.92.0, be4994f)",
+  "vendored": "obsidian-mock.ts, kit-css.ts (obsidian-kit@0.93.0, 7997447), dom-guard-probe.ts (obsidian-kit@0.93.0, 7997447)",
   "note": "Verbatim snapshot. Never hand-edit. Re-vendor via tools/sync-kit.sh.",
   "license": "AGPL-3.0-or-later"
 }

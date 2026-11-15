@@ -87,7 +87,7 @@
       "modules": [
         {
           "name": "endpoint-source",
-          "ref": "0.92.0"
+          "ref": "0.93.0"
         },
         "endpoint-secret-hook",
         "shortcut-failure",
@@ -121,26 +121,26 @@
         "folder-suggest",
         {
           "name": "stream-area",
-          "ref": "0.92.0"
+          "ref": "0.93.0"
         },
         {
           "name": "stable-writer",
-          "ref": "0.92.0"
+          "ref": "0.93.0"
         },
         {
           "name": "dom-guard",
-          "ref": "0.92.0"
+          "ref": "0.93.0"
         },
         {
           "name": "endpoint-source",
-          "ref": "0.92.0"
+          "ref": "0.93.0"
         },
         "request-section",
         "status-indicator",
         "request-session",
         {
           "name": "thinking-control",
-          "ref": "0.92.0"
+          "ref": "0.93.0"
         },
         "collapsible",
         "chat-client",
@@ -148,30 +148,30 @@
         "shortcuts-bridge",
         {
           "name": "clock",
-          "ref": "0.92.0"
+          "ref": "0.93.0"
         },
         "lab-client",
         "help-setting",
         {
           "name": "llm-connection",
-          "ref": "0.92.0"
+          "ref": "0.93.0"
         },
         {
           "name": "llm-connection-strings",
-          "ref": "0.92.0"
+          "ref": "0.93.0"
         },
         {
           "name": "model-bar",
-          "ref": "0.92.0"
+          "ref": "0.93.0"
         },
         {
           "name": "model-bar-strings",
-          "ref": "0.92.0"
+          "ref": "0.93.0"
         },
         "endpoint-status-text",
         {
           "name": "endpoint-plumbing",
-          "ref": "0.92.0"
+          "ref": "0.93.0"
         },
         "embedding-connection",
         "backend-probe",
@@ -181,7 +181,7 @@
         "plugin-api",
         {
           "name": "copy-button",
-          "ref": "0.92.0"
+          "ref": "0.93.0"
         }
       ],
       "rewrite": [
@@ -207,7 +207,11 @@
         "obsidian-mock",
         {
           "name": "kit-css",
-          "ref": "0.92.0"
+          "ref": "0.93.0"
+        },
+        {
+          "name": "dom-guard-probe",
+          "ref": "0.93.0"
         }
       ]
     }

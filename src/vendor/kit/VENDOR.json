@@ -7,6 +7,6 @@
   "note": "Verbatim snapshot aus ZWEI Quellen (obsidian-kit + code-kit); welche Datei woher stammt, sagt ihr eigener Kopf. Never hand-edit. Re-vendor via tools/sync-kit.sh. version/sha gelten AUSSCHLIESSLICH fuer die unter \"vendored\" gelisteten Dateien. kit-obsidian/ siehe dortige VENDOR.json.",
   "obsidian_kit_version": "0.77.1",
   "obsidian_kit_sha": "3fc29e1",
-  "obsidian_kit_vendored": "endpoint-source.ts (obsidian-kit@0.92.0, be4994f), endpoint-secret-hook.ts, shortcut-failure.ts, override-guard.ts",
+  "obsidian_kit_vendored": "endpoint-source.ts (obsidian-kit@0.93.0, 7997447), endpoint-secret-hook.ts, shortcut-failure.ts, override-guard.ts",
   "license": "AGPL-3.0-or-later"
 }

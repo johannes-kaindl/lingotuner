@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.92.0, src/obsidian/dom-guard.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.93.0, src/obsidian/dom-guard.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { MarkdownRenderer, type App, type Component } from "obsidian";
 import { realClock, type ClockPort } from "./clock";
 import { neutralizeRemoteResourcesInTree, type RemovedResource, type RemoteResourcesOptions } from "../kit/remote-resources";
@@ -39,6 +39,9 @@ import { neutralizeUnsafeLinksInTree } from "../kit/link-guard";
  * - **U4 Anfragen beim Einfügen:** `link rel=stylesheet|preload|modulepreload`, `style @import`, `object data`, `embed src`, SVG `feImage` stellt
  *   der Browser im selben Task und im Observer-Callback; `img src|srcset`, `source srcset`, `video poster`, `input type=image` und SVG `image`
  *   hält der Durchgang im selben Task, **im Observer-Pfad (unser Weg) sind sie schon unterwegs**. Dazu `<iframe onload>` und `<object onerror>`.
+ * - **U4, Rahmen (gemessen in Welle 35, Kit-Master, Obsidian 1.15.1, drei Läufe von `pilot/link-schutz.ts --nur-w34`):** In 1 von 3 Läufen fordert ein live eingefügter `iframe` mit `app:`-Ziel seine Navigation an, bevor der Beobachter läuft; der Wächter nimmt die
+ *   Quelle, die Anfrage bricht ab (`net::ERR_ABORTED`), das Dokument lädt nicht. In allen drei Läufen war bei allen sechs Fällen des Wächter-Arms `geladen: false`, ohne Beacon und ohne Antwort, mit 0 Ausnahmen im Obsidian-Log; ob die Anfrage vor dem
+ *   Beobachter startet, hängt vom Takt ab. Der Treiber urteilt deshalb an Laden, Beacon und Antwort (rot nur dort) und weist die angeforderte, abgebrochene Navigation bei jedem Lauf als eigene Zeile „Grenze U4“ aus, ohne sie grün zu nennen.
  * - **U6 Shadow DOM:** ein Shadow Root, den ein Renderer anhängt, wird nicht betreten; Link und Bild darin wirken in jedem Arm.
  * - **U7 nach der Frist:** `renderMarkdownGuarded` trennt den Observer nach der Frist; was ein Nachbearbeiter oder ein Timer später setzt (ein
  *   `href` auf `javascript:` 500 ms nach dem Start), sieht niemand. Der Observer des `createStableWriter` lebt dagegen so lange wie der Schreiber.

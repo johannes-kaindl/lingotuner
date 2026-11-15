@@ -112,7 +112,7 @@
   text-overflow: ellipsis;
 }
 
-/* uebernommen aus src/vendor/kit-obsidian/stream-area.ts (STREAM_AREA_CSS), obsidian-kit 0.92.0 */
+/* uebernommen aus src/vendor/kit-obsidian/stream-area.ts (STREAM_AREA_CSS), obsidian-kit 0.93.0 */
 .okit-stream { display: flex; flex-direction: column; min-height: 0; gap: var(--size-4-2); }
 .okit-stream-body {
   flex: 1 1 auto; min-height: 0; overflow-y: auto;
@@ -149,7 +149,7 @@
    Statuszeile nicht nutzt (Befund aus der ersten Adoption, 2026-09-11). */
 .okit-stream-status:empty, .okit-stream-reasoning-slot:empty { display: none; }
 
-/* uebernommen aus src/vendor/kit-obsidian/copy-button.ts (COPY_BUTTON_CSS), obsidian-kit 0.92.0 */
+/* uebernommen aus src/vendor/kit-obsidian/copy-button.ts (COPY_BUTTON_CSS), obsidian-kit 0.93.0 */
 .okit-copy-button { color: var(--text-faint); height: auto; padding: var(--size-2-1) var(--size-2-2); }
 .okit-copy-button.is-copied { color: var(--text-success); }
 .okit-copy-button .svg-icon { width: var(--icon-xs); height: var(--icon-xs); }
