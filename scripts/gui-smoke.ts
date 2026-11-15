@@ -7,17 +7,15 @@
  *
  * ## Zweitinstanz (der richtige Ort fuer diesen Lauf — eigenes Profil, eigener Port, Pflicht-`--port`)
  *
- *   echo "$STAGING_VAULTS_DIR"                                         # muss gesetzt sein (~/.zshenv)
- *   npm run build && npm run smoke:gui -- --setup                      # Vault aus fixtures/vault/ (deployt auch ../llm-lab)
- *   UD=/tmp/obs-test-lingotuner; mkdir -p "$UD"
- *   pgrep -f "user-data-dir=$UD"                                       # leer, sonst auf ein anderes Profil ausweichen
- *   lsof -nP -iTCP:<port> -sTCP:LISTEN                                 # leer
- *   cp ~/Library/Application\ Support/obsidian/obsidian-*.asar "$UD"/   # aktuelle Version statt gebuendelter
- *   # $UD/obsidian.json: Vault ($STAGING_VAULTS_DIR/lingotuner) und "language":"en" eintragen (Obsidian liest die Datei nur beim Start)
- *   /Applications/Obsidian.app/Contents/MacOS/Obsidian --user-data-dir="$UD" --remote-debugging-port=<port> &
- *   python3 ~/.claude/hooks/obsidian-cdp-lock.py acquire --label lingotuner --intent "GUI-Smoke" --exclusive focus --port <port> --ttl 300
- *   npm run smoke:gui -- --port <port>                                 (Abschnitt C laeuft gegen den zentralen LLM-Stub; `--model <id>` faehrt echt gegen :1234)
- *   python3 ~/.claude/hooks/obsidian-cdp-lock.py release
+ * Der Treiber startet keine Instanz und kennt kein `--launch`: er haengt sich an die laufende auf `--port`. Start, Profil, `.asar`, fremdes `HOME` und Beenden der eigenen
+ * PID macht `tools/obsidian-cdp/messlauf.sh` (README dort § Messlauf in einem Aufruf, gemessen 2026-11-14 an diesem Treiber: 79 gruen · 0 rot · 1 uebersprungen · 0 nichts
+ * gemessen von 80). `--setup` (Vault aus fixtures/vault/, deployt auch ../llm-lab) ruft das Skript selbst. Aus dem Plugin-Ordner:
+ *
+ *   export REPO=lingotuner PORT=<port> \
+ *     && python3 ~/.claude/hooks/obsidian-cdp-lock.py acquire --label lingotuner --intent "GUI-Smoke" --exclusive focus --port <port> --ttl 900 \
+ *     && ../tools/obsidian-cdp/messlauf.sh
+ *
+ * Abschnitt C laeuft gegen den zentralen LLM-Stub; `--model <id>` faehrt echt gegen :1234 (dann `SMOKE_ARGS="--model <id>"`).
  *
  * Vertrauensdialog und Restricted Mode eines frischen Profils erledigt der Treiber selbst
  * (`bereiteInstanzVor`); je Messlauf ein frischer Prozess, der erste Lauf nach der Profilanlage ist
@@ -54,6 +52,7 @@ import { gegenprobeErreichbarkeit, gegenprobeFokus, messeDenkblockKopierbar, mes
 import { createBilanz, parseArgs, runDriver } from "../../tools/obsidian-cdp/bilanz.js";
 import { boxAround, capture } from "../../tools/obsidian-cdp/shot.js";
 import { buildVault, requireEigenerBuild, stagingVaultDir } from "../../tools/obsidian-cdp/vault.js";
+import { lehneLaunchAb } from "../../tools/obsidian-cdp/zweitinstanz.js";
 
 const REPO_NAME = "lingotuner";
 const PLUGIN_ID = "lingotuner";
@@ -2697,6 +2696,7 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (parseArgs(argv).has("--setup")) { setupVault(); return; }
   const args = parseArgs(argv);
+  lehneLaunchAb(args, "lingotuner");
   const port = Number(args.value("port"));
   if (!Number.isInteger(port) || port < 1024 || port > 65535) {
     throw new Error("--port <1024-65535> ist Pflicht (Port deiner Zweitinstanz, vom Lock gehalten) — es gibt keinen Standardport.");
