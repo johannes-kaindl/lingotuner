@@ -4,7 +4,7 @@ export const STRINGS = {
   en: {
     "plugin.name": "LingoTuner",
     "cmd.openPanel": "Open panel",
-    "cmd.tuneSelection": "Tune selection",
+    "cmd.tuneSelection": "Open panel with selection",
     "ribbon": "LingoTuner",
 
     "source.selection": "Selection",
@@ -178,7 +178,7 @@ export const STRINGS = {
   de: {
     "plugin.name": "LingoTuner",
     "cmd.openPanel": "Panel öffnen",
-    "cmd.tuneSelection": "Markierung tunen",
+    "cmd.tuneSelection": "Panel mit Markierung öffnen",
     "ribbon": "LingoTuner",
 
     "source.selection": "Markierung",
