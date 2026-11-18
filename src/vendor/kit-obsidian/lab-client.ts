@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.77.1, src/obsidian/lab-client.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.95.0, src/obsidian/lab-client.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /** Konsumentenseite von llm-labs Plugin-API (`app.plugins.plugins["llm-lab"].api`, Vertrag v4).
  *
  *  Herkunft (Welle 8, 2026-09-25): vier byte-gleiche Kopien (bis auf Kommentare) —
@@ -23,6 +23,8 @@
  *  Wächter gegen ein fremdes Plugin, das entgegen dem Vertrag eine Promise zurückgibt
  *  (vault-rag, koda-agent, obsidian-transmute — lingotuner fehlte er). Telemetrie reißt den
  *  Aufrufer nie mit. */
+
+import { errorMessage } from "../kit/error-message";
 
 export const LAB_PLUGIN_ID = "llm-lab";
 export const LAB_API_VERSION = 4;
@@ -107,7 +109,7 @@ export function logToLab(app: unknown, input: LabLogInput): LabLogOutcome {
   try {
     ret = found.api.log(input);
   } catch (e) {
-    return { ok: false, reason: "log-threw", detail: e instanceof Error ? e.message : String(e) };
+    return { ok: false, reason: "log-threw", detail: errorMessage(e) };
   }
   if (typeof ret === "string") return { ok: true, id: ret };
   // Vertrag verletzt: eine etwaige Promise abfangen, bevor sie als unhandled rejection den
