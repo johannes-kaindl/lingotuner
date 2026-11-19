@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.15.2] — 2026-11-19
+
 ### Changed
 
 - **The selection command is named for what it does (UI-STANDARD §11).** It only remembers the selection and opens the panel, it does not tune anything; the palette now shows "Open panel with selection" (was "Tune selection"; German: "Panel mit Markierung öffnen", was "Markierung tunen"). The command id stays, so bound hotkeys keep working.
