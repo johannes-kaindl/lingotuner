@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.15.3] — 2026-11-24
+
 ### Security
 
 - **A secret glued to a word is now redacted before it reaches the lab log and the request** (shared library code-kit 0.87.0): `key_sk-proj-…`, `my_AKIA…` and `x_Bearer …` stayed in clear text before. Ordinary words that end in `sk` (`task-…`) stay untouched.
