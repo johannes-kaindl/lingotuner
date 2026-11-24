@@ -2,6 +2,7 @@
  *  bestimmt, was gezeigt, geschrieben und nachgeschaerft wird. Nichts wird abgeschnitten:
  *  Nachschaerfen ist Probieren, und der dritte Versuch kann schlechter sein als der erste. */
 import type { Dials } from "./dials";
+import { chainOf } from "../vendor/kit/panel-session";
 import { EMPTY_ROUNDS, type Rounds } from "../vendor/kit/rounds";
 
 export interface Round {
@@ -25,18 +26,14 @@ export type Session = Rounds<Round>;
 
 export const EMPTY_SESSION: Session = EMPTY_ROUNDS;
 
-/** Wurzel der aktiven Kette: von `s.active` ueber `basedOn` weiter, bis `basedOn === null`.
- *  Ohne Runden (`active === -1`) null. Eine Runde ohne Kette ist ihre eigene Wurzel; eine
- *  abgebrochene Zwischenrunde traegt ihr `basedOn` wie jede andere und unterbricht nichts. */
+/** Wurzel der aktiven Kette (Kit `chainOf`: von `s.active` ueber `basedOn` bis `basedOn === null`; die Kette heisst vom Kit, die Wurzel steht vorn).
+ *  Ohne Runden (`active === -1`) null. Eine Runde ohne Kette ist ihre eigene Wurzel; eine abgebrochene Zwischenrunde traegt ihr `basedOn` wie jede andere
+ *  und unterbricht nichts. Eine kaputte Kette (Verweis auf sich selbst, nach vorn oder ins Leere) liefert null; die eigene Schleife davor lief bei einem
+ *  Verweis auf sich selbst endlos. Das Plugin legt nur Verweise auf fruehere Runden an, die Kette ist also immer heil. */
 export function rootRound(s: Session): Round | null {
-  if (s.active < 0) return null;
-  let idx = s.active;
-  let round: Round | undefined = s.rounds[idx];
-  while (round !== undefined && round.basedOn !== null) {
-    idx = round.basedOn;
-    round = s.rounds[idx];
-  }
-  return round ?? null;
+  const c = chainOf(s, (r) => r.basedOn);
+  const first = c.ok ? c.chain[0] : undefined;
+  return first === undefined ? null : (s.rounds[first] ?? null);
 }
 
 /** Eingabe der Wurzel-Runde — der Text, gegen den ein Ersetzen die lebende Markierung/Notiz

@@ -15,6 +15,7 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 
 - **The link guard carries the library's current version** (obsidian-kit 0.106.0); the code is unchanged.
+- **The panel's run guard and the round chain come from the shared library** (code-kit 0.87.0 `createRunSlot` and `chainOf`) instead of private copies. Behaviour is the same for the plugin's own rounds; a broken round chain (a round pointing at itself or forward) now yields no source instead of looping forever.
 
 ## [0.15.2] — 2026-11-19
 

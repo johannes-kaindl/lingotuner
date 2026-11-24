@@ -97,3 +97,15 @@ describe("Wurzel der Runden-Kette", () => {
     expect(rootSourceName(s)).toBeNull();
   });
 });
+
+describe("rootRound — kaputte Kette (Kit chainOf)", () => {
+  it("ein Verweis auf sich selbst oder nach vorn liefert null statt einer Endlosschleife", () => {
+    const selbst = { rounds: [round(1, 0)], active: 0 };
+    expect(rootRound(selbst)).toBeNull();
+    const vorn = { rounds: [round(1, 1), round(2, null)], active: 0 };
+    expect(rootRound(vorn)).toBeNull();
+  });
+  it("ein Verweis ins Leere liefert null", () => {
+    expect(rootRound({ rounds: [round(1, 5)], active: 0 })).toBeNull();
+  });
+});

@@ -54,6 +54,14 @@
         "safe-markdown",
         "secrets",
         "rounds",
+        {
+          "name": "panel-session",
+          "ref": "0.87.0"
+        },
+        {
+          "name": "run-slot",
+          "ref": "0.87.0"
+        },
         "model-context",
         "embeddings-client",
         "slug",

@@ -2,6 +2,7 @@ import { Component, ItemView, MarkdownRenderer, Modal, Setting, type App, type W
 import { isNoop, presetFor, type Dials, type Dimension, type Level, type Preset } from "../core/dials";
 import { EMPTY_SESSION, rootInput, rootSourceName, type Session } from "../core/session";
 import { activeRound, pushRound, selectRound } from "../vendor/kit/rounds";
+import { createRunSlot } from "../vendor/kit/run-slot";
 import { type Readiness, type SourceKind } from "../core/source";
 import { errorMessageKey } from "../core/llm/errors";
 import type { TuneResult } from "../core/llm/client";
@@ -83,7 +84,8 @@ export class LingoTunerView extends ItemView {
   private reasoning = "";
   private reasoningOpen = false;
   private parts: PanelParts | null = null;
-  private controller: AbortController | null = null;
+  /** Ein Lauf zugleich, mit Abbruch und Veraltet-Pruefung (Kit `createRunSlot`). */
+  private readonly slot = createRunSlot();
   private mdComp: Component | null = null;
   /** Der inkrementelle Markdown-Schreiber auf dem Stream-Bereich (Kit `createStableWriter`).
    *  Er haelt Rohstrom und Schnitt-Zeiger selbst — je Voll-Draw neu, weil die Area neu ist. */
@@ -104,8 +106,7 @@ export class LingoTunerView extends ItemView {
   }
 
   onClose(): Promise<void> {
-    this.controller?.abort();
-    this.controller = null;
+    this.slot.abort();
     this.modelBar?.destroy();
     this.modelBar = null;
     this.writer?.destroy();
@@ -152,7 +153,7 @@ export class LingoTunerView extends ItemView {
       onNote: (v) => { this.note = v; this.softDraw(); },
       onTune: () => { void this.run(null); },
       onRefine: () => { void this.run(this.session.active); },
-      onAbort: () => { this.controller?.abort(); },
+      onAbort: () => { this.slot.abort(); },
       onReset: () => {
         // Nur fragen, wenn es etwas zu verlieren gibt. Der Knopf sitzt unmittelbar neben
         // „Nachschaerfen", das man in einer Iterationsschleife oft klickt; ein Fehlgriff
@@ -193,12 +194,11 @@ export class LingoTunerView extends ItemView {
   }
 
   /** Raeumt die Sitzung. Erst abbrechen, dann raeumen: ein laufender Stream schriebe sonst
-   *  in eine Vorschau, die es nicht mehr gibt. `controller = null` laesst `run()` sein
-   *  Ergebnis verwerfen. Die Regler bleiben bewusst stehen — sie sind eine Einstellung,
+   *  in eine Vorschau, die es nicht mehr gibt. Der Abbruch macht den Lauf veraltet, `run()` verwirft
+   *  sein Ergebnis. Die Regler bleiben bewusst stehen — sie sind eine Einstellung,
    *  kein Sitzungszustand. */
   private reset(): void {
-    this.controller?.abort();
-    this.controller = null;
+    this.slot.abort();
     this.session = EMPTY_SESSION;
     this.preview = "";
     this.reasoning = "";
@@ -341,9 +341,8 @@ export class LingoTunerView extends ItemView {
       : rootSourceName(this.session);
     if (base === null || isNoop(dials, this.note)) { this.statusText = t("run.noop"); this.phase = "error"; this.draw(); return; }
 
-    this.controller?.abort();
-    const ctrl = new AbortController();
-    this.controller = ctrl;
+    const run = this.slot.begin({ supersede: true });
+    if (run === null) return;
     this.phase = "streaming";
     this.statusText = t("status.streaming");
     this.truncated = false;
@@ -363,7 +362,7 @@ export class LingoTunerView extends ItemView {
     // weil es als Ganzes rollt — und scrollt nur, wenn der Leser ohnehin unten steht.
     const folge = (): void => { this.parts?.area.followTail(); };
     const onToken = (tk: string): void => {
-      if (this.controller !== ctrl) return;
+      if (!run.isCurrent()) return;
       const w = this.writer;
       if (w === null) return;
       // Zwei Kopien desselben Stroms, mit Absicht: der Schreiber haelt seinen Rohstrom fuer
@@ -375,13 +374,13 @@ export class LingoTunerView extends ItemView {
       w.push(tk);
     };
     const onContentReset = (): void => {
-      if (this.controller !== ctrl) return;
+      if (!run.isCurrent()) return;
       // Was bisher als Antwort lief, war Denken (der Chat-Client hat es als Gedanken nachgereicht): Antwort und Anzeige leeren, die Gedanken bleiben.
       this.preview = "";
       this.writer?.resetContent();
     };
     const onReasoning = (tk: string): void => {
-      if (this.controller !== ctrl) return;
+      if (!run.isCurrent()) return;
       const area = this.parts?.area;
       if (area === undefined) return;
       // Der Rohtext liegt schon in `this.reasoning` — ihn aus dem DOM zurueckzulesen und
@@ -396,10 +395,10 @@ export class LingoTunerView extends ItemView {
 
     let result: TuneResult;
     try {
-      result = await this.deps.run({ text: base, dials, note: this.note, basedOn, onToken, onReasoning, onContentReset, signal: ctrl.signal });
+      result = await this.deps.run({ text: base, dials, note: this.note, basedOn, onToken, onReasoning, onContentReset, signal: run.signal });
     } catch (e) {
-      if (this.controller !== ctrl) return;
-      this.controller = null;
+      if (!run.isCurrent()) return;
+      run.finish();
       this.phase = "error";
       this.statusText = e instanceof Error ? e.message : String(e);
       // Erst die laufenden Renderings zu Ende, dann neu zeichnen: der Schluss-Draw ersetzt
@@ -408,8 +407,8 @@ export class LingoTunerView extends ItemView {
       this.draw();
       return;
     }
-    if (this.controller !== ctrl) return;
-    this.controller = null;
+    if (!run.isCurrent()) return;
+    run.finish();
     await this.writer?.settled();
 
     if (result.ok) {
