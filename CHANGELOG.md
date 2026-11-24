@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- **A secret glued to a word is now redacted before it reaches the lab log and the request** (shared library code-kit 0.87.0): `key_sk-proj-…`, `my_AKIA…` and `x_Bearer …` stayed in clear text before. Ordinary words that end in `sk` (`task-…`) stay untouched.
+
+### Changed
+
+- **The link guard carries the library's current version** (obsidian-kit 0.106.0); the code is unchanged.
+
 ## [0.15.2] — 2026-11-19
 
 ### Changed

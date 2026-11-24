@@ -47,7 +47,10 @@
         "stream-blocks",
         "sampling-profiles",
         "backend-probe",
-        "redact",
+        {
+          "name": "redact",
+          "ref": "0.87.0"
+        },
         "safe-markdown",
         "secrets",
         "rounds",
@@ -97,7 +100,10 @@
         "folder-suggest",
         "stream-area",
         "stable-writer",
-        "dom-guard",
+        {
+          "name": "dom-guard",
+          "ref": "0.106.0"
+        },
         "endpoint-source",
         "request-section",
         "status-indicator",
