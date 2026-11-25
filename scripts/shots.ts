@@ -272,6 +272,22 @@ async function pruefBilder(ws: Cdp, fake: Fake, outDir: string): Promise<string[
   await notiz(ws, "Keep the offer of another day.");
   await tune(ws, 2);
   await reihe("runden");
+  // Tastaturweg: vom Knopf „New“ (Station 1) mit echter Tab-Taste durch das Panel; jede Station soll in der Reihenfolge des Rahmens kommen.
+  await ws.evaluate(`const r = ${ROLLBEREICH}; if (r) r.scrollTop = 0; document.querySelector(".okit-prompt-panel-new").focus(); return { ok: true };`);
+  const weg: string[] = [];
+  for (let i = 0; i < 40; i++) {
+    const el = await ws.evaluate<string>(`const e = document.activeElement; if (!e || !e.closest(".okit-prompt-panel")) return "AUSSERHALB:" + (e ? e.tagName : "-");
+      const station = ["okit-prompt-panel-top", "okit-model-bar", "okit-prompt-panel-notices", "okit-prompt-panel-controls", "okit-prompt-panel-input", "okit-prompt-panel-actions", "okit-prompt-panel-stream", "okit-prompt-panel-preview", "okit-prompt-panel-rounds", "okit-prompt-panel-end"].find((c) => e.classList.contains(c) || e.closest("." + c)) || "?";
+      return station + " | " + e.tagName.toLowerCase() + " " + ((e.getAttribute("aria-label") || e.textContent || e.getAttribute("placeholder") || "").trim().slice(0, 40));`);
+    weg.push(el);
+    if (el.startsWith("AUSSERHALB")) break;
+    await ws.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+    await ws.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+    await sleep(80);
+  }
+  const datei = join(outDir, "tastaturweg.txt");
+  writeFileSync(datei, weg.join("\n") + "\n");
+  geschrieben.push(`${datei} (${weg.length} Schritte)`);
   return geschrieben;
 }
 
