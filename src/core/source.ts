@@ -1,6 +1,7 @@
 /** Quellzustand — pure Haelfte des vault-rag-Musters „Editor-Auswahl aus einem Sidebar-Panel"
  *  (REGISTRY; 2. Exemplar, nach dem Bau als Kit-Kandidat nachtragen). Die Adapter-Haelfte
  *  (Listener, Liveness) liegt in src/obsidian/editor-io.ts. */
+import { locateFrontmatter } from "../vendor/kit/frontmatter";
 
 export type SourceKind = "selection" | "note" | "text";
 export interface Pos { line: number; ch: number }
@@ -66,11 +67,12 @@ export function splitSelectionAffix(text: string): { lead: string; core: string;
   return { lead, core, trail };
 }
 
-/** YAML-Kopf abtrennen; `head` endet mit der Trennzeile samt Zeilenumbruch. */
+/** YAML-Kopf abtrennen; `head` endet mit der Trennzeile samt Zeilenumbruch. Was Kopf ist, liest der Kit-Leser `locateFrontmatter` (Regel von Obsidians
+ *  `getFrontMatterInfo`: leerer Block zaehlt, eine spaetere Trennlinie im Text schliesst nichts). */
 export function splitFrontmatter(content: string): { head: string; body: string } {
-  const m = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/.exec(content);
-  if (m === null) return { head: "", body: content };
-  return { head: m[0], body: content.slice(m[0].length) };
+  const span = locateFrontmatter(content);
+  if (span === null) return { head: "", body: content };
+  return { head: content.slice(0, span.bodyFrom), body: content.slice(span.bodyFrom) };
 }
 
 export function noteName(path: string): string {

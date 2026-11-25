@@ -1,10 +1,10 @@
 {
   "sources": {
     "obsidian-kit": {
-      "ref": "0.95.0"
+      "ref": "0.109.1"
     },
     "code-kit": {
-      "ref": "0.75.0"
+      "ref": "0.89.0"
     }
   },
   "targets": [
@@ -44,30 +44,27 @@
         "error_body",
         "i18n",
         "settings",
-        "stream-blocks",
         "sampling-profiles",
         "backend-probe",
-        {
-          "name": "redact",
-          "ref": "0.87.0"
-        },
+        "redact",
         "safe-markdown",
         "secrets",
         "rounds",
-        {
-          "name": "panel-session",
-          "ref": "0.87.0"
-        },
-        {
-          "name": "run-slot",
-          "ref": "0.87.0"
-        },
+        "panel-session",
+        "run-slot",
         "model-context",
         "embeddings-client",
         "slug",
         "local-stamp",
         "anthropic-wire",
-        "error-message"
+        "error-message",
+        "panel-host",
+        "fences",
+        "text-window",
+        "rotation",
+        "ensure-dir",
+        "bytes-equal",
+        "rel-path"
       ]
     },
     {
@@ -78,7 +75,11 @@
         "endpoint-source",
         "endpoint-secret-hook",
         "shortcut-failure",
-        "override-guard"
+        "override-guard",
+        "block-writer",
+        "note-edit",
+        "plugin-id",
+        "frontmatter"
       ],
       "rewrite": [
         [
@@ -107,11 +108,7 @@
         "settings_walker",
         "folder-suggest",
         "stream-area",
-        "stable-writer",
-        {
-          "name": "dom-guard",
-          "ref": "0.106.0"
-        },
+        "dom-guard",
         "endpoint-source",
         "request-section",
         "status-indicator",
@@ -137,7 +134,16 @@
         "anthropic-transport",
         "plugin-api",
         "copy-button",
-        "setting-body-host"
+        "setting-body-host",
+        "panel-accept",
+        "write-ports",
+        "file-snapshot",
+        "prompt-panel",
+        "prompt-panel-host",
+        "prompt-panel-strings",
+        "status-bar-item",
+        "version-list",
+        "chat-host"
       ],
       "rewrite": [
         [

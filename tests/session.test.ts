@@ -5,7 +5,7 @@ import { NEUTRAL } from "../src/core/dials";
 
 const round = (n: number, basedOn: number | null = null): Round => ({
   dials: { ...NEUTRAL, social: 1 }, note: "", input: `in${n}`, output: `out${n}`, model: "m", at: n, basedOn,
-  sourceName: basedOn === null ? `note${n}` : null, aborted: false, truncated: false,
+  sourceName: basedOn === null ? `note${n}` : null, truncated: false,
 });
 
 describe("session", () => {
@@ -79,14 +79,6 @@ describe("Wurzel der Runden-Kette", () => {
     s = addRound(s, round(2, 0));
     s = addRound(s, round(3, 1));
     s = selectRound(s, 1);
-    expect(rootInput(s)).toBe("in1");
-    expect(rootSourceName(s)).toBe("note1");
-  });
-
-  it("abgebrochene Zwischenrunde mit basedOn: Wurzel bleibt Runde 0", () => {
-    let s = addRound(EMPTY_SESSION, round(1));
-    s = addRound(s, { ...round(2, 0), aborted: true, model: "" });
-    s = addRound(s, round(3, 1));
     expect(rootInput(s)).toBe("in1");
     expect(rootSourceName(s)).toBe("note1");
   });

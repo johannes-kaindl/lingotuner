@@ -1,6 +1,40 @@
-/* Nur Theme-CSS-Variablen (UI-STANDARD). Praefix lt-. Kein !important. */
+/* Nur Theme-CSS-Variablen (UI-STANDARD). Praefix lt-. Kein !important.
+   Aufbau: erst die Kit-Konstanten (wortgleich, der Test tests/kit-css.test.ts prueft es), dann die eigenen Regeln des Panels (Station 3 und Vorschau). */
 
-/* uebernommen aus src/vendor/kit-obsidian/endpoint-list.ts (ENDPOINT_LIST_CSS), obsidian-kit 0.43.0 */
+/* uebernommen aus src/vendor/kit-obsidian/chat-host.ts (CHAT_HOST_CSS), obsidian-kit 0.109.1 */
+/* Host-Abstand im Hauptbereich auf dem Handy (0.76.0, Befund der Realprobe am iPhone: 215 px leere Fläche zwischen Senden und Tastatur). Die schwebende Navigationsleiste liegt über dem unteren Rand und braucht Platz
+   (--navbar-height plus die echte Safe-Area); bei offener Tastatur verkleinert Obsidian den App-Container selbst und die Leiste ist weg, dann braucht der Host nichts. Zwei Fallen: Obsidian setzt bei offener Tastatur
+   die Variable --safe-area-inset-bottom auf die Tastaturhöhe (328 px, darum env() statt der Variable: es bleibt der echte Wert), und es gibt keine Tastaturklasse, nur --keyboard-height (0px, offen die Tastaturhöhe):
+   die Zehn macht daraus einen Schalter (Leiste plus Safe-Area sind unter 100 px, 10 x Tastaturhöhe weit darüber, max() fängt es bei 0 ab). Mit der Host-Klasse und vier Klassen: die Regel schlägt Obsidians
+   .workspace-leaf-content .view-content (max(var(--safe-area-inset-bottom), var(--size-4-8))), die bei offener Tastatur selbst 328 px ergäbe. Nur im Hauptbereich; in einer Seitenleiste deckt die Schublade die Leiste ab.
+   Ungemessen: eine angedockte (nicht schwebende) Leiste, dort bleibt Obsidians Regel. */
+.is-mobile.is-floating-nav .mod-root .view-content.okit-chat-host { box-sizing: border-box; padding-bottom: max(0px, calc(var(--navbar-height) + env(safe-area-inset-bottom) - 10 * var(--keyboard-height, 0px))); }
+
+/* uebernommen aus src/vendor/kit-obsidian/collapsible.ts (COLLAPSIBLE_CSS), obsidian-kit 0.109.1 */
+.okit-collapsible-header {
+  display: flex; align-items: center; gap: var(--size-4-2);
+  cursor: pointer; padding: var(--size-4-2) 0;
+  font-weight: var(--font-semibold); color: var(--text-normal);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.okit-collapsible-header:hover { color: var(--text-accent); }
+.okit-collapsible-header:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-s);
+}
+.okit-collapsible-chevron { display: inline-flex; color: var(--text-muted); }
+.okit-collapsible-body { padding-top: var(--size-4-2); }
+.okit-collapsible-body.is-collapsed { display: none; }
+
+/* uebernommen aus src/vendor/kit-obsidian/copy-button.ts (COPY_BUTTON_CSS), obsidian-kit 0.109.1 */
+.okit-copy-button { color: var(--text-faint); height: auto; padding: var(--size-2-1) var(--size-2-2); }
+.okit-copy-button.is-copied { color: var(--text-success); }
+.okit-copy-button .svg-icon { width: var(--icon-xs); height: var(--icon-xs); }
+.is-mobile .okit-copy-button { position: relative; }
+.is-mobile .okit-copy-button::after { content: ""; position: absolute; top: 50%; left: 50%; width: calc(var(--size-4-10) + var(--size-4-1)); height: calc(var(--size-4-10) + var(--size-4-1)); transform: translate(-50%, -50%); }
+
+/* uebernommen aus src/vendor/kit-obsidian/endpoint-list.ts (ENDPOINT_LIST_CSS), obsidian-kit 0.109.1 */
 /* Pro-Zeile-Status der Endpunkt-Fallback-Liste: Form trägt die Bedeutung, Farbe sekundär (WCAG 1.4.1). */
 .okit-ep-status { display: inline-flex; align-items: center; margin-right: 8px; vertical-align: middle; color: var(--text-muted); }
 .okit-ep-status svg { width: 14px; height: 14px; }
@@ -13,7 +47,8 @@
 .okit-ep-thirdparty { display: inline-flex; align-items: center; margin-right: 8px; vertical-align: middle; color: var(--text-muted); }
 .okit-ep-thirdparty svg { width: 14px; height: 14px; }
 .okit-ep-secret { color: var(--text-muted); font-size: var(--font-ui-small); margin-right: 8px; }
-.okit-ep-extra { flex: 0 0 100%; order: 2; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 4px; }
+/* Der Zusatzcontainer sitzt im Control der Zeile und erbte dessen text-align: end; die Namen der Zusatzzeilen standen im schmalen Fenster rechtsbündig, versetzt zum Schalter (gemessen in llm-endpoint-manager f0d4a69, Fenster 610 px). */
+.okit-ep-extra { flex: 0 0 100%; order: 2; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 4px; text-align: start; }
 /* Rolle der Zeile als Text unter den Feldern: „aktiv" / „erreichbar, aber Platz N" / … .
    Erreichbarkeit trägt das Icon (Form), die Rolle dieser Text — keins von beiden über Farbe
    allein (WCAG 1.4.1). Die frühere Auszeichnung saß auf dem Icon-Container und war wirkungslos:
@@ -112,7 +147,232 @@
   text-overflow: ellipsis;
 }
 
-/* uebernommen aus src/vendor/kit-obsidian/stream-area.ts (STREAM_AREA_CSS), obsidian-kit 0.93.0 */
+/* uebernommen aus src/vendor/kit-obsidian/model-bar.ts (MODEL_BAR_CSS), obsidian-kit 0.109.1 */
+.okit-model-bar { position: relative; width: 100%; min-width: 0; container-type: inline-size; container-name: okit-model-bar; }
+.okit-model-bar-row { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--size-2-2) var(--size-4-1); min-width: 0; }
+.okit-model-bar-label { flex: 0 0 auto; color: var(--text-muted); font-size: var(--font-ui-small); white-space: nowrap; }
+.okit-model-bar-select { flex: 1 1 auto; min-width: 6em; max-width: 100%; font-size: var(--font-ui-small); text-overflow: ellipsis; }
+.okit-model-bar select:disabled { opacity: 0.6; cursor: not-allowed; }
+.okit-model-bar-warn { flex: 0 0 auto; display: inline-flex; color: var(--text-warning); }
+.okit-model-bar-warn.is-hidden { display: none; }
+.okit-model-bar-warn svg { width: var(--icon-xs); height: var(--icon-xs); }
+.okit-model-bar-refresh { flex: 0 0 auto; }
+/* Tippfläche auf Mobil (44 px, das Symbol bleibt klein): gemessen 30 × 26 ohne diese Regel. */
+.is-mobile button.clickable-icon.okit-model-bar-refresh { min-width: calc(var(--size-4-10) + var(--size-4-1)); min-height: calc(var(--size-4-10) + var(--size-4-1)); display: inline-flex; align-items: center; justify-content: center; }
+.okit-model-bar-refresh:disabled { opacity: 0.4; cursor: not-allowed; }
+.okit-model-bar-refresh svg { width: var(--icon-xs); height: var(--icon-xs); }
+.okit-model-bar-refresh.is-loading svg { animation: okit-model-bar-spin 1s linear infinite; }
+@keyframes okit-model-bar-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .okit-model-bar-refresh.is-loading svg { animation: none; } .okit-model-bar-refresh.is-loading { opacity: 0.5; } }
+.okit-model-bar .okit-thinking-control { flex: 0 0 auto; }
+@container okit-model-bar (width < 340px) { .okit-model-bar .okit-thinking-control select { width: calc(var(--size-2-3) + var(--size-4-6) + 1.2em); min-width: 0; padding-inline: var(--size-2-3) var(--size-4-6); text-overflow: clip; } }
+@container okit-model-bar (width < 200px) { .okit-model-bar-row { flex-wrap: wrap; } }
+.okit-model-bar-status { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; white-space: nowrap; }
+
+/* uebernommen aus src/vendor/kit-obsidian/prompt-panel.ts (PROMPT_PANEL_CSS), obsidian-kit 0.109.1 */
+/* Auftrags-Fenster (buildPromptPanel): nur Theme-Variablen und Obsidians Größenvariablen. Die Kit-Bausteine darin (Modellzeile, Antwortbereich, Rundenliste, Status) bringen ihr Aussehen aus ihren eigenen Konstanten mit. */
+/* Obsidian blendet is-hidden nicht global aus: jeder Baustein setzt die Regel selbst. */
+.okit-prompt-panel .is-hidden {
+  display: none;
+}
+
+/* Zahlenfeld am Handy (iPhone, gemessen 2026-11-05): Die Dezimaltastatur hat keine Fertig-Taste und Obsidian verkleinert das Blatt der Seitenleiste nicht, Übernehmen lag unter der Tastatur. Der Abstand
+   unten in Höhe der Tastatur macht den Rest erreichbar (keyboard-height ist 0px, solange keine Tastatur offen ist). Vier Klassen schlagen Obsidians workspace-leaf-content view-content. */
+.is-mobile .workspace-leaf-content .view-content.okit-prompt-panel-host {
+  padding-bottom: max(var(--size-4-8), var(--keyboard-height, 0px));
+}
+
+.okit-prompt-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.okit-prompt-panel-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-2);
+}
+
+.okit-prompt-panel-target {
+  font-weight: var(--font-semibold);
+  overflow-wrap: anywhere;
+}
+
+.okit-prompt-panel-hint {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.okit-prompt-panel-hint:empty {
+  display: none;
+}
+
+.okit-prompt-panel-notices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.okit-prompt-panel-notices:empty {
+  display: none;
+}
+
+.okit-prompt-panel-controls:empty {
+  display: none;
+}
+
+.okit-prompt-panel-accept-hints {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+}
+
+.okit-prompt-panel-accept-hint {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Der Hinweis ist ein Knopf, sieht aber aus wie eine Zeile Text: Obsidians Knopfregeln (button not clickable-icon, Hover) setzen Höhe, Rand, Grund und Schatten, deshalb drei Selektorteile. Der Fokusring bleibt (Tastatur). */
+.okit-prompt-panel-end button.okit-prompt-panel-accept-hint {
+  display: block;
+  width: 100%;
+  height: auto;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  text-align: start;
+  cursor: pointer;
+}
+
+.okit-prompt-panel-end button.okit-prompt-panel-accept-hint:hover {
+  background: transparent;
+  color: var(--text-normal);
+}
+
+.okit-prompt-panel-end button.okit-prompt-panel-accept-hint:focus-visible {
+  box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+.okit-prompt-panel-end button.okit-prompt-panel-accept-hint.is-open {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.okit-prompt-panel-accept-hint:empty {
+  display: none;
+}
+
+.okit-prompt-panel-input {
+  width: 100%;
+  resize: vertical;
+}
+
+.okit-prompt-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+}
+
+.okit-prompt-panel-ways {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+}
+
+.okit-prompt-panel-empty,
+.okit-prompt-panel-empty-endpoint {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.okit-prompt-panel-empty-detail {
+  color: var(--text-faint);
+}
+
+.okit-prompt-panel-example {
+  height: auto;
+  white-space: normal;
+  text-align: start;
+}
+
+/* Der Antwortbereich schrumpft nicht unter sechs Zeilen: in einer Spalte mit viel Inhalt (Vorschau, Änderungen, zwei Runden) fiele er sonst auf den Streifen der Statuszeile zusammen, und deren Inhalt
+   ragte über die Box (gemessen in 3d-codeblocks, Welle 23). Die Obergrenze hält ihn klein, der Rumpf des Antwortbereichs rollt selbst. */
+.okit-prompt-panel-stream {
+  min-height: 6em;
+  max-height: 16em;
+}
+
+/* Im Leerlauf (kein Lauf, kein Puffer) steht der Antwortbereich nur noch als Lesebereich im Baum: ein Pixel, unsichtbar, ohne Platz im Fluss (clip-path ist eine Store-Warnung, deshalb Deckkraft 0). Display none liesse die Ansage beim ersten Lauf unzuverlässig aus (aria-live). */
+.okit-prompt-panel-stream.is-idle {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  max-height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  white-space: nowrap;
+}
+
+.okit-prompt-panel-preview-caption {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin-bottom: var(--size-4-1);
+}
+
+/* Die Knopfzeile klebt unten: Übernehmen und Verwerfen bleiben bei langem Inhalt erreichbar, die Sperrgründe stehen mit darin, je eine Zeile (der volle Text steht im DOM und am Knopf über aria-describedby). */
+.okit-prompt-panel-end {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+  padding: var(--size-4-2) 0;
+  background: var(--background-primary);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+/* uebernommen aus src/vendor/kit-obsidian/request-section.ts (REQUEST_SECTION_CSS), obsidian-kit 0.109.1 */
+.okit-request-warning { color: var(--text-warning); margin: var(--size-4-2) 0; }
+.okit-request-note { color: var(--text-muted); font-size: var(--font-ui-small); }
+.okit-request-own { border-color: var(--interactive-accent); }
+.okit-request-last { font-size: var(--font-ui-smaller); background: var(--background-secondary); padding: var(--size-4-2); border-radius: var(--radius-s); white-space: pre-wrap; }
+.okit-request-status { display: flex; gap: var(--size-4-2); align-items: center; margin-top: var(--size-4-2); }
+.okit-request-status.is-ok { color: var(--text-success); }
+.okit-request-status.is-warning { color: var(--text-warning); }
+.okit-request-status.is-error { color: var(--text-error); }
+.okit-request-deviation-action { margin-inline-start: var(--size-4-2); }
+.okit-request-deviation { color: var(--text-muted); font-size: var(--font-ui-small); padding-left: var(--size-4-6); }
+
+/* uebernommen aus src/vendor/kit-obsidian/status-indicator.ts (STATUS_INDICATOR_CSS), obsidian-kit 0.109.1 */
+.okit-status { display: flex; gap: var(--size-2-2); align-items: center; font-size: var(--font-ui-small); color: var(--text-muted); }
+.okit-status-icon { display: inline-flex; align-items: center; }
+.okit-status-icon svg { width: 14px; height: 14px; }
+.okit-status.is-ok .okit-status-icon { color: var(--text-success); }
+.okit-status.is-error .okit-status-icon { color: var(--text-error); }
+.okit-status.is-warning .okit-status-icon { color: var(--text-warning); }
+.okit-status.is-checking .okit-status-icon svg { animation: okit-status-spin 1.2s linear infinite; }
+@keyframes okit-status-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .okit-status.is-checking .okit-status-icon svg { animation: none; } }
+
+/* uebernommen aus src/vendor/kit-obsidian/stream-area.ts (STREAM_AREA_CSS), obsidian-kit 0.109.1 */
 .okit-stream { display: flex; flex-direction: column; min-height: 0; gap: var(--size-4-2); }
 .okit-stream-body {
   flex: 1 1 auto; min-height: 0; overflow-y: auto;
@@ -149,73 +409,7 @@
    Statuszeile nicht nutzt (Befund aus der ersten Adoption, 2026-09-11). */
 .okit-stream-status:empty, .okit-stream-reasoning-slot:empty { display: none; }
 
-/* uebernommen aus src/vendor/kit-obsidian/copy-button.ts (COPY_BUTTON_CSS), obsidian-kit 0.93.0 */
-.okit-copy-button { color: var(--text-faint); height: auto; padding: var(--size-2-1) var(--size-2-2); }
-.okit-copy-button.is-copied { color: var(--text-success); }
-.okit-copy-button .svg-icon { width: var(--icon-xs); height: var(--icon-xs); }
-.is-mobile .okit-copy-button { position: relative; }
-.is-mobile .okit-copy-button::after { content: ""; position: absolute; top: 50%; left: 50%; width: calc(var(--size-4-10) + var(--size-4-1)); height: calc(var(--size-4-10) + var(--size-4-1)); transform: translate(-50%, -50%); }
-
-/* Layout-Vertrag des Panels — seit 2026-09-11: EIN Rollbereich, und das ist das PANEL.
-   Nichts darin schrumpft, nichts wird abgeschnitten; wer alles sehen will, rollt. Der Preis
-   ist benannt und gewollt (Entscheidung Johannes): bei langem Ergebnis stehen die
-   Ausgangsknoepfe unter der Ausgabe und brauchen einen Scroll.
-
-   Die Vorgeschichte begruendet die Regel, sie ist nicht mehr die Regel. Gemessen 2026-09-07/08
-   in der Zweitinstanz :9341, als das Panel seine feste Hoehe noch AUFTEILTE:
-   · `.lt-preview` blieb bei clientHeight 116 px stehen, waehrend scrollHeight 2734 px betrug —
-     mit `overflow: visible` lief der Text ueber die Ausgangsknoepfe hinweg.
-   · Ein Boden `min-height: 14em` auf der Vorschau liess ein 420 px hohes Panel die Summe der
-     Untergrenzen unterschreiten; wegen `overflow: hidden` wurde der Ueberstand ERSATZLOS
-     abgeschnitten: „Kopieren" und „Neue Notiz" hatten Box-Groesse 0.
-   · Dem Bedienblock blieben bei 570 px Panelhoehe 70 px, bei 420 px null — die Regler waren
-     unerreichbar, ohne verdeckt zu sein.
-   Jede dieser drei Messungen ist eine Folge des Aufteilens: wo verteilt wird, verliert
-   irgendwer. Ein einziger Rollbereich hat diese Klasse von Fehlern nicht — er kann nur zu
-   lang werden, und dagegen hilft Rollen.
-
-   EINE benannte Ausnahme: `.lt-history` behaelt `max-height: 20vh` und rollt in sich. Sie ist
-   keine AUSGABE, sondern eine Liste von Runden — bei zwanzig Runden schoebe sie das Ergebnis
-   aus dem Blick, und anders als bei einer Antwort will niemand sie am Stueck lesen. Wer die
-   Regel „ein Rollbereich" streng liest, findet sie hier deklariert statt als Befund. */
-.lt-panel { display: flex; flex-direction: column; gap: var(--size-4-2); padding: var(--size-4-3) var(--size-4-4) var(--size-4-6); height: 100%; overflow-y: auto; }
-/* Kein Block scrollt mehr in sich, und keiner schrumpft: `flex: 0 0 auto` ueberall. Ein
-   Flex-Kind mit dem Default `shrink: 1` gaebe seine Hoehe her, sobald die Summe die
-   Panelhoehe uebersteigt — genau das war der 70-px-Bedienblock. */
-.lt-controls { display: flex; flex-direction: column; gap: var(--size-4-2); flex: 0 0 auto; }
-/* Auch die Kinder darin: sonst quetscht der Block die Textarea zusammen — gemessen
-   2026-09-07 war das mit `rows="6"` angeforderte Textfeld auf einen Streifen von einer halben
-   Zeile eingedampft, in dem der eigene Text unlesbar war. */
-.lt-controls > * { flex: 0 0 auto; }
-.lt-model-row, .lt-run-row, .lt-status, .lt-warning, .lt-history, .lt-outputs { flex: 0 0 auto; }
-.lt-label { color: var(--text-muted); font-size: var(--font-ui-small); }
-
-/* Quellen- und Preset-Chips: Zustand ueber Form (gefuellter Hintergrund) + aria-pressed, nicht nur Farbe. */
-.lt-sources, .lt-presets { display: flex; flex-wrap: wrap; gap: var(--size-2-2); align-items: center; }
-.lt-source-chip, .lt-preset-chip { font-size: var(--font-ui-small); padding: var(--size-2-1) var(--size-4-2); border-radius: var(--radius-s); background: var(--background-secondary); color: var(--text-muted); }
-.lt-source-chip.is-active, .lt-preset-chip.is-active { background: var(--interactive-accent); color: var(--text-on-accent); font-weight: var(--font-semibold); }
-.lt-preset-custom { color: var(--text-faint); font-size: var(--font-ui-smaller); }
-.lt-source-line { font-size: var(--font-ui-small); color: var(--text-muted); }
-.lt-source-line.is-blocked { color: var(--text-error); }
-.lt-freetext, .lt-note { width: 100%; font-size: var(--font-ui-small); resize: vertical; }
-
-.lt-dials { display: flex; flex-direction: column; gap: var(--size-4-2); }
-.lt-dial-head { display: flex; justify-content: space-between; font-size: var(--font-ui-small); }
-.lt-dial-name { color: var(--text-normal); }
-.lt-dial-level { color: var(--text-muted); font-size: var(--font-ui-smaller); }
-.lt-dial-line { display: flex; align-items: center; gap: var(--size-4-2); }
-.lt-dial-pole { color: var(--text-faint); font-size: var(--font-ui-smaller); min-width: 5em; flex: 0 0 auto; }
-.lt-dial-pole:last-child { text-align: right; }
-.lt-dial-input { flex: 1 1 auto; min-width: 0; }
-
-.lt-model-row { min-width: 0; }
-.lt-run-row { display: flex; flex-wrap: wrap; gap: var(--size-2-2); align-items: center; }
-/* Gesperrter Zustand fuer JEDES Bedienelement, das renderPanel waehrend eines Streams auf
-   disabled setzt — sonst sieht ein gesperrter Chip aus wie ein anklickbarer. */
-.lt-run:disabled, .lt-refine:disabled, .lt-reset:disabled, .lt-out:disabled,
-.lt-source-chip:disabled, .lt-preset-chip:disabled, .lt-preset-save:disabled,
-.lt-history-row:disabled { opacity: 0.4; cursor: not-allowed; }
-/* Denk-Knopf (obsidian-kit 0.74.0, THINKING_CONTROL_CSS) — Kit-Vertrag: wortgleich hierher kopiert. */
+/* uebernommen aus src/vendor/kit-obsidian/thinking-control.ts (THINKING_CONTROL_CSS), obsidian-kit 0.109.1 */
 .okit-thinking-control { display: inline-flex; align-items: center; }
 .okit-thinking-toggle {
   display: inline-flex; align-items: center; gap: var(--size-2-1);
@@ -230,104 +424,108 @@
 /* Das Symbol vor dem Dropdown in der Modellzeile (Option inModelBar): es zeigt den Zustand ein zweites Mal, der Name steht am Dropdown (das Symbol ist aria-hidden). */
 .okit-thinking-icon { display: inline-flex; align-items: center; margin-inline-end: var(--size-2-1); color: var(--icon-color); }
 .okit-thinking-icon svg { width: var(--icon-xs); height: var(--icon-xs); }
-/* Modellzeile (obsidian-kit 0.77.1, MODEL_BAR_CSS) — Kit-Vertrag: wortgleich hierher kopiert. */
-.okit-model-bar { position: relative; width: 100%; min-width: 0; container-type: inline-size; container-name: okit-model-bar; }
-.okit-model-bar-row { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--size-2-2) var(--size-4-1); min-width: 0; }
-.okit-model-bar-label { flex: 0 0 auto; color: var(--text-muted); font-size: var(--font-ui-small); white-space: nowrap; }
-.okit-model-bar-select { flex: 1 1 auto; min-width: 6em; max-width: 100%; font-size: var(--font-ui-small); text-overflow: ellipsis; }
-.okit-model-bar select:disabled { opacity: 0.6; cursor: not-allowed; }
-.okit-model-bar-warn { flex: 0 0 auto; display: inline-flex; color: var(--text-warning); }
-.okit-model-bar-warn.is-hidden { display: none; }
-.okit-model-bar-warn svg { width: var(--icon-xs); height: var(--icon-xs); }
-.okit-model-bar-refresh { flex: 0 0 auto; }
-/* Tippfläche auf Mobil (44 px, das Symbol bleibt klein): gemessen 30 × 26 ohne diese Regel. */
-.is-mobile button.clickable-icon.okit-model-bar-refresh { min-width: calc(var(--size-4-10) + var(--size-4-1)); min-height: calc(var(--size-4-10) + var(--size-4-1)); display: inline-flex; align-items: center; justify-content: center; }
-.okit-model-bar-refresh:disabled { opacity: 0.4; cursor: not-allowed; }
-.okit-model-bar-refresh svg { width: var(--icon-xs); height: var(--icon-xs); }
-.okit-model-bar-refresh.is-loading svg { animation: okit-model-bar-spin 1s linear infinite; }
-@keyframes okit-model-bar-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .okit-model-bar-refresh.is-loading svg { animation: none; } .okit-model-bar-refresh.is-loading { opacity: 0.5; } }
-.okit-model-bar .okit-thinking-control { flex: 0 0 auto; }
-@container okit-model-bar (width < 340px) { .okit-model-bar .okit-thinking-control select { width: calc(var(--size-2-3) + var(--size-4-6) + 1.2em); min-width: 0; padding-inline: var(--size-2-3) var(--size-4-6); text-overflow: clip; } }
-@container okit-model-bar (width < 200px) { .okit-model-bar-row { flex-wrap: wrap; } }
-.okit-model-bar-status { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; white-space: nowrap; }
 
-/* Status-Indikator (obsidian-kit 0.76.1, STATUS_INDICATOR_CSS) — Kit-Vertrag: wortgleich hierher kopiert. Form UND Farbe UND Klasse; is-checking dreht sich. */
-.okit-status { display: flex; gap: var(--size-2-2); align-items: center; font-size: var(--font-ui-small); color: var(--text-muted); }
-.okit-status-icon { display: inline-flex; align-items: center; }
-.okit-status-icon svg { width: 14px; height: 14px; }
-.okit-status.is-ok .okit-status-icon { color: var(--text-success); }
-.okit-status.is-error .okit-status-icon { color: var(--text-error); }
-.okit-status.is-warning .okit-status-icon { color: var(--text-warning); }
-.okit-status.is-checking .okit-status-icon svg { animation: okit-status-spin 1.2s linear infinite; }
-@keyframes okit-status-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .okit-status.is-checking .okit-status-icon svg { animation: none; } }
+/* uebernommen aus src/vendor/kit-obsidian/version-list.ts (VERSION_LIST_CSS), obsidian-kit 0.109.1 */
+.okit-vlist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+  margin-bottom: var(--size-4-2);
+}
 
-/* Der Design-Scope des Streaming-Antwortbereichs (Kit-Wurzel `.okit-stream`): Rahmen und
-   Innenabstand kommen von hier, alles darin vom Kit-Block oben. `flex: 0 0 auto`, weil im
-   Ein-Rollbereich-Panel nichts schrumpfen darf; `min-height`, damit der leere Bereich
-   sichtbar ein Bereich ist und nicht eine Linie.
-   ⚠️ `min-height: 6em` UEBERSCHREIBT das `min-height: 0` der Kit-Regel `.okit-stream` (gleiche
-   Spezifitaet, spaetere Regel gewinnt). Das ist gewollt und folgenlos, weil hier nichts mehr
-   schrumpft — aber es ist eine Ueberschreibung und keine unabhaengige Regel, und beim naechsten
-   Kit-Update gehoert sie deshalb mitgelesen. */
-.lt-preview { border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); padding: var(--size-4-2) var(--size-4-3); flex: 0 0 auto; min-height: 6em; }
-.lt-empty { color: var(--text-faint); font-size: var(--font-ui-small); }
-/* Abschneiden am Token-Limit ist eine Warnung, kein Fehler — das Ergebnis ist da, nur unvollstaendig. */
+.okit-vlist-heading,
+.okit-vlist-group {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.okit-vlist-group {
+  margin-top: var(--size-4-1);
+  color: var(--text-faint);
+}
+
+.okit-vlist-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+}
+
+.okit-vlist-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-4-1);
+  width: 100%;
+  text-align: left;
+  padding: var(--size-2-2) var(--size-4-1);
+  background-color: transparent;
+  box-shadow: none;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.okit-vlist-row:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.okit-vlist-row:focus-visible {
+  box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+.okit-vlist-row.is-active {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.okit-vlist-no {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+/* Schmale Seitenleiste (Befund Diachronic, 2026-10-22): die Meta-Spalte war starr und verdrängte das Label. Jetzt ist die Meta auf 45 %
+   der Zeile gedeckelt und wird mit einer Ellipse gekürzt (der volle Text steht im title); das Label darf unter seinen Inhalt schrumpfen
+   (min-width: 0), sonst ließe die automatische Mindestgröße von Flex-Items die Zeile überlaufen. */
+.okit-vlist-meta {
+  color: var(--text-faint);
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.okit-vlist-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Eigene Regeln: Station 3 des Kit-Rahmens (Quelle, Voreinstellungen, Regler) und die Vorschau des Ergebnisses ── */
+/* Den Rahmen, die Abstaende zwischen den Stationen und das Rollen traegt PROMPT_PANEL_CSS oben; das Panel rollt als Ganzes (view-content). */
+.lt-controls { display: flex; flex-direction: column; gap: var(--size-4-2); }
+.lt-sources, .lt-presets { display: flex; flex-wrap: wrap; gap: var(--size-2-2); align-items: center; }
+/* Zustands-Knopf (UI-STANDARD § 8): aria-pressed traegt die Aussage, die Farbe ist der zweite Kanal, der Schriftschnitt der dritte. */
+.lt-source-chip, .lt-preset-chip { font-size: var(--font-ui-small); padding: var(--size-2-1) var(--size-4-2); border-radius: var(--radius-s); background: var(--background-secondary); color: var(--text-muted); height: auto; }
+.lt-source-chip.is-active, .lt-preset-chip.is-active { background: var(--interactive-accent); color: var(--text-on-accent); font-weight: var(--font-semibold); }
+.lt-source-chip:disabled, .lt-preset-chip:disabled, .lt-preset-save:disabled, .lt-retune:disabled { opacity: 0.4; cursor: not-allowed; }
+.lt-preset-custom { color: var(--text-faint); font-size: var(--font-ui-smaller); }
+.lt-preset-custom:empty { display: none; }
+.lt-source-line { font-size: var(--font-ui-small); color: var(--text-muted); }
+.lt-source-line.is-blocked { color: var(--text-error); }
+.lt-freetext { width: 100%; font-size: var(--font-ui-small); resize: vertical; }
+.lt-dials { display: flex; flex-direction: column; gap: var(--size-4-2); }
+.lt-dial-head { display: flex; justify-content: space-between; gap: var(--size-4-2); font-size: var(--font-ui-small); }
+.lt-dial-name { color: var(--text-normal); }
+.lt-dial-level { color: var(--text-muted); font-size: var(--font-ui-smaller); text-align: end; }
+.lt-dial-line { display: flex; align-items: center; gap: var(--size-4-2); }
+/* Die Pole schrumpfen bei schmalem Blatt (366 px) und brechen um, statt den Regler aus dem Blatt zu druecken. */
+.lt-dial-pole { color: var(--text-faint); font-size: var(--font-ui-smaller); flex: 0 1 5em; min-width: 0; overflow-wrap: anywhere; }
+.lt-dial-pole:last-child { text-align: end; }
+.lt-dial-input { flex: 1 1 auto; min-width: 4em; }
+
+/* Vorschau des Ergebnisses (Slot renderPreview): Kopierknopf rechts oben, Warnung bei abgeschnittener Antwort, das Ergebnis als gerendertes Markdown. */
+.lt-result-bar { display: flex; justify-content: flex-end; }
 .lt-warning { color: var(--text-warning); font-size: var(--font-ui-small); }
-/* Der Gedanken-Block (Kit) sitzt im Antwortbereich, oberhalb der Antwort — dieselbe
-   Reihenfolge, in der die Token ankommen. Sein `<pre>` behaelt den EIGENEN Rollbalken des
-   Kits (`max-height: 12em`): Gedanken sind lang, und ein Denkstrom, der das Panel um das
-   Zehnfache verlaengert, schoebe das eigentliche Ergebnis aus dem Blick. Hier nur die
-   Absetzung nach unten, die das Kit nicht kennt. */
-.lt-preview > .okit-stream-reasoning-slot:not(:empty) { border-bottom: 1px solid var(--background-modifier-border); padding-bottom: var(--size-4-1); }
-
-/* Der Verlauf steht fest unter der Vorschau; ab vielen Runden scrollt er in sich, statt der
-   Vorschau ihren Platz zu nehmen. */
-.lt-history { display: flex; flex-direction: column; gap: var(--size-2-1); max-height: 20vh; overflow-y: auto; }
-/* Ein `button` haelt seinen Text auf einer Zeile und zentriert Ueberlauf — die Zeile der aktiven Runde
-   (Herkunft + Anmerkung, fett) wurde dadurch in der Standardbreite der Sidebar LINKS abgeschnitten.
-   Umbrechen statt kuerzen: die Anmerkung ist der Inhalt, an dem man Runden unterscheidet. */
-.lt-history-row { text-align: left; white-space: normal; overflow-wrap: anywhere; height: auto; min-height: var(--input-height); font-size: var(--font-ui-smaller); background: var(--background-secondary); color: var(--text-muted); }
-.lt-history-row.is-active { background: var(--background-modifier-hover); color: var(--text-normal); font-weight: var(--font-semibold); }
-
-.lt-outputs { display: flex; flex-wrap: wrap; gap: var(--size-2-2); }
-
-/* Abschnitt „Anfrage" in den Settings — verbatim aus obsidian-kit uebernommen (Rezept 6):
-   collapsibleSection() traegt ihn (.okit-collapsible-*), buildRequestSection() den Inhalt
-   (.okit-request-*). Das Kit injiziert bewusst kein CSS selbst; der Consumer uebernimmt es. */
-.okit-collapsible-header {
-  display: flex; align-items: center; gap: var(--size-4-2);
-  cursor: pointer; padding: var(--size-4-2) 0;
-  font-weight: var(--font-semibold); color: var(--text-normal);
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-.okit-collapsible-header:hover { color: var(--text-accent); }
-.okit-collapsible-header:focus-visible {
-  outline: 2px solid var(--interactive-accent);
-  outline-offset: 2px;
-  border-radius: var(--radius-s);
-}
-.okit-collapsible-chevron { display: inline-flex; color: var(--text-muted); }
-.okit-collapsible-body { padding-top: var(--size-4-2); }
-.okit-collapsible-body.is-collapsed { display: none; }
-
-.okit-request-warning { color: var(--text-warning); margin: var(--size-4-2) 0; }
-.okit-request-note { color: var(--text-muted); font-size: var(--font-ui-small); }
-.okit-request-own { border-color: var(--interactive-accent); }
-.okit-request-last { font-size: var(--font-ui-smaller); background: var(--background-secondary); padding: var(--size-4-2); border-radius: var(--radius-s); white-space: pre-wrap; }
-.okit-request-status { display: flex; gap: var(--size-4-2); align-items: center; margin-top: var(--size-4-2); }
-.okit-request-status.is-ok { color: var(--text-success); }
-.okit-request-status.is-warning { color: var(--text-warning); }
-.okit-request-status.is-error { color: var(--text-error); }
-.okit-request-deviation-action { margin-inline-start: var(--size-4-2); }
-.okit-request-deviation { color: var(--text-muted); font-size: var(--font-ui-small); padding-left: var(--size-4-6); }
-
-/* Klassen OHNE Regel in dieser Datei, absichtlich: sie sind Verhaltens-Haken, keine Optik.
-   Wer hier aufraeumt und sie im TypeScript mitnimmt, bricht Bedienung oder Tests —
-   Obsidians Theme deckt ihr Aussehen bereits ab.
-     .lt-dial          — patchPanel() sucht die Reglerzeilen per querySelectorAll, um nur die
-                         Stufennamen nachzuziehen statt einen Voll-Draw zu fahren.
-     .lt-out-*         — die vier Ausgangsknoepfe werden einzeln adressiert (GUI-Smoke, Tests).
-     .lt-note-row      — Traeger der Anmerkungszeile, Layout kommt von .lt-label/.lt-note.
-     .lt-status-label ist weg: der Text steht im Kit-Baustein (`okit-status-label`); `.lt-status` selbst hat oben eine Regel (flex: 0 0 auto). */
+.lt-result { border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); padding: var(--size-4-2) var(--size-4-3); overflow-wrap: anywhere; }

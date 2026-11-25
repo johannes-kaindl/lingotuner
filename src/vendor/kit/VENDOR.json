@@ -1,12 +1,12 @@
 {
   "source": "code-kit",
-  "version": "0.75.0",
-  "sha": "e6cd8be",
+  "version": "0.89.0",
+  "sha": "4576daa",
   "code_kit_version": "0.7.0",
-  "vendored": "clipboard.ts, link-guard.ts, remote-resources.ts, leave-tree.ts, sse.ts, endpoint.ts, endpoint_config.ts, endpoint_diagnostics.ts, model-choice.ts, model-list-cache.ts, reasoning.ts, capabilities.ts, think-splitter.ts, think-toggle.ts, timeout.ts, error_body.ts, i18n.ts, settings.ts, stream-blocks.ts, sampling-profiles.ts, backend-probe.ts, redact.ts (code-kit@0.87.0, 7c6cc31), safe-markdown.ts, secrets.ts, rounds.ts, panel-session.ts (code-kit@0.87.0, 7c6cc31), run-slot.ts (code-kit@0.87.0, 7c6cc31), model-context.ts, embeddings-client.ts, slug.ts, local-stamp.ts, anthropic-wire.ts, error-message.ts",
+  "vendored": "clipboard.ts, link-guard.ts, remote-resources.ts, leave-tree.ts, sse.ts, endpoint.ts, endpoint_config.ts, endpoint_diagnostics.ts, model-choice.ts, model-list-cache.ts, reasoning.ts, capabilities.ts, think-splitter.ts, think-toggle.ts, timeout.ts, error_body.ts, i18n.ts, settings.ts, sampling-profiles.ts, backend-probe.ts, redact.ts, safe-markdown.ts, secrets.ts, rounds.ts, panel-session.ts, run-slot.ts, model-context.ts, embeddings-client.ts, slug.ts, local-stamp.ts, anthropic-wire.ts, error-message.ts, panel-host.ts, fences.ts, text-window.ts, rotation.ts, ensure-dir.ts, bytes-equal.ts, rel-path.ts",
   "note": "Verbatim snapshot aus ZWEI Quellen (obsidian-kit + code-kit); welche Datei woher stammt, sagt ihr eigener Kopf. Never hand-edit. Re-vendor via tools/sync-kit.sh. version/sha gelten AUSSCHLIESSLICH fuer die unter \"vendored\" gelisteten Dateien. kit-obsidian/ siehe dortige VENDOR.json.",
-  "obsidian_kit_version": "0.95.0",
-  "obsidian_kit_sha": "3853245",
-  "obsidian_kit_vendored": "endpoint-source.ts, endpoint-secret-hook.ts, shortcut-failure.ts, override-guard.ts",
+  "obsidian_kit_version": "0.109.1",
+  "obsidian_kit_sha": "dbbbf11",
+  "obsidian_kit_vendored": "endpoint-source.ts, endpoint-secret-hook.ts, shortcut-failure.ts, override-guard.ts, block-writer.ts, note-edit.ts, plugin-id.ts, frontmatter.ts",
   "license": "AGPL-3.0-or-later"
 }

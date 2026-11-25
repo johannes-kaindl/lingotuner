@@ -1,8 +1,10 @@
 /** Runden-Verlauf mit Rueckwahl. Jede Runde haelt Eingabe UND Ergebnis; der aktive Index
  *  bestimmt, was gezeigt, geschrieben und nachgeschaerft wird. Nichts wird abgeschnitten:
- *  Nachschaerfen ist Probieren, und der dritte Versuch kann schlechter sein als der erste. */
+ *  Nachschaerfen ist Probieren, und der dritte Versuch kann schlechter sein als der erste.
+ *  Seit dem Umbau auf den Kit-Rahmen (Welle 37) ist die Sitzung des Panels eine `PanelSession` (Ziel und Runden, code-kit `panel-session`); der Halter
+ *  (`createPromptPanelHost`) haelt sie ueber das Schliessen des Fensters hinaus. */
 import type { Dials } from "./dials";
-import { chainOf } from "../vendor/kit/panel-session";
+import { chainOf, type PanelSession, type Target } from "../vendor/kit/panel-session";
 import { EMPTY_ROUNDS, type Rounds } from "../vendor/kit/rounds";
 
 export interface Round {
@@ -17,7 +19,6 @@ export interface Round {
   /** Name der Quellnotiz beim Lauf aus der Quelle, `null` beim Textfeld. Beim Nachschaerfen
    *  der Name der WURZEL-Runde: die Kette hat genau eine Quelle, egal wie oft nachgeschaerft wird. */
   sourceName: string | null;
-  aborted: boolean;
   truncated: boolean;
 }
 
@@ -25,6 +26,14 @@ export interface Round {
 export type Session = Rounds<Round>;
 
 export const EMPTY_SESSION: Session = EMPTY_ROUNDS;
+
+/** Die Sitzung des Panels: worauf es arbeitet (Markierung, Notiz, eingefuegter Text) und die Runden. */
+export type TuneSession = PanelSession<Round>;
+
+/** Frische Sitzung ohne Runden (Halter-Option `fresh`). */
+export function freshSession(target: Target): TuneSession {
+  return { target, rounds: EMPTY_ROUNDS };
+}
 
 /** Wurzel der aktiven Kette (Kit `chainOf`: von `s.active` ueber `basedOn` bis `basedOn === null`; die Kette heisst vom Kit, die Wurzel steht vorn).
  *  Ohne Runden (`active === -1`) null. Eine Runde ohne Kette ist ihre eigene Wurzel; eine abgebrochene Zwischenrunde traegt ihr `basedOn` wie jede andere

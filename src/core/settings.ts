@@ -22,6 +22,8 @@ export interface LingoTunerSettings {
   choice: EndpointChoice;
   /** Sampling-/Denk-Ueberschreibungen und Denkstufe je Modus (hier nur "transform"). */
   request: RequestSettings;
+  /** Eintrag in der Statusleiste, solange ein Lauf ohne offenes Panel laeuft oder sein Ergebnis wartet (Kit `status-bar-item`, Standard an). */
+  showStatusBar: boolean;
 }
 
 export const DEFAULT_SETTINGS: LingoTunerSettings = {
@@ -34,6 +36,7 @@ export const DEFAULT_SETTINGS: LingoTunerSettings = {
   newNoteFolder: "",
   choice: {},
   request: DEFAULT_REQUEST_SETTINGS,
+  showStatusBar: true,
 };
 
 function presetName(raw: unknown): string {
@@ -73,6 +76,7 @@ export function loadSettings(raw: unknown): LingoTunerSettings {
     userPresets: sanitizePresets(merged.userPresets),
     choice,
     request: sanitizeRequestSettings(merged.request).settings,
+    showStatusBar: merged.showStatusBar !== false,
   };
 }
 

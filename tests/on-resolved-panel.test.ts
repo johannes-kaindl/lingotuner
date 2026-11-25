@@ -12,12 +12,12 @@ async function makePlugin(view: unknown): Promise<{ onLlmResolved: () => void }>
 }
 
 describe("LingoTunerPlugin.onLlmResolved", () => {
-  it("zeichnet das offene Panel neu (refresh), genau einmal", async () => {
-    const view = Object.create(LingoTunerView.prototype) as { refresh: () => void };
-    view.refresh = vi.fn();
+  it("zeichnet die Modellzeile des offenen Panels neu (refreshModelBar), genau einmal", async () => {
+    const view = Object.create(LingoTunerView.prototype) as { refreshModelBar: () => void };
+    view.refreshModelBar = vi.fn();
     const plugin = await makePlugin(view);
     plugin.onLlmResolved();
-    expect(view.refresh).toHaveBeenCalledTimes(1);
+    expect(view.refreshModelBar).toHaveBeenCalledTimes(1);
   });
 
   it("ohne offenes Panel: nichts, kein Wurf", async () => {

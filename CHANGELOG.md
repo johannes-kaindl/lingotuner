@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The panel is built on the shared prompt-window frame** (obsidian-kit 0.109.1 `buildPromptPanel`, `createPromptPanelHost`; UI-STANDARD §8 „Auftrags-Fenster“). Source, presets and the four dials sit where the frame puts a plugin's own controls; the note is the frame's optional instruction field; model line, answer area, rounds list and the write buttons come from the frame.
+- **A run survives closing the panel.** Close the panel while it tunes, open it again: the text is still streaming in, and a result that finished meanwhile waits as a round. With the panel closed, the status bar shows "LingoTuner: running" or "result waiting" (new setting „Status bar“, on by default).
+- **Closing the panel with unapplied rounds asks** whether to keep or discard them.
+- **Writing goes through the frame, with a snapshot first.** "Replace note" keeps the frontmatter, refuses when the note body changed since the run, and stores a snapshot of the whole note in the plugin's folder before it writes (Cmd+Z in the note still undoes it). The confirmation dialog before replacing the note is gone; the snapshot and undo take its place.
+- **The streaming answer is plain text; Markdown appears in the result preview** once the run is done. The preview renders the model's text neutralised and under the shared link guard.
+- **"Copy" is a copy button on the result preview**, not a fourth button in the row.
+- **"Tune again from source" is a button above the rounds** once there is a round; "Tune" on a result refines the active round, as before. Selecting an earlier round and tuning refines that one.
+- **Cancelling keeps no partial round.** The partial text stays visible in the answer area; the round list only holds finished results.
+- **The frontmatter boundary follows Obsidian's own reading** (obsidian-kit `locateFrontmatter`): an empty frontmatter block counts, and a later `---` divider in the text no longer counts as its closing line. Before, "Replace note" on a note with an empty block could have treated text up to the first divider as frontmatter.
+- **Nothing to do is reported, not blocked:** with all dials in the middle and an empty note, Tune stays clickable and the status line says why nothing was sent.
+
+### Known gaps (not released)
+
+- **"Replace selection" and "New note" are shown but disabled** until the shared library supplies a selection target and a new-note write path (orders B1 and B2, Welle 37). Copy and "Replace note" work.
+
 ## [0.15.3] — 2026-11-24
 
 ### Security

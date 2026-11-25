@@ -45,15 +45,16 @@ src/core/                pure, obsidian-frei, Vitest
   examples/{de,en}.ts     je 16 Vorher/Nachher-Paare (4 Dimensionen x 4 Stufen != 0)
   examples/overrides.ts   Parser Datei -> PromptOverrides (Datei-IO injiziert)
   prompt.ts / prompt-text.ts  buildMessages + der ausgelieferte Systemteil
-  session.ts             Round, Session = Rounds<Round> (Verlauf/Auswahl: code-kit rounds), Wurzel-Helfer
+  session.ts             Round, TuneSession = PanelSession<Round> (Ziel + Runden, code-kit), Wurzel-Helfer
   source.ts              SourceState, Readiness, Staleness (pure Haelfte)
   llm/client.ts          toTuneResult(Ergebnis der Verbindung) -> TuneResult
   llm/errors.ts          TuneError + classifyNetworkFailure
   api.ts                 createLingoTunerApi
   logbook.ts             Abschnitt der Logbuch-Notiz rendern
-src/obsidian/            view · view-render · editor-io · settings-tab ·
-                         lab · logbook-io · overrides-io
-src/vendor/kit/          obsidian-kit 0.95.0 + code-kit 0.75.0 (ein Pin, seit Welle 36), pure — nie von Hand aendern
+  target.ts / panel-run.ts  Ziel aus der Quelle, Notiz ersetzen; der Lauf des Panels (Halter-Option run)
+src/obsidian/            view (Kit-Rahmen buildPromptPanel) · controls (Station 3) · accept (Schreibwege) ·
+                         editor-io · settings-tab · logbook-io · overrides-io
+src/vendor/kit/          obsidian-kit 0.109.1 + code-kit 0.89.0 (ein Pin, seit Welle 37), pure — nie von Hand aendern
 src/vendor/kit-obsidian/ Kit-Module, die `obsidian` importieren — nie von Hand aendern
 src/i18n/strings.ts      EN kanonisch + DE, beide vollstaendig
 src/main.ts
@@ -70,8 +71,7 @@ Endpunkt-Auflösung, derselbe Stream (eine Verbindung `llm`, Kit `createLlmConne
 und Ausgänge hängen am Panel. Ein zweiter Weg neben `run()` gehört **nicht** danebengebaut — genau
 daran ist in `obsidian-transmute` die Anzeige von der Ausführung abgedriftet.
 
-**View ist zweigeteilt** (`view.ts` baut, `view-render.ts` zeichnet aus dem Zustand). Ein
-`empty()` unter dem Cursor nähme Fokus, Cursorposition und den Undo-Stack des Feldes mit.
+**Das Panel ist der Kit-Rahmen** (`buildPromptPanel`, acht Stationen; Halter `createPromptPanelHost` in `main.ts`, er hält Lauf, Sitzung und Anmerkung über das Schließen hinaus). Das Plugin setzt nur Slots ein: Regler und Quelle (`controls.ts`), Vorschau mit Kopierknopf, Rundentexte, Schreibwege (`accept.ts`). Neben dem Rahmen wird nichts nachgebaut; fehlt dem Rahmen etwas, geht eine Bestellung ans Kit.
 
 ### Kit-first-Befund
 
@@ -83,7 +83,7 @@ Tabelle der Übernahmen, Herkunftsstempel-Regel und die vier Spec-Abweichungen: 
 ```bash
 npm run dev / build / deploy      # esbuild watch · prod-Bundle (tsc + esbuild) · Copy nach $OBSIDIAN_PLUGIN_DIR
 npm run lint                      # check-no-inline-disables + eslint src --max-warnings 0
-npm test                          # NUL-Byte-Check + vitest run (93 Tests)
+npm test                          # NUL-Byte-Check + vitest run (175 Tests)
 npm run typecheck                 # tsc --noEmit (dazu: typecheck:test, typecheck:scripts)
 npm run check:pure                # src/core darf `obsidian` nicht importieren
 npm run gate                      # lint + alle Typechecks + test + check:pure + build
@@ -118,14 +118,7 @@ npm run release / version-bump / preflight   # delegieren ans zentrale ../tools/
 
 ## UI-Abweichungen
 
-Deklaration nach `UI-STANDARD.md` §1a — von einem verbindlichen §8-Baustein abzuweichen ist
-erlaubt, stillschweigend abzuweichen nicht.
-
-- **Status-Indikator** — Grund: kennt im Panel einen fuenften Zustand „bereit" mit Icon `circle`
-  und ohne `is-*`-Klasse (§8 nennt vier Zustaende/Icons) — vor dem ersten Lauf ist weder Erfolg
-  noch Fehler wahr, ein gruener Haken neben „Bereit" behauptete einen Erfolg, den es nicht gab
-  (Final-Review 2026-09-07).
-  — gilt-solange: `src/obsidian/view-render.ts` enthaelt `"circle"`
+Deklaration nach `UI-STANDARD.md` §1a — von einem verbindlichen §8-Baustein abzuweichen ist erlaubt, stillschweigend abzuweichen nicht. Zurzeit keine: das Panel traegt seit Welle 37 den Kit-Rahmen (Auftrags-Fenster), die fruehere Abweichung „Status-Indikator bereit“ ist mit `view-render.ts` entfallen.
 
 ## Gotchas
 

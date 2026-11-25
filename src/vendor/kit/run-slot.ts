@@ -1,4 +1,4 @@
-// vendored from code-kit@0.87.0, src/ts/pure/run-slot.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from code-kit@0.89.0, src/ts/pure/run-slot.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Origin: obsidian-plugins `3d-codeblocks/src/obsidian/prompt-panel.ts` (`controller: AbortController | null`, `runInner` with
 // `this.controller !== ctrl` after every await, `abort()` that sets it to null), the same pattern as lingotuner's `run`.
 

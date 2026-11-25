@@ -2,6 +2,7 @@ import { App, Notice, PluginSettingTab, Setting, type SettingDefinitionItem } fr
 import type LingoTunerPlugin from "../main";
 import { t } from "../vendor/kit/i18n";
 import { githubHelpUrls, helpSettingDefinition } from "../vendor/kit-obsidian/help-setting";
+import { statusBarSettingDefinition } from "../vendor/kit-obsidian/status-bar-item";
 import { renderSettingDefinitions, settingBodyHost, refreshSettingsTab } from "../vendor/kit-obsidian/settings_walker";
 import { installTabRefreshOnOpen } from "../vendor/kit-obsidian/settings_walker";
 import { writeShippedTexts } from "../core/examples/overrides";
@@ -10,7 +11,7 @@ import { removeUserPreset } from "../core/settings";
 import { getLang } from "../vendor/kit/i18n";
 
 type ControlDef = { type: "text" | "toggle" | "number" | "folder"; key: string; placeholder?: string; min?: number };
-type ItemDef = { name?: string; desc?: string; control?: ControlDef; render?: (setting: Setting) => void };
+type ItemDef = { name?: string; desc?: string | DocumentFragment; control?: ControlDef; render?: (setting: Setting, ...rest: never[]) => void | (() => void) };
 type GroupDef = { type?: string; heading?: string; items?: ItemDef[] };
 
 export class LingoTunerSettingTab extends PluginSettingTab {
@@ -49,6 +50,16 @@ export class LingoTunerSettingTab extends PluginSettingTab {
           { name: t("set.logbook"), desc: t("set.logbookDesc"), control: { type: "toggle", key: "logbookEnabled" } },
           { name: t("set.logbookFolder"), desc: t("set.logbookFolderDesc"), control: { type: "folder", key: "logbookFolder" } },
           { name: t("set.newNoteFolder"), desc: t("set.newNoteFolderDesc"), control: { type: "folder", key: "newNoteFolder" } },
+          // Kit-Baustein Statusleisten-Eintrag (UI-STANDARD § 8): Schalter fuer den Eintrag des Halters, solange ein Lauf ohne offenes Panel laeuft oder wartet.
+          statusBarSettingDefinition({
+            value: this.plugin.settings.showStatusBar,
+            onChange: async (v) => {
+              this.plugin.settings.showStatusBar = v;
+              this.plugin.host.setStatusBarVisible(v);
+              await this.plugin.saveSettings();
+            },
+            strings: { lang: getLang() },
+          }),
         ],
       },
     ];

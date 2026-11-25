@@ -1,58 +1,56 @@
-import { Component, ItemView, MarkdownRenderer, Modal, Setting, type App, type WorkspaceLeaf } from "obsidian";
-import { isNoop, presetFor, type Dials, type Dimension, type Level, type Preset } from "../core/dials";
-import { EMPTY_SESSION, rootInput, rootSourceName, type Session } from "../core/session";
-import { activeRound, pushRound, selectRound } from "../vendor/kit/rounds";
-import { createRunSlot } from "../vendor/kit/run-slot";
-import { type Readiness, type SourceKind } from "../core/source";
-import { errorMessageKey } from "../core/llm/errors";
-import type { TuneResult } from "../core/llm/client";
-import { patchPanel, renderPanel, structureKey, type PanelHandlers, type PanelModel, type PanelParts, type RunPhase } from "./view-render";
-import { createStableWriter, type StableMarkdownWriter } from "../vendor/kit-obsidian/stable-writer";
+// Das Panel. Seit Welle 37 eine duenne Ansicht ueber dem Kit-Rahmen der Auftrags-Fenster (`buildPromptPanel`, obsidian-kit, UI-STANDARD § 8): der Rahmen zeichnet
+// die acht Stationen (Ziel und Neu, Modellzeile, Auftrag, Lauf, Ergebnis, Runden, Uebernehmen, Schliessen), der Halter (`createPromptPanelHost`, in `main.ts`
+// gebaut) haelt Lauf, Sitzung und die halb getippte Anmerkung ueber das Schliessen hinaus. Hier steht nur, was lingotuner ist: die Regler und die Quelle in
+// Station 3 (`controls.ts`), die Anmerkung als freiwilliges Auftragsfeld (`instructionOptional`), die Vorschau des Ergebnisses mit Kopierknopf, die Beschriftung der
+// Runden und der Knopf „Neu aus der Quelle stimmen“ (Slot `notices`). Die Schreibwege beschreibt `main.ts` (`ways`); geschrieben wird nur ueber den Rahmen
+// (`acceptPanel` mit Schnappschuss).
+//
+// Vorher (bis 0.15.3) zeichnete die Ansicht alles selbst (view.ts + view-render.ts, Voll-Draw gegen Patch, eigener Laufwaechter). Weggefallen sind mit dem Umzug:
+// der Voll-Draw mit Cursor-Rettung (der Rahmen ersetzt Felder unter dem Cursor nicht), die eigene Rundenliste, der eigene Lauf-Slot, der Teiltext als Runde nach
+// einem Abbruch (der Halter verwirft das Ergebnis eines abgebrochenen Laufs; der Teiltext bleibt im Antwortbereich sichtbar) und Markdown im laufenden Strom
+// (der Rahmen zeigt den Strom als Text, Markdown erst in der Vorschau).
+import { Component, ItemView, Modal, Setting, type App, type WorkspaceLeaf } from "obsidian";
+import type { Dimension, Level } from "../core/dials";
+import type { Round, TuneSession } from "../core/session";
+import type { SourceKind } from "../core/source";
+import type { HostRunCall, HostRunResult } from "../vendor/kit/panel-host";
+import type { Target } from "../vendor/kit/panel-session";
 import { neutralizeModelMarkdown } from "../vendor/kit/safe-markdown";
-import { buildModelBar, type ModelBar, type ModelBarConnection } from "../vendor/kit-obsidian/model-bar";
-import { thinkingLevelTexts, thinkingOffTexts, type ThinkingControlOptions } from "../vendor/kit-obsidian/thinking-control";
 import { getLang, t } from "../vendor/kit/i18n";
+import { createCopyButton } from "../vendor/kit-obsidian/copy-button";
+import { renderMarkdownGuarded } from "../vendor/kit-obsidian/dom-guard";
+import type { LlmConnection } from "../vendor/kit-obsidian/llm-connection";
+import type { AcceptEnv } from "../vendor/kit-obsidian/panel-accept";
+import { buildPromptPanel, type PromptPanel, type PromptPanelSlots, type PromptPanelWay } from "../vendor/kit-obsidian/prompt-panel";
+import type { PromptPanelHost } from "../vendor/kit-obsidian/prompt-panel-host";
+import type { PromptPanelStrings } from "../vendor/kit-obsidian/prompt-panel-strings";
+import type { ThinkingControlOptions } from "../vendor/kit-obsidian/thinking-control";
+import { renderControls, type ControlsModel } from "./controls";
 
 export const VIEW_TYPE_LINGOTUNER = "lingotuner-panel";
 /** Icon des Panels (Ribbon und Tab). Eigener Name: `sliders-horizontal` tragen schon settings-assistant und koda-agent. */
 export const PANEL_ICON = "speech";
 
-export interface RunRequest {
-  text: string;
-  dials: Dials;
-  note: string;
-  basedOn: number | null;
-  onToken(t: string): void;
-  onReasoning(t: string): void;
-  /** Gemma 4 schreibt sein Denken zuerst als Antwort; beim `<channel|>` wird der gesammelte Antworttext verworfen (Kit 0.60.3). */
-  onContentReset(): void;
-  signal: AbortSignal;
-}
+export type LingoPanelHost = PromptPanelHost<TuneSession>;
 
 export interface ViewDeps {
-  /** DOM-Waechter des Stream-Schreibers (Kit `createStableWriter`, Default an). Tests mit dem Fake-DOM uebergeben `false`. */
-  domGuard?: boolean;
-  readiness(kind: SourceKind, freeText: string): Readiness;
-  canReplace(kind: "selection" | "note", sourceText: string): boolean;
-  presets(): Preset[];
-  getDials(): Dials;
-  setDials(d: Dials): void;
-  /** Die Verbindung fuer die Modellzeile (Kit `model-bar`): `models`, `setModel`, `modelInUse`, `source`. Die Wahl gehoert der Verbindung:
-   *  mit Manager `choice.model`, ohne Manager das Modell der aktiven Zeile; „Automatisch“ ist `setModel("")`. */
-  llm: ModelBarConnection;
-  /** Zustand und Schalter der Denk-Steuerung in der Modellzeile (ohne Texte: die kommen aus der View). `backend` (Kit 0.61.0): „nicht ganz aus“ bei gemma4 auf LM Studio. */
+  host: LingoPanelHost;
+  llm: LlmConnection;
+  /** Zustand und Schalter der Denk-Steuerung in der Modellzeile (ohne Texte: die kommen aus dem Rahmen). */
   thinking: Pick<ThinkingControlOptions, "family" | "backend" | "current" | "onLevel" | "setLevel" | "levelPicker">;
-  savePreset(name: string, dials: Dials): void;
-  run(req: RunRequest): Promise<TuneResult>;
-  output(kind: "replace-selection" | "replace-note" | "copy" | "new-note", text: string, sourceText: string, sourceName: string | null): Promise<void>;
-  /** Wer hat gerade den Fokus? EINE injizierbare Naht statt eines direkten Griffs nach
-   *  `activeDocument` — sie traegt zwei Entscheidungen, die sonst beide untestbar waeren:
-   *  die Weiche in `softDraw()` (Voll-Draw nur ohne Fokus im Panel) und das Merken der
-   *  Cursorposition in `draw()`. Zwei getrennte Nahte dafuer waeren zwei Wahrheiten
-   *  darueber, wo der Fokus liegt. */
-  activeElement(): Element | null;
-  /** Rueckfrage vor einer zerstoerenden Aktion. `true` = ausfuehren. */
-  confirm(opts: { title: string; message: string; confirmLabel: string }): Promise<boolean>;
+  readTargetText(t: Target): Promise<string | null>;
+  openSettings(): void;
+  pluginId: string;
+  accept: Omit<AcceptEnv, "settings" | "choose">;
+  ways(s: TuneSession): PromptPanelWay<TuneSession>[];
+  controls(): ControlsModel;
+  onSource(k: SourceKind): void;
+  onFreeText(v: string): void;
+  onDial(dim: Dimension, level: Level): void;
+  onPreset(id: string): void;
+  savePreset(name: string): void;
+  /** Lauf aus der Quelle, auch wenn Runden offen sind (eine neue Kette neben der alten). */
+  runFromSource: (call: HostRunCall<TuneSession>) => Promise<HostRunResult<TuneSession>>;
 }
 
 class PresetNameModal extends Modal {
@@ -60,38 +58,51 @@ class PresetNameModal extends Modal {
   onOpen(): void {
     this.titleEl.setText(t("preset.saveTitle"));
     let name = "";
-    new Setting(this.contentEl).addText((tx) => { tx.setPlaceholder(t("preset.namePlaceholder")); tx.onChange((v) => { name = v; }); });
-    new Setting(this.contentEl).addButton((b) => b.setButtonText(t("preset.save")).setCta().onClick(() => {
+    const submit = (): void => {
       if (name.trim() === "") return;
       this.onSubmit(name.trim());
       this.close();
-    }));
+    };
+    new Setting(this.contentEl).addText((tx) => {
+      tx.setPlaceholder(t("preset.namePlaceholder"));
+      tx.onChange((v) => { name = v; });
+      tx.inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
+    });
+    new Setting(this.contentEl).addButton((b) => b.setButtonText(t("preset.save")).setCta().onClick(submit));
   }
   onClose(): void { this.contentEl.empty(); }
 }
 
+/** Was der Rahmen in lingotuners Worten sagt; der Rest kommt aus dem Kit. */
+export function panelStrings(): Partial<PromptPanelStrings> {
+  return {
+    targetNew: t("target.text"),
+    targetEdit: (label) => label,
+    modelLabel: t("panel.task"),
+    promptLabel: t("note.label"),
+    instructionOptional: t("note.placeholder"),
+    create: t("run.tune"),
+    refine: t("run.refine"),
+    reasoning: t("preview.thinking"),
+    emptyText: "",
+    examples: [],
+    unsupported: (label) => label,
+  };
+}
+
+export function roundLabel(round: Round, index: number): string {
+  const note = round.note.trim() === "" ? t("history.noteless") : round.note.trim();
+  return `${t("history.round", String(index + 1))} · ${note}`;
+}
+
+export function roundMeta(round: Round): string {
+  const based = round.basedOn === null ? t("history.fromSource") : t("history.refined", String(round.basedOn + 1));
+  return round.model === "" ? based : `${based} · ${round.model}`;
+}
+
 export class LingoTunerView extends ItemView {
-  private source: SourceKind = "selection";
-  private freeText = "";
-  private note = "";
-  /** Die Kit-Modellzeile; im Voll-Draw neu gebaut (die alte vorher abgemeldet), sonst nur per `update()` nachgezogen. */
-  private modelBar: ModelBar | null = null;
-  private phase: RunPhase = "idle";
-  private statusText = t("status.idle");
-  private truncated = false;
-  private session: Session = EMPTY_SESSION;
-  private preview = "";
-  private reasoning = "";
-  private reasoningOpen = false;
-  private parts: PanelParts | null = null;
-  /** Ein Lauf zugleich, mit Abbruch und Veraltet-Pruefung (Kit `createRunSlot`). */
-  private readonly slot = createRunSlot();
-  private mdComp: Component | null = null;
-  /** Der inkrementelle Markdown-Schreiber auf dem Stream-Bereich (Kit `createStableWriter`).
-   *  Er haelt Rohstrom und Schnitt-Zeiger selbst — je Voll-Draw neu, weil die Area neu ist. */
-  private writer: StableMarkdownWriter | null = null;
-  /** Strukturschluessel des zuletzt VOLL gezeichneten Stands (`structureKey`). */
-  private struct = "";
+  private panel: PromptPanel | null = null;
+  private md: Component | null = null;
 
   constructor(leaf: WorkspaceLeaf, private readonly deps: ViewDeps) { super(leaf); }
 
@@ -100,336 +111,97 @@ export class LingoTunerView extends ItemView {
   getIcon(): string { return PANEL_ICON; }
 
   onOpen(): Promise<void> {
-    // Die Modellzeile laedt ihre Liste selbst und zeichnet nur sich: ein spaetes Ergebnis reisst keinen Stream ab.
-    this.draw();
+    this.panel?.destroy();
+    // Der Haken fuer die Mitschrift der Auswahl in `main.ts`: Cursorbewegungen in Feldern des Panels sind keine Auswahl im Editor.
+    this.contentEl.addClass("lt-panel");
+    this.panel = buildPromptPanel<Round, TuneSession>(
+      this.contentEl,
+      this.deps.host,
+      {
+        app: this.app,
+        lang: getLang(),
+        llm: this.deps.llm,
+        thinking: this.deps.thinking,
+        readTargetText: (tg) => this.deps.readTargetText(tg),
+        openSettings: () => { this.deps.openSettings(); },
+        pluginId: this.deps.pluginId,
+        accept: this.deps.accept,
+        strings: panelStrings(),
+      },
+      this.slots(),
+    );
     return Promise.resolve();
   }
 
   onClose(): Promise<void> {
-    this.slot.abort();
-    this.modelBar?.destroy();
-    this.modelBar = null;
-    this.writer?.destroy();
-    this.writer = null;
-    this.contentEl.empty();
+    // Obsidian wartet in onClose nicht auf einen Dialog: die Rueckfrage laeuft nach destroy() weiter und erreicht den Halter (Verwerfen verwirft, jeder andere Ausgang behaelt).
+    const panel = this.panel;
+    this.panel = null;
+    if (panel) {
+      void panel.requestClose();
+      panel.destroy();
+    }
+    this.disposeMd();
     return Promise.resolve();
   }
 
-  /** Vom Plugin gerufen, wenn sich Markierung/Notiz geaendert haben. Zeichnet NIE voll,
-   *  solange der Fokus im Panel liegt — das war Fehler 1: jede Cursorbewegung in der
-   *  Textarea feuert `selectionchange`, und ein Voll-Draw baute das Feld unter dem Cursor neu. */
-  refresh(): void { this.softDraw(); }
-
+  /** Die zuletzt aktive Notiz hat gewechselt: Schreibwege und Sperrgruende neu bewerten. */
+  refreshAccept(): void { this.panel?.refreshAccept(); }
+  /** Modell, Endpunkt oder Denkstufe haben sich ausserhalb geaendert: die Modellzeile zieht nach. */
+  refreshModelBar(): void { this.panel?.refreshModelBar(); }
   /** Laedt die Modell-Liste der Zeile neu (Endpunkt oder Manager haben gewechselt). */
-  reloadModels(): void { void this.modelBar?.refresh(); }
+  reloadModels(): void { this.panel?.reloadModels(); }
+  /** Testnaht: wartet auf Lauf, Schreiben und eine laufende Vorschau. */
+  settled(): Promise<void> { return this.panel?.settled() ?? this.deps.host.settled(); }
 
-  private model(): PanelModel {
-    const dials = this.deps.getDials();
-    const presets = this.deps.presets();
-    const sourceText = rootInput(this.session);
-    return {
-      source: this.source,
-      readiness: this.deps.readiness(this.source, this.freeText),
-      freeText: this.freeText,
-      dials, presets, presetId: presetFor(dials, presets),
-      note: this.note,
-      phase: this.phase, statusText: this.statusText, truncated: this.truncated,
-      session: this.session, preview: this.preview, reasoning: this.reasoning, reasoningOpen: this.reasoningOpen,
-      canReplaceSelection: this.source === "selection" && sourceText !== null && this.deps.canReplace("selection", sourceText),
-      canReplaceNote: this.source === "note" && sourceText !== null && this.deps.canReplace("note", sourceText),
-    };
+  private disposeMd(): void {
+    if (this.md !== null) this.removeChild(this.md);
+    this.md = null;
   }
 
-  private handlers(): PanelHandlers {
+  private slots(): PromptPanelSlots<Round, TuneSession> {
+    const d = this.deps;
     return {
-      onSource: (k) => { this.source = k; this.draw(); },
-      onFreeText: (v) => { this.freeText = v; this.softDraw(); },
-      onDial: (dim: Dimension, level: Level) => { this.deps.setDials({ ...this.deps.getDials(), [dim]: level }); this.softDraw(); },
-      onPreset: (id) => {
-        const p = this.deps.presets().find((x) => x.id === id);
-        if (p) { this.deps.setDials({ ...p.dials }); this.draw(); }
+      renderControls: (host) => {
+        renderControls(host, d.controls(), {
+          onSource: (k) => { d.onSource(k); },
+          onFreeText: (v) => { d.onFreeText(v); },
+          onDial: (dim, level) => { d.onDial(dim, level); },
+          onPreset: (id) => { d.onPreset(id); },
+          onSavePreset: () => { new PresetNameModal(this.app, (name) => { d.savePreset(name); }).open(); },
+        });
       },
-      onSavePreset: () => { new PresetNameModal(this.app, (name) => { this.deps.savePreset(name, this.deps.getDials()); this.draw(); }).open(); },
-      onNote: (v) => { this.note = v; this.softDraw(); },
-      onTune: () => { void this.run(null); },
-      onRefine: () => { void this.run(this.session.active); },
-      onAbort: () => { this.slot.abort(); },
-      onReset: () => {
-        // Nur fragen, wenn es etwas zu verlieren gibt. Der Knopf sitzt unmittelbar neben
-        // „Nachschaerfen", das man in einer Iterationsschleife oft klickt; ein Fehlgriff
-        // kostete sonst die ganze Runden-Kette samt eines noch nicht kopierten Ergebnisses,
-        // ohne Undo. Ohne Runden gibt es nichts zurueckzunehmen — dann sofort raeumen, sonst
-        // waere die Rueckfrage nur Reibung.
-        if (this.session.rounds.length === 0) { this.reset(); return; }
-        void this.deps.confirm({
-          title: t("run.resetTitle"),
-          message: t("run.resetBody", String(this.session.rounds.length)),
-          confirmLabel: t("run.reset"),
-        }).then((ok) => { if (ok) this.reset(); });
+      instructionOptional: true,
+      notices: (host, ctx) => {
+        if (ctx.session().rounds.rounds.length === 0) return;
+        const b = host.createEl("button", { cls: "lt-retune", text: t("run.retune"), attr: { type: "button" } });
+        b.disabled = ctx.busy();
+        b.addEventListener("click", () => { ctx.run(d.host.live().draft.trim(), d.runFromSource); });
       },
-      onSelectRound: (i) => {
-        this.session = selectRound(this.session, i);
-        const r = activeRound(this.session);
-        if (r) {
-          this.preview = r.output;
-          this.truncated = r.truncated;
-          this.phase = r.aborted ? "aborted" : "done";
-          this.statusText = t(r.aborted ? "status.aborted" : "status.done");
+      renderPreview: async (host, round, _text, ctx) => {
+        this.disposeMd();
+        if (round === null) return;
+        const bar = host.createDiv({ cls: "lt-result-bar" });
+        createCopyButton(bar, { label: t("out.copy"), text: round.output, cls: "lt-out-copy", copiedMessage: t("out.copied") });
+        if (round.truncated) host.createDiv({ cls: "lt-warning", text: t("status.truncated") });
+        const body = host.createDiv({ cls: "lt-result markdown-rendered" });
+        const comp = new Component();
+        this.md = this.addChild(comp);
+        // Modell-Ausgabe: neutralisiert (Links und Bilder aus dem Modell werden Text) und unter dem Linkschutz-Waechter des Kits gerendert
+        // (`renderMarkdownGuarded`: kappt aktive Link-Ziele wie javascript: und obsidian://, die der Renderer stehen liesse). Geschrieben wird der unveraenderte Text.
+        try {
+          await renderMarkdownGuarded(this.app, neutralizeModelMarkdown(round.output), body, "", comp);
+        } catch {
+          if (ctx.current()) body.setText(round.output);
         }
-        this.draw();
       },
-      mountModelBar: (host) => { this.mountModelBar(host); },
-      onToggleReasoning: (open) => { this.reasoningOpen = open; },
-      onReplaceSelection: () => {
-        const s = rootInput(this.session);
-        if (s !== null) void this.deps.output("replace-selection", this.preview, s, rootSourceName(this.session));
-      },
-      onReplaceNote: () => {
-        const s = rootInput(this.session);
-        if (s !== null) void this.deps.output("replace-note", this.preview, s, rootSourceName(this.session));
-      },
-      onCopy: () => { void this.deps.output("copy", this.preview, rootInput(this.session) ?? "", rootSourceName(this.session)); },
-      onNewNote: () => { void this.deps.output("new-note", this.preview, rootInput(this.session) ?? "", rootSourceName(this.session)); },
+      renderChanges: () => undefined,
+      roundLabel,
+      roundMeta,
+      roundText: (round) => round.output,
+      quality: () => ({ measured: true, text: "" }),
+      acceptWays: (s) => d.ways(s),
+      dispose: () => { this.disposeMd(); },
     };
-  }
-
-  /** Raeumt die Sitzung. Erst abbrechen, dann raeumen: ein laufender Stream schriebe sonst
-   *  in eine Vorschau, die es nicht mehr gibt. Der Abbruch macht den Lauf veraltet, `run()` verwirft
-   *  sein Ergebnis. Die Regler bleiben bewusst stehen — sie sind eine Einstellung,
-   *  kein Sitzungszustand. */
-  private reset(): void {
-    this.slot.abort();
-    this.session = EMPTY_SESSION;
-    this.preview = "";
-    this.reasoning = "";
-    this.reasoningOpen = false;
-    this.note = "";
-    this.freeText = "";
-    this.truncated = false;
-    this.phase = "idle";
-    this.statusText = t("status.idle");
-    this.draw();
-  }
-
-  /** Liegt der Fokus IM Panel? Dann ist ein Voll-Draw verboten: er baut das Element unter
-   *  dem Cursor neu, und Tippen bzw. ein gegriffener Regler bricht ab (Fehler 1). */
-  private focusInPanel(): boolean {
-    const el = this.deps.activeElement();
-    return el !== null && this.contentEl.contains(el);
-  }
-
-  /** Cursor-Stand einer fokussierten Textarea im Panel — Vorbereitung fuer `draw()`. */
-  private merkeCursor(): { cls: string; start: number; end: number } | null {
-    const el = this.deps.activeElement();
-    if (el === null || !this.contentEl.contains(el)) return null;
-    const ta = el as Partial<HTMLTextAreaElement> & { className?: string };
-    if (typeof ta.selectionStart !== "number" || typeof ta.selectionEnd !== "number") return null;
-    const cls = (ta.className ?? "").split(" ").filter(Boolean)[0];
-    if (cls === undefined) return null;
-    return { cls, start: ta.selectionStart, end: ta.selectionEnd };
-  }
-
-  /** Cursor nach dem Neuaufbau zurueck ins gleichnamige Feld setzen.
-   *
-   *  Gesetzt werden `selectionStart`/`selectionEnd` direkt statt `setSelectionRange` — beides
-   *  ist im Browser gleichwertig, aber die Zuweisung ist auch ohne echtes DOM beobachtbar und
-   *  damit im Unit-Test pruefbar. Dass der FOKUS wirklich landet, kann nur ein echter Browser
-   *  sagen; dafuer gibt es den Smoke-Punkt B11. */
-  private stelleCursorHer(merk: { cls: string; start: number; end: number } | null): void {
-    if (merk === null) return;
-    const neu = this.contentEl.querySelectorAll<HTMLTextAreaElement>(`.${merk.cls}`)[0];
-    if (neu === undefined) return;
-    neu.focus();
-    neu.selectionStart = merk.start;
-    neu.selectionEnd = merk.end;
-  }
-
-  /** Baut die Modellzeile in `host`. Sperre und Denk-Steuerung lesen ihren Zustand bei jedem `update()` neu; ein Modellwechsel
-   *  braucht KEINEN Voll-Draw (die Zeile zeichnet sich selbst), und ein Wurf aus `setModel` steht in der Statuszeile. */
-  private mountModelBar(host: HTMLElement): void {
-    this.modelBar = buildModelBar({
-      app: this.app,
-      containerEl: host,
-      llm: this.deps.llm,
-      strings: { lang: getLang() },
-      disabled: () => this.phase === "streaming",
-      onError: (e) => {
-        this.statusText = t("model.error", e instanceof Error ? e.message : String(e));
-        this.softDraw();
-      },
-      thinking: {
-        ...this.deps.thinking,
-        strings: {
-          button: (level) => level === "off" ? t("think.button.off") : t("think.button.on", t(`request.level.${level}`)),
-          offNotPossible: thinkingOffTexts(getLang()),
-          level: (l) => t(`request.level.${l}`),
-          pickerLabel: t("think.pickerLabel"),
-          name: thinkingLevelTexts(getLang()).name,
-          costNote: thinkingLevelTexts(getLang()).costNote,
-          lockedLevel: thinkingLevelTexts(getLang()).lockedLevel,
-        },
-      },
-    });
-  }
-
-  /** Voll-Draw: baut das Panel neu auf. Zieht Eingabefelder unter dem Cursor weg — deshalb
-   *  nur ueber `softDraw()` oder aus einer Aktion, die den Fokus ohnehin verliert. */
-  private draw(): void {
-    // Ein Voll-Draw laesst sich nicht immer vermeiden — der am ENDE eines Laufs zum Beispiel
-    // nicht, und genau dort tippt der Nutzer die Anmerkung fuer die naechste Runde, waehrend
-    // er auf das Ergebnis wartet (Textarea und Anmerkung sind waehrend eines Streams
-    // absichtlich NICHT gesperrt). Fehler 1 in einem schmaleren Fenster: einmal je Lauf statt
-    // bei jedem Tastendruck, und in dem Moment, in dem niemand hinsieht. Der Wert ueberlebt
-    // ohnehin (`onFreeText`/`onNote` halten ihn) — Fokus und Cursorposition nicht.
-    const merk = this.merkeCursor();
-    // Die alte Modellzeile abmelden, bevor `renderPanel` den Container leert und eine neue haengt: sonst bliebe sie mit ihren Rueckrufen liegen.
-    this.modelBar?.destroy();
-    this.modelBar = null;
-    if (this.mdComp !== null) this.removeChild(this.mdComp);
-    this.mdComp = this.addChild(new Component());
-    const m = this.model();
-    const parts = renderPanel(this.contentEl, m, this.handlers());
-    this.parts = parts;
-    this.struct = structureKey(m);
-    // Je Draw eine neue Area — also auch ein neuer Schreiber. Der alte haelt Zeiger auf DOM,
-    // das es nicht mehr gibt.
-    this.writer?.destroy();
-    this.writer = createStableWriter({ area: parts.area, render: (el, md) => this.renderMd(el, md), domGuard: this.deps.domGuard ?? true });
-    if (this.preview !== "") {
-      // In einen EIGENEN Block rendern statt den Body zu leeren: der laufende Absatz
-      // (`area.tailEl`) liegt im Body, und ein `empty()` haengte ihn aus — der naechste
-      // Stream schriebe dann in ein Element ausserhalb des Dokuments.
-      const block = parts.area.bodyEl.createDiv({ cls: "okit-stream-block" });
-      // Die Vorschau ist Modell-Ausgabe (die ersetzte Notiz bekommt weiter den Originaltext): neutralisiert rendern.
-      void this.renderMd(block, neutralizeModelMarkdown(this.preview));
-      parts.area.bodyEl.appendChild(parts.area.tailEl);
-    }
-    this.stelleCursorHer(merk);
-  }
-
-  /** Der Weg fuer alles Beilaeufige (Tippen, Reglerzug, Auswahlwechsel im Editor, spaet
-   *  eintreffende Modell-Liste): in place patchen. Voll gezeichnet wird nur bei einem
-   *  STRUKTURwechsel — und auch dann nicht, solange ein Stream laeuft oder der Fokus im
-   *  Panel liegt. */
-  private softDraw(): void {
-    const m = this.model();
-    const strukturell = structureKey(m) !== this.struct;
-    const gesperrt = m.phase === "streaming" || this.focusInPanel();
-    if (strukturell && !gesperrt) { this.draw(); return; }
-    patchPanel(this.contentEl, m, this.parts);
-    this.modelBar?.update();   // Modell, Endpunkt oder Denkstufe koennen sich ausserhalb geaendert haben: nur die Zeile zieht nach
-  }
-
-  /** Markdown in ein Element rendern. Fehler kosten die Formatierung, nicht den Text.
-   *  Zugleich der `render`-Callback des Kit-Schreibers: `MarkdownRenderer` braucht `App` und
-   *  eine `Component` als Lebensdauer-Anker, und beides gehoert dem Consumer. */
-  private renderMd(el: HTMLElement, md: string): Promise<void> {
-    const comp = this.mdComp;
-    if (comp === null) return Promise.resolve();
-    return MarkdownRenderer.render(this.app, md, el, "", comp).catch(() => { el.setText(md); });
-  }
-
-  private async run(basedOn: number | null): Promise<void> {
-    const dials = this.deps.getDials();
-    const readiness = this.deps.readiness(this.source, this.freeText);
-    const base = basedOn === null ? (readiness.kind === "ready" ? readiness.text : null) : (activeRound(this.session)?.output ?? null);
-    // Der Quellname gehoert zur WURZEL der Kette: beim Lauf aus der Quelle der aktuelle
-    // Bereitschafts-Name, beim Nachschaerfen der Name, unter dem die Kette begonnen hat.
-    // VOR pushRound lesen — danach zeigt `active` auf die neue Runde.
-    const sourceName = basedOn === null
-      ? (readiness.kind === "ready" ? readiness.name : null)
-      : rootSourceName(this.session);
-    if (base === null || isNoop(dials, this.note)) { this.statusText = t("run.noop"); this.phase = "error"; this.draw(); return; }
-
-    const run = this.slot.begin({ supersede: true });
-    if (run === null) return;
-    this.phase = "streaming";
-    this.statusText = t("status.streaming");
-    this.truncated = false;
-    this.preview = "";
-    this.reasoning = "";
-    // Der Gedankenblock gehoert bei einem NEUEN Lauf offen — ein Gedanke, den man erst
-    // aufklappen muss, ist waehrend des Streams unsichtbar (gemeldeter Fehler 3). Die Wahl
-    // des Nutzers gilt fuer den laufenden Strom, nicht fuer den naechsten; das Kit nimmt
-    // `reasoningOpen` beim BAU entgegen, deshalb steht das hier vor dem Draw.
-    this.reasoningOpen = true;
-    this.draw();
-    // Pflicht laut Kit-Rezept (0.32.0): ohne `reset()` schriebe der zweite Lauf unter den
-    // ersten. Er leert Body und Tail und wirft den Gedankenblock weg.
-    this.writer?.reset();
-
-    // Dem Strom folgen macht das Kit: `followTail` misst an `scrollEl` — hier das Panel,
-    // weil es als Ganzes rollt — und scrollt nur, wenn der Leser ohnehin unten steht.
-    const folge = (): void => { this.parts?.area.followTail(); };
-    const onToken = (tk: string): void => {
-      if (!run.isCurrent()) return;
-      const w = this.writer;
-      if (w === null) return;
-      // Zwei Kopien desselben Stroms, mit Absicht: der Schreiber haelt seinen Rohstrom fuer
-      // den Markdown-Schnitt, `this.preview` bleibt die Wahrheit fuer Ausgaenge und
-      // `structureKey`.
-      this.preview += tk;
-      // Kein `folge()` hier: `push` ruft `followTail` selbst (stable-writer.ts). Ein zweiter
-      // Aufruf waere folgenlos, aber er liesse das Folgen wie eine Consumer-Pflicht aussehen.
-      w.push(tk);
-    };
-    const onContentReset = (): void => {
-      if (!run.isCurrent()) return;
-      // Was bisher als Antwort lief, war Denken (der Chat-Client hat es als Gedanken nachgereicht): Antwort und Anzeige leeren, die Gedanken bleiben.
-      this.preview = "";
-      this.writer?.resetContent();
-    };
-    const onReasoning = (tk: string): void => {
-      if (!run.isCurrent()) return;
-      const area = this.parts?.area;
-      if (area === undefined) return;
-      // Der Rohtext liegt schon in `this.reasoning` — ihn aus dem DOM zurueckzulesen und
-      // neu zusammenzusetzen ist O(n²) ueber den ganzen Gedankenstrom (gemessen 12 184
-      // Zeichen; bei 40 k spuerbar) und kann ausserdem divergieren. Das Kit haengt an.
-      this.reasoning += tk;
-      area.appendReasoning(tk);
-      // Hier SCHON: anders als `push` folgt `appendReasoning` nicht von selbst — ein Modell,
-      // das lange denkt, schoebe den Strom sonst unter die Kante, ohne dass etwas nachzieht.
-      folge();
-    };
-
-    let result: TuneResult;
-    try {
-      result = await this.deps.run({ text: base, dials, note: this.note, basedOn, onToken, onReasoning, onContentReset, signal: run.signal });
-    } catch (e) {
-      if (!run.isCurrent()) return;
-      run.finish();
-      this.phase = "error";
-      this.statusText = e instanceof Error ? e.message : String(e);
-      // Erst die laufenden Renderings zu Ende, dann neu zeichnen: der Schluss-Draw ersetzt
-      // die Area, und ein noch laufendes `render` schriebe danach in totes DOM.
-      await this.writer?.settled();
-      this.draw();
-      return;
-    }
-    if (!run.isCurrent()) return;
-    run.finish();
-    await this.writer?.settled();
-
-    if (result.ok) {
-      this.preview = result.text;
-      this.truncated = result.truncated;
-      this.phase = "done";
-      this.statusText = t("status.done");
-      this.session = pushRound(this.session, { dials: { ...dials }, note: this.note, input: base, output: result.text, model: result.model, at: Date.now(), basedOn, sourceName, aborted: false, truncated: result.truncated });
-    } else if (result.error.kind === "aborted") {
-      this.preview = result.partial;
-      this.phase = "aborted";
-      this.statusText = t("status.aborted");
-      if (result.partial.trim() !== "") {
-        this.session = pushRound(this.session, { dials: { ...dials }, note: this.note, input: base, output: result.partial, model: "", at: Date.now(), basedOn, sourceName, aborted: true, truncated: false });
-      }
-    } else {
-      const { key, args } = errorMessageKey(result.error);
-      this.phase = "error";
-      this.statusText = t(key, ...args);
-      this.preview = result.partial;
-    }
-    this.draw();
   }
 }

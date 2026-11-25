@@ -49,6 +49,13 @@ describe("Helfer", () => {
     expect(splitFrontmatter("---\ntitle: x\n---")).toEqual({ head: "---\ntitle: x\n---", body: "" });
     expect(splitFrontmatter("---\ntitle: x\n---\n")).toEqual({ head: "---\ntitle: x\n---\n", body: "" });
   });
+
+  it("splitFrontmatter liest den Block wie Obsidian (Kit locateFrontmatter): leerer Block, Trennlinie im Text, Zaun mit Zusatz", () => {
+    // Leerer Block: der Text beginnt hinter der zweiten Zaunzeile, eine spaetere Trennlinie gehoert zum Text (die alte Regex nahm sie als schliessenden Zaun).
+    expect(splitFrontmatter("---\n---\nText\n\n---\nmehr")).toEqual({ head: "---\n---\n", body: "Text\n\n---\nmehr" });
+    // `---x` schliesst nicht; ohne schliessende Zeile gibt es keinen Block.
+    expect(splitFrontmatter("---\na: 1\n---x\nB")).toEqual({ head: "", body: "---\na: 1\n---x\nB" });
+  });
   it("noteName ist der Dateiname ohne .md", () => {
     expect(noteName("A/B/Mail an X.md")).toBe("Mail an X");
     expect(noteName("Notiz.md")).toBe("Notiz");

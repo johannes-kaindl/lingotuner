@@ -3,8 +3,6 @@ import "./i18n/strings";
 import { getLang, pickLang, setLang, t } from "./vendor/kit/i18n";
 import { localFileStamp } from "./vendor/kit/local-stamp";
 import { onEndpointManagerChanged } from "./vendor/kit-obsidian/endpoint-source";
-import { copyToClipboard } from "./vendor/kit-obsidian/clipboard";
-import { confirmAction } from "./vendor/kit-obsidian/confirm";
 import { createLlmConnection, type LlmConnection } from "./vendor/kit-obsidian/llm-connection";
 import { managerErrorText, resolveLlmConnectionStrings, transportMissingText } from "./vendor/kit-obsidian/llm-connection-strings";
 import { loadRequestSettings, onLevelFor, thinkingFor } from "./vendor/kit/sampling-profiles";
@@ -12,7 +10,15 @@ import { DEFAULT_SETTINGS, LEGACY_REQUEST_MIGRATIONS, allPresets, loadSettings, 
 import { type Dials } from "./core/dials";
 import { buildMessages, type ChatMessage } from "./core/prompt";
 import { loadOverrides } from "./core/examples/overrides";
-import { readiness as readinessOf, type Readiness, type SourceKind } from "./core/source";
+import { noteName, readiness as readinessOf, readinessKey, splitFrontmatter, type SourceKind } from "./core/source";
+import { freshSession, type TuneSession } from "./core/session";
+import { targetFor } from "./core/target";
+import { createTuneRun, type TuneRunDeps } from "./core/panel-run";
+import { sameTarget, type Target } from "./vendor/kit/panel-session";
+import { readNoteText } from "./vendor/kit/note-edit";
+import { obsidianWritePorts } from "./vendor/kit-obsidian/write-ports";
+import { createPromptPanelHost } from "./vendor/kit-obsidian/prompt-panel-host";
+import { statusBarEnabled } from "./vendor/kit-obsidian/status-bar-item";
 import { toTuneResult, MODE, type TuneResult } from "./core/llm/client";
 import { classifyNetworkFailure, classifyShortcutFailure } from "./core/llm/errors";
 import { createLingoTunerApi, type LingoTunerApi } from "./core/api";
@@ -20,17 +26,18 @@ import { createShortcutsBridge, type ShortcutsBridge } from "./vendor/kit-obsidi
 import { createShortcutsChatTransport } from "./vendor/kit-obsidian/chat-transport";
 import { redactExchange } from "./vendor/kit-obsidian/chat-client";
 import { logToLab } from "./vendor/kit-obsidian/lab-client";
-import { SelectionTracker, createTunedNote, replaceCapture } from "./obsidian/editor-io";
+import { SelectionTracker, activeMarkdownView } from "./obsidian/editor-io";
+import { acceptStrings, tuneWays } from "./obsidian/accept";
 import { vaultOverrideReader } from "./obsidian/overrides-io";
 import { appendLogEntry } from "./obsidian/logbook-io";
 import { LingoTunerSettingTab } from "./obsidian/settings-tab";
-import { LingoTunerView, PANEL_ICON, VIEW_TYPE_LINGOTUNER, type RunRequest } from "./obsidian/view";
+import { LingoTunerView, PANEL_ICON, VIEW_TYPE_LINGOTUNER, type LingoPanelHost } from "./obsidian/view";
 
 const SELECTION_DEBOUNCE_MS = 150;
 
 /** Name fuer eine neue Notiz ohne Quellnotiz (Textfeld-Lauf) — Spec 4.7 „Datum bei Textfeld".
- *  Doppelpunkte gehen in Dateinamen nicht, deshalb `HH-mm`. */
-function noteStamp(d: Date): string {
+ *  Doppelpunkte gehen in Dateinamen nicht, deshalb `HH-mm`. Gebraucht ab dem Weg „Neue Notiz“ (Bestellung B2). */
+export function noteStamp(d: Date): string {
   return `LingoTuner ${localFileStamp(d)}`;
 }
 
@@ -53,6 +60,10 @@ export default class LingoTunerPlugin extends Plugin {
   private labMismatchWarned = false;
   /** Bruecke zu Apples on-device-Modell (Kurzbefehl) — im Konsumenten gebaut, der Manager-Vertrag exponiert keine. */
   private shortcutsBridge!: ShortcutsBridge;
+  /** Der Halter des Panels (Kit `createPromptPanelHost`): Lauf, Sitzung und Anmerkung leben hier, nicht in der Ansicht, und ueberstehen ihr Schliessen. */
+  host!: LingoPanelHost;
+  /** Quelle und eingefuegter Text des Panels: wie der Halter ueber das Schliessen der Ansicht hinaus. */
+  private panelState: { source: SourceKind; freeText: string } = { source: "selection", freeText: "" };
 
   async onload(): Promise<void> {
     setLang(pickLang(safeGetLanguage()));
@@ -98,7 +109,7 @@ export default class LingoTunerPlugin extends Plugin {
     void this.llm.resolve().catch(() => undefined);
     // Der Manager kann jederzeit installiert, aktiviert, deaktiviert oder umkonfiguriert werden —
     // bei jeder solchen Aenderung frisch aufloesen.
-    this.unsubscribeManager = onEndpointManagerChanged(this.app, () => { this.llm.invalidate(); void this.llm.resolve().then(() => { this.panel()?.refresh(); this.panel()?.reloadModels(); }).catch(() => undefined); });
+    this.unsubscribeManager = onEndpointManagerChanged(this.app, () => { this.llm.invalidate(); void this.llm.resolve().then(() => { this.panel()?.refreshModelBar(); this.panel()?.reloadModels(); }).catch(() => undefined); });
 
     // Sofort setzen: sobald das Plugin-Objekt in app.plugins.plugins auftaucht, soll `api` da sein.
     this.api = createLingoTunerApi({
@@ -106,15 +117,26 @@ export default class LingoTunerPlugin extends Plugin {
       run: (text, dials, note, signal) => this.tune({ text, dials, note, signal, quiet: true }),
     });
 
+    const runDeps: TuneRunDeps = {
+      dials: () => this.settings.lastDials,
+      sourceOf: (target) => this.sourceOf(target),
+      tune: (c) => this.tune(c),
+    };
+    this.host = createPromptPanelHost<TuneSession>({
+      plugin: this,
+      name: t("plugin.name"),
+      open: () => { void this.activatePanel(); },
+      statusBar: () => statusBarEnabled(this.settings.showStatusBar),
+      lang: getLang(),
+      fresh: freshSession,
+      run: createTuneRun(runDeps),
+      model: () => this.llm.source().model,
+    });
+    this.register(() => { this.host.destroy(); });
+    const runFromSource = createTuneRun(runDeps, { fromSource: true });
+
     this.registerView(VIEW_TYPE_LINGOTUNER, (leaf: WorkspaceLeaf) => new LingoTunerView(leaf, {
-      readiness: (kind, freeText) => this.readiness(kind, freeText),
-      canReplace: (kind, sourceText) => {
-        const cap = kind === "selection" ? this.tracker.get().selection : this.tracker.get().note;
-        return cap !== null && this.tracker.isLive(cap) && cap.text === sourceText;
-      },
-      presets: () => allPresets(this.settings),
-      getDials: () => this.settings.lastDials,
-      setDials: (d) => { this.settings.lastDials = { ...d }; void this.saveSettings(); },
+      host: this.host,
       // Die Modellzeile (Kit model-bar) spricht die Verbindung direkt an. Die Wahl gehoert der Verbindung: mit Manager
       // `choice.model`, ohne Manager das Modell der aktiven Zeile; „Automatisch“ ist `setModel("")`.
       llm: this.llm,
@@ -131,19 +153,43 @@ export default class LingoTunerPlugin extends Plugin {
           return this.saveSettings();
         },
       },
-      savePreset: (name, dials) => {
-        const { list, replaced } = upsertUserPreset(this.settings.userPresets, name, dials);
+      readTargetText: (target) => this.readTargetText(target),
+      openSettings: () => { this.openSettings(); },
+      pluginId: this.manifest.id,
+      accept: {
+        app: this.app,
+        ports: obsidianWritePorts(this.app),
+        lastEditor: () => activeMarkdownView(this.app.workspace),
+        strings: acceptStrings(),
+        readingMode: "refuse",
+      },
+      ways: (s) => tuneWays(s, () => this.host.session()),
+      controls: () => ({
+        source: this.panelState.source,
+        readiness: readinessOf(this.panelState.source, this.tracker.get(), this.panelState.freeText),
+        freeText: this.panelState.freeText,
+        dials: this.settings.lastDials,
+        presets: allPresets(this.settings),
+      }),
+      onSource: (k) => { this.panelState.source = k; this.offerTarget(); },
+      onFreeText: (v) => { this.panelState.freeText = v; },
+      onDial: (dim, level) => { this.settings.lastDials = { ...this.settings.lastDials, [dim]: level }; void this.saveSettings(); },
+      onPreset: (id) => {
+        const p = allPresets(this.settings).find((x) => x.id === id);
+        if (p === undefined) return;
+        this.settings.lastDials = { ...p.dials };
+        void this.saveSettings();
+        // Die Regler stehen in den Einstellungen, nicht in der Sitzung: neu zeichnen ueber eine Sitzung gleichen Inhalts (der Rahmen vergleicht per Referenz).
+        this.host.setSession({ ...this.host.session() });
+      },
+      savePreset: (name) => {
+        const { list, replaced } = upsertUserPreset(this.settings.userPresets, name, this.settings.lastDials);
         this.settings.userPresets = list;
         void this.saveSettings();
         new Notice(replaced ? t("preset.exists") : t("preset.saved", name));
+        this.host.setSession({ ...this.host.session() });
       },
-      run: (req) => this.runFromPanel(req),
-      output: (kind, text, sourceText, sourceName) => this.output(kind, text, sourceText, sourceName),
-      // Die einzige Stelle, an der die View erfaehrt, wo der Fokus liegt — als Naht, damit
-      // die Weiche in `softDraw()` und das Merken der Cursorposition in `draw()` pruefbar
-      // sind, ohne `activeDocument` zu faelschen.
-      activeElement: () => activeDocument.activeElement,
-      confirm: (o) => confirmAction(this.app, { ...o, warning: true }),
+      runFromSource,
     }));
 
     // Mitschrift der Auswahl: ein Klick ins Panel nimmt dem Editor den Fokus — dann ist es zu spaet.
@@ -156,12 +202,11 @@ export default class LingoTunerPlugin extends Plugin {
       if (this.selectionDebounce !== null) window.clearTimeout(this.selectionDebounce);
       this.selectionDebounce = window.setTimeout(() => {
         this.selectionDebounce = null;
-        this.tracker.capture();
-        this.panel()?.refresh();
+        this.captureAndOffer();
       }, SELECTION_DEBOUNCE_MS);
     });
     this.register(() => { if (this.selectionDebounce !== null) window.clearTimeout(this.selectionDebounce); });
-    this.registerEvent(this.app.workspace.on("active-leaf-change", () => { this.tracker.capture(); this.panel()?.refresh(); }));
+    this.registerEvent(this.app.workspace.on("active-leaf-change", () => { this.captureAndOffer(); }));
 
     this.addRibbonIcon(PANEL_ICON, t("ribbon"), () => { void this.activatePanel(); });
     this.addCommand({ id: "open-panel", name: t("cmd.openPanel"), callback: () => { void this.activatePanel(); } });
@@ -170,7 +215,7 @@ export default class LingoTunerPlugin extends Plugin {
       name: t("cmd.tuneSelection"),
       editorCheckCallback: (checking, editor) => {
         if (editor.getSelection().trim() === "") return false;
-        if (!checking) { this.tracker.capture(); void this.activatePanel(); }
+        if (!checking) { this.panelState.source = "selection"; this.captureAndOffer(); void this.activatePanel(); }
         return true;
       },
     });
@@ -189,14 +234,67 @@ export default class LingoTunerPlugin extends Plugin {
   /** Ist der LLM Endpoint Manager da? Dann entscheidet er (Kit `resolveEndpointSource`: kein lokaler Rueckfall). */
 
   /** Rueckruf der Verbindung (`onResolved`): das offene Panel zieht Modellzeile und Rest aus dem neuen Zustand nach. Loest nie auf. */
-  private onLlmResolved(): void { this.panel()?.refresh(); }
+  private onLlmResolved(): void { this.panel()?.refreshModelBar(); }
+
+  /** Editor-Stand mitschreiben und dem Halter das Ziel der gewaehlten Quelle anbieten; die Schreibwege bewerten ihre Sperrgruende neu. */
+  private captureAndOffer(): void {
+    this.tracker.capture();
+    this.offerTarget();
+    this.panel()?.refreshAccept();
+  }
+
+  /** Bietet das Ziel der gewaehlten Quelle an, aber nur, wenn es ein anderes ist: jedes Angebot meldet `target` (und ohne Runde `session`) und zeichnet neu. */
+  private offerTarget(): void {
+    const target = targetFor(this.panelState.source, this.tracker.get(), {
+      selection: (name) => t("target.selection", name),
+      note: (name) => t("target.note", name),
+      blocked: (r) => t(readinessKey(r)),
+    });
+    const offered = this.host.offered();
+    if (offered !== null ? sameTarget(offered, target) : sameTarget(this.host.session().target, target)) return;
+    this.host.offer(target);
+  }
+
+  /** Text und Quellname des Ziels jetzt (Eingabe eines Laufs aus der Quelle). */
+  private async sourceOf(target: Target): Promise<{ text: string; name: string | null } | { problem: string }> {
+    switch (target.kind) {
+      case "new": {
+        const text = this.panelState.freeText;
+        return text.trim() === "" ? { problem: t("source.emptyText") } : { text, name: null };
+      }
+      case "block":
+        return { text: target.body, name: noteName(target.path) };
+      case "file": {
+        const full = await this.readTargetText(target);
+        if (full === null) return { problem: t("source.noNote") };
+        const { body } = splitFrontmatter(full);
+        return body.trim() === "" ? { problem: t("source.emptyNote") } : { text: body, name: noteName(target.path) };
+      }
+      case "other":
+        return { problem: target.label };
+    }
+  }
+
+  private async readTargetText(target: Target): Promise<string | null> {
+    if (target.kind === "block") return target.body;
+    if (target.kind !== "file") return null;
+    try {
+      return await readNoteText(obsidianWritePorts(this.app), target.path);
+    } catch {
+      return null;
+    }
+  }
+
+  private openSettings(): void {
+    const setting = (this.app as unknown as { setting?: { open(): void; openTabById(id: string): void } }).setting;
+    setting?.open();
+    setting?.openTabById(this.manifest.id);
+  }
 
   private panel(): LingoTunerView | null {
     const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_LINGOTUNER)[0];
     return leaf?.view instanceof LingoTunerView ? leaf.view : null;
   }
-
-  private readiness(kind: SourceKind, freeText: string): Readiness { return readinessOf(kind, this.tracker.get(), freeText); }
 
   private async activatePanel(): Promise<void> {
     const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_LINGOTUNER);
@@ -205,15 +303,6 @@ export default class LingoTunerPlugin extends Plugin {
     if (leaf === null) return;
     await leaf.setViewState({ type: VIEW_TYPE_LINGOTUNER, active: true });
     await this.app.workspace.revealLeaf(leaf);
-  }
-
-  private runFromPanel(req: RunRequest): Promise<TuneResult> {
-    return this.tune({
-      text: req.text, dials: req.dials, note: req.note, signal: req.signal,
-      onToken: (tk) => { req.onToken(tk); },
-      onReasoning: (tk) => { req.onReasoning(tk); },
-      onContentReset: () => { req.onContentReset(); },
-    });
   }
 
   /** EIN Ausfuehrungspfad fuer Panel und API: Endpunkt aufloesen → Overrides → Prompt → Stream → Lab → Logbuch. */
@@ -317,31 +406,5 @@ export default class LingoTunerPlugin extends Plugin {
       }
     }
     return result;
-  }
-
-  private async output(kind: "replace-selection" | "replace-note" | "copy" | "new-note", text: string, sourceText: string, sourceName: string | null): Promise<void> {
-    try {
-      const st = this.tracker.get();
-      if (kind === "copy") { await copyToClipboard(text, { copiedMessage: t("out.copied"), failedMessage: t("out.copyFailed") }); return; }
-      if (kind === "new-note") {
-        const base = sourceName ?? noteStamp(new Date());
-        const file = await createTunedNote(this.app, this.settings.newNoteFolder, base, text);
-        new Notice(t("out.noteCreated", file.path));
-        await this.app.workspace.getLeaf("tab").openFile(file);
-        return;
-      }
-      const cap = kind === "replace-selection" ? st.selection : st.note;
-      if (cap === null) { new Notice(t("source.notLive")); return; }
-      if (cap.text !== sourceText) { new Notice(t("out.sourceChanged")); return; }
-      if (kind === "replace-note") {
-        const ok = await confirmAction(this.app, { title: t("out.confirmNoteTitle"), message: t("out.confirmNoteBody", cap.name), confirmLabel: t("out.confirmNoteOk"), warning: true });
-        if (!ok) return;
-      }
-      const outcome = replaceCapture(this.tracker, cap, text);
-      new Notice(outcome === "ok" ? t("out.replaced") : outcome === "stale" ? t("source.stale") : t("source.notLive"));
-      if (outcome === "ok") { this.tracker.capture(); this.panel()?.refresh(); }
-    } catch (e) {
-      new Notice(e instanceof Error ? e.message : String(e));
-    }
   }
 }
