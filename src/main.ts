@@ -178,7 +178,7 @@ export default class LingoTunerPlugin extends Plugin {
         dials: this.settings.lastDials,
         presets: allPresets(this.settings),
       }),
-      onSource: (k) => { this.panelState.source = k; this.offerTarget(); },
+      onSource: (k) => { this.panelState.source = k; this.offerTarget(); this.panel()?.refreshControls(); },
       onFreeText: (v) => { this.panelState.freeText = v; },
       onDial: (dim, level) => { this.settings.lastDials = { ...this.settings.lastDials, [dim]: level }; void this.saveSettings(); },
       onPreset: (id) => {
@@ -248,6 +248,8 @@ export default class LingoTunerPlugin extends Plugin {
     this.tracker.capture();
     this.offerTarget();
     this.panel()?.refreshAccept();
+    // Die Bereitschaftszeile nennt die Markierung; beim Textfeld nicht neu zeichnen (ein Neuzeichnen naehme dem Tippenden den Fokus, Smoke B10).
+    if (this.panelState.source !== "text") this.panel()?.refreshControls();
   }
 
   /** Bietet das Ziel der gewaehlten Quelle an, aber nur, wenn es ein anderes ist: jedes Angebot meldet `target` (und ohne Runde `session`) und zeichnet neu. */

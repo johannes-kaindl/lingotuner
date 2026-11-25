@@ -108,7 +108,8 @@ const PUNKTE = [
   "B11b Quelltextfeld ist im Lauf gesperrt (Station 3) und danach frei, mit unveraendertem Inhalt",
   "C2 Kopieren freigegeben",
   "C3 Notiz ersetzen schreibt Body ohne Rueckfrage, Frontmatter bleibt, Schnappschuss liegt im Plugin-Ordner",
-  "C4 Neue Notiz: Knopf gesperrt, der Grund steht daneben (Bestellung B2)",
+  "C4 Neue Notiz legt die Notiz im Ordner der Einstellung an, Inhalt ist das Ergebnis, sie oeffnet in einem neuen Tab, die Quellnotiz bleibt unberuehrt",
+  "C12 Markierung ersetzen schreibt nur die markierte Spanne, Cmd+Z (echte Taste) im Editor nimmt es zurueck",
   "C6 Logbuch anlegen und anhaengen",
   "C7 Notiz ersetzen lehnt ab, wenn der Body seit dem Lauf geaendert wurde, und nennt den Grund",
   "C8 Gedanken-Block waehrend des Streams",
@@ -164,7 +165,7 @@ const PUNKTE = [
   "CL3 Fehler mitten im Strom: das Panel zeigt is-error mit der Meldung der API, das Teilergebnis bleibt",
   "G1 Altwert wandert in die Zeile, kein globales Modell in den Einstellungen",
   "G2 Panel-Modellwahl schreibt in die aktive Zeile, „Server waehlt“ leert sie",
-  "LS1 Linkschutz-Haertung (code-kit 0.68.0, dom-guard 0.88.0): rohes HTML mit on*, ping, formaction, form, commandfor, popovertarget und label-for, mitten im laufenden Strom in die Vorschau gesetzt, verliert diese Marker, der https-Link bleibt; Gegenprobe: dasselbe HTML ausserhalb des Beobachters behaelt alle Marker",
+  "LS1 Linkschutz: rohes HTML mit on*, ping, formaction, form, commandfor, popovertarget und label-for als Modellantwort wird weder im laufenden Strom noch in der Vorschau zu Elementen mit diesen Markern, sein Text bleibt lesbar; Gegenprobe: dasselbe HTML per innerHTML behaelt alle Marker",
 ] as const;
 
 const bilanz = createBilanz({ punkte: PUNKTE });
@@ -397,6 +398,105 @@ async function pruefePanel(cdp: Cdp): Promise<void> {
   await cdp.evaluate(`const v = app.workspace.getLeavesOfType("markdown")[0].view; await v.setState({ ...v.getState(), mode: "source" }, { history: false }); app.workspace.trigger("active-leaf-change"); return { ok: true };`);
 }
 
+/** Text der aktiven Runde aus dem Halter (das, was ein Schreibweg schreibt), `null` ohne Runde. */
+async function aktiveAusgabe(cdp: Cdp): Promise<string | null> {
+  return (await cdp.evaluate<{ t: string | null }>(`
+    const r = app.plugins.plugins[${q(PLUGIN_ID)}].host.session().rounds;
+    return { t: r.active >= 0 ? r.rounds[r.active].output : null };
+  `)).t;
+}
+
+/** C4 — „Neue Notiz“ (Kit 0.111.0, `where: "note"`): eigener Lauf auf der Notiz, dann der Knopf. Gemessen: Datei `<Quelle> (tuned).md` im Ordner der Einstellung, Inhalt genau
+ *  die Ausgabe der aktiven Runde, das aktive Blatt zeigt sie (neuer Tab), die Quellnotiz ist unveraendert. Die angelegte Notiz wird danach geloescht. */
+async function pruefeNeueNotiz(cdp: Cdp): Promise<void> {
+  const name = "C4 Neue Notiz legt die Notiz im Ordner der Einstellung an, Inhalt ist das Ergebnis, sie oeffnet in einem neuen Tab, die Quellnotiz bleibt unberuehrt";
+  let angelegt: string | null = null;
+  try {
+    const ok = await laufeTune(cdp);
+    const ausgabe = await aktiveAusgabe(cdp);
+    if (!ok || ausgabe === null) { nichtGemessen(name, `Lauf vor „New note“ nicht gruen (Status ${(await text(cdp, ".okit-prompt-panel-status")) ?? "?"})`); return; }
+    const vor = await cdp.evaluate<{ quelle: string; ordner: string; tabs: number }>(`
+      return { quelle: await app.vault.read(app.vault.getAbstractFileByPath(${q(NOTE)})), ordner: app.plugins.plugins[${q(PLUGIN_ID)}].settings.newNoteFolder, tabs: app.workspace.getLeavesOfType("markdown").length };
+    `);
+    const ordner = vor.ordner.replace(/^\/+|\/+$/g, "");
+    const soll = `${ordner === "" ? "" : `${ordner}/`}${NOTE.replace(/\.md$/, "")} (tuned).md`;
+    const frei = await cdp.evaluate<{ da: boolean; frei: boolean }>(`const b = ${weg("New note")}; return { da: !!b, frei: !!b && !b.disabled };`);
+    if (!frei.frei) { record(name, false, `Knopf „New note“ da=${frei.da}, frei=${frei.frei}`); return; }
+    await clickReal(cdp, weg("New note"));
+    const da = await pollUntil<{ inhalt: string; aktiv: string; tabs: number }>(cdp, `
+      const f = app.vault.getAbstractFileByPath(${q(soll)});
+      if (!f) return null;
+      const aktiv = app.workspace.getMostRecentLeaf(app.workspace.rootSplit)?.view?.file?.path ?? "";
+      if (aktiv !== ${q(soll)}) return null;
+      return { inhalt: await app.vault.read(f), aktiv, tabs: app.workspace.getLeavesOfType("markdown").length };
+    `, 10_000, 250);
+    if (da === null) {
+      const gefunden = await cdp.evaluate<{ p: string[] }>(`return { p: app.vault.getMarkdownFiles().map((f) => f.path).filter((x) => x.includes("(tuned)")) };`);
+      record(name, false, `keine Notiz ${soll} im aktiven Tab (gefunden: ${gefunden.p.join(", ") || "keine"}); Status „${(await text(cdp, ".okit-prompt-panel-status")) ?? "?"}“`);
+      return;
+    }
+    angelegt = soll;
+    const quelleNach = (await cdp.evaluate<{ t: string }>(`return { t: await app.vault.read(app.vault.getAbstractFileByPath(${q(NOTE)})) };`)).t;
+    const inhaltOk = da.inhalt === ausgabe;
+    record(name, inhaltOk && da.tabs === vor.tabs + 1 && quelleNach === vor.quelle,
+      `${soll}: Inhalt ${inhaltOk ? "= Ausgabe der Runde" : `WEICHT AB (${da.inhalt.length} statt ${ausgabe.length} Zeichen)`}, aktiver Tab ${da.aktiv}, Tabs ${vor.tabs} → ${da.tabs}, Quellnotiz ${quelleNach === vor.quelle ? "unveraendert" : "VERAENDERT"}`);
+  } catch (e) {
+    nichtGemessen(name, `Messung abgebrochen: ${(e as Error).message}`);
+  } finally {
+    // Zurueck auf die Quellnotiz im Hauptbereich, die neue Notiz weg: C12 und alles danach arbeiten auf ${NOTE}.
+    await cdp.evaluate(`
+      for (const l of app.workspace.getLeavesOfType("markdown")) if (l.view.file?.path === ${q(angelegt ?? "")}) l.detach();
+      const f = ${angelegt === null ? "null" : `app.vault.getAbstractFileByPath(${q(angelegt)})`};
+      if (f) await app.vault.delete(f);
+      const leaf = app.workspace.getLeavesOfType("markdown").find((l) => l.view.file?.path === ${q(NOTE)});
+      if (leaf) app.workspace.setActiveLeaf(leaf, { focus: true });
+      return { ok: true };
+    `).catch(() => null);
+  }
+}
+
+/** C12 — „Markierung ersetzen“ (Kit 0.111.0, Ziel `selection`): ein Satz in der Mitte der Notiz markiert, Quelle „Selection“, Lauf, Knopf. Gemessen: nur die Spanne
+ *  ist ersetzt (Zeilen davor und danach gleich), danach nimmt Cmd+Z als echte Taste im Editor genau das zurueck. Die Notiz stellt das `finally` von Teil C zurueck. */
+async function pruefeMarkierungErsetzen(cdp: Cdp): Promise<void> {
+  const name = "C12 Markierung ersetzen schreibt nur die markierte Spanne, Cmd+Z (echte Taste) im Editor nimmt es zurueck";
+  const SATZ = "Could you maybe send the report by Friday?";
+  const VORHER = `---\ntype: draft\n---\nErste Zeile bleibt.\n${SATZ}\nLetzte Zeile bleibt.`;
+  try {
+    await cdp.evaluate(`
+      const leaf = app.workspace.getLeavesOfType("markdown").find((l) => l.view.file?.path === ${q(NOTE)});
+      app.workspace.setActiveLeaf(leaf, { focus: true });
+      const ed = leaf.view.editor;
+      ed.setValue(${q(VORHER)});
+      ed.setSelection({ line: 4, ch: 0 }, { line: 4, ch: ${SATZ.length} });
+      app.workspace.trigger("active-leaf-change");
+      return { ok: true };
+    `);
+    await waehleQuelle(cdp, 0);
+    const bereit = await pollUntil<{ ok: boolean }>(cdp, `const b = ${weg("Replace selection")}; return b ? { ok: true } : null;`, 5000, 250);
+    if (bereit === null) { nichtGemessen(name, `kein Knopf „Replace selection“ nach Markierung und Quelle „Selection“ (Kopf „${(await text(cdp, ".okit-prompt-panel-header")) ?? "?"}“)`); return; }
+    const ok = await laufeTune(cdp);
+    const ausgabe = await aktiveAusgabe(cdp);
+    if (!ok || ausgabe === null) { nichtGemessen(name, `Lauf auf der Markierung nicht gruen (Status ${(await text(cdp, ".okit-prompt-panel-status")) ?? "?"})`); return; }
+    const soll = VORHER.replace(SATZ, ausgabe);
+    await clickReal(cdp, weg("Replace selection"));
+    const nach = await pollUntil<{ t: string }>(cdp, `const t = app.workspace.getLeavesOfType("markdown").find((l) => l.view.file?.path === ${q(NOTE)}).view.editor.getValue(); return t !== ${q(VORHER)} ? { t } : null;`, 10_000, 250);
+    if (nach === null || nach.t !== soll) {
+      record(name, false, nach === null ? `Notiz unveraendert; Status „${(await text(cdp, ".okit-prompt-panel-status")) ?? "?"}“` : `geschrieben, aber nicht nur die Spanne: ${JSON.stringify(nach.t.slice(0, 160))}`);
+      return;
+    }
+    // Cmd+Z als echte Taste im Editor (keyDown mit Meta, Befehl „undo“ wie in Chromium auf macOS).
+    await cdp.evaluate(`app.workspace.getLeavesOfType("markdown").find((l) => l.view.file?.path === ${q(NOTE)}).view.editor.focus(); return { ok: true };`);
+    await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "z", code: "KeyZ", windowsVirtualKeyCode: 90, modifiers: 4, commands: ["undo"] });
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "z", code: "KeyZ", windowsVirtualKeyCode: 90, modifiers: 4 });
+    const zurueck = await pollUntil<{ t: string }>(cdp, `const t = app.workspace.getLeavesOfType("markdown").find((l) => l.view.file?.path === ${q(NOTE)}).view.editor.getValue(); return t === ${q(VORHER)} ? { t } : null;`, 5000, 250);
+    record(name, zurueck !== null, `Spanne ersetzt (${SATZ.length} → ${ausgabe.length} Zeichen, Zeilen davor und danach gleich); Cmd+Z ${zurueck !== null ? "stellt den Text wieder her" : "nahm NICHTS zurueck"}`);
+  } catch (e) {
+    nichtGemessen(name, `Messung abgebrochen: ${(e as Error).message}`);
+  } finally {
+    await waehleQuelle(cdp, 1).catch(() => "");
+  }
+}
+
 /** Einen Tune-Lauf ausloesen und auf seinen Endzustand warten. `false` = nicht gruen geworden. */
 async function laufeTune(cdp: Cdp, waehrendDesLaufs?: () => Promise<void>): Promise<boolean> {
   await clickReal(cdp, `document.querySelector(".okit-prompt-panel-send")`);
@@ -517,7 +617,7 @@ async function pruefeGedanken(cdp: Cdp): Promise<void> {
  *  auseinander, und ein vergessener Name faellt nirgends auf: er waere schlicht nicht im
  *  Protokoll, und „nicht gemessen" saehe aus wie „nicht noetig". */
 const C_AUSGAENGE = [
-  "C2 Kopieren freigegeben", "C3 Notiz ersetzen schreibt Body ohne Rueckfrage, Frontmatter bleibt, Schnappschuss liegt im Plugin-Ordner", "C4 Neue Notiz: Knopf gesperrt, der Grund steht daneben (Bestellung B2)",
+  "C2 Kopieren freigegeben", "C3 Notiz ersetzen schreibt Body ohne Rueckfrage, Frontmatter bleibt, Schnappschuss liegt im Plugin-Ordner", "C4 Neue Notiz legt die Notiz im Ordner der Einstellung an, Inhalt ist das Ergebnis, sie oeffnet in einem neuen Tab, die Quellnotiz bleibt unberuehrt", "C12 Markierung ersetzen schreibt nur die markierte Spanne, Cmd+Z (echte Taste) im Editor nimmt es zurueck",
   "C6 Logbuch anlegen und anhaengen", "C7 Notiz ersetzen lehnt ab, wenn der Body seit dem Lauf geaendert wurde, und nennt den Grund",
   "C8 Gedanken-Block waehrend des Streams",
   "C8b Gedanken-Text waechst waehrend des Streams",
@@ -866,11 +966,12 @@ async function pruefeLaufKern(cdp: Cdp): Promise<void> {
     // B11: WAEHREND des Streams in die Anmerkung tippen — gemessen wird nach dem Schluss-Draw.
     const getippt = await tippeWaehrendDesLaufs(cdp);
 
-    // C11, C11b, C11c: eine Messung, drei Teilregeln, ein Strom (`messeFolge` der Bruecke, README § Folge-Messung). Das Panel als Ganzes
-    // scrollt (`.lt-panel`), nicht der Stream-Bereich. Der Strom laeuft, solange `.okit-prompt-panel-status` auf is-checking steht; die Werte
-    // (Ueberlauf >= 80, >= 3 Staende, 24 px, 4 px Toleranz) sind die der Bruecke — ein Hebel fuer „nichts gemessen“ ist die Stub-Laenge.
+    // C11, C11b, C11c: eine Messung, drei Teilregeln, ein Strom (`messeFolge` der Bruecke, README § Folge-Messung). Seit dem Kit-Rahmen (Welle 37) rollt der Rumpf
+    // des Antwortbereichs selbst (`.okit-prompt-panel-stream`, hoechstens 16em), nicht mehr das Panel (`.lt-panel` lief nie ueber: 0 von 3 Staenden); gemessen wird
+    // dort, wie in 3d-codeblocks (`PP_STREAM_BODY`). Nach dem Erfolg leert sich der Antwortbereich und die Vorschau steht darunter: das misst C1. Der Strom laeuft,
+    // solange `.okit-prompt-panel-status` auf is-checking steht; die Werte (Ueberlauf >= 80, >= 3 Staende, 24 px, 4 px Toleranz) sind die der Bruecke.
     const folge = await messeFolge(cdp, {
-      selector: ".lt-panel",
+      selector: ".lt-panel .okit-prompt-panel-stream .okit-stream-body",
       laeuft: () => hasClass(cdp, ".okit-prompt-panel-status", "is-checking"),
       wiederaufnahme: true,
     });
@@ -958,14 +1059,8 @@ async function pruefeLaufKern(cdp: Cdp): Promise<void> {
                        : `Notiz unveraendert; Statuszeile „${(await text(cdp, ".okit-prompt-panel-status")) ?? "?"}“, Dialog ${dialog ? "offen" : "keiner"}`);
     if (dialog) await cdp.evaluate(`document.querySelectorAll(".modal-container .modal-close-button").forEach((b) => b.click()); return { ok: true };`);
 
-    const C4 = "C4 Neue Notiz: Knopf gesperrt, der Grund steht daneben (Bestellung B2)";
-    const neu = await cdp.evaluate<{ da: boolean; gesperrt: boolean; grund: string }>(`
-      const b = ${weg("New note")};
-      const id = b ? b.getAttribute("aria-describedby") : null;
-      const h = id ? document.getElementById(id) : null;
-      return { da: !!b, gesperrt: !!b && b.disabled, grund: h ? h.textContent : "" };
-    `);
-    record(C4, neu.da && neu.gesperrt && /not yet available|noch nicht/i.test(neu.grund), `Knopf „New note“ da=${neu.da}, gesperrt=${neu.gesperrt}, Grund „${neu.grund}“`);
+    await pruefeNeueNotiz(cdp);
+    await pruefeMarkierungErsetzen(cdp);
 
     // --- C8: der Lauf wird abgebrochen und hinterlaesst eine Teilrunde -----------
     denkenAn = true;
@@ -1741,12 +1836,13 @@ async function pruefeGemma(cdp: Cdp): Promise<void> {
   }
 }
 
-/** L1 — Haertung des Linkschutzes (code-kit 0.68.0 `link-guard`, obsidian-kit 0.88.0 `dom-guard`). Modelltext erreicht den Waechter im Normalfall nie: `neutralizeModelMarkdown` maskiert `<` vor dem
- *  Parser (Kit-Doku `dom-guard.ts`). Gemessen wird deshalb das Netz selbst, am echten Fenster: rohes HTML mit `on*`, `ping`, `formaction`, `form`, `commandfor`, `popovertarget`, `label for` und einem
- *  sicheren Link wird per `innerHTML` (kein Obsidian-Sanitizer) mitten im Strom in die Vorschau gesetzt, deren Koerper der Beobachter des `createStableWriter` ueberwacht (`domGuard` ist hier an;
- *  derselbe Beobachter deckt den Vorschau-Block aus `draw()`, der unter `area.bodyEl` liegt). Gegenprobe: dasselbe HTML ausserhalb eines Beobachters muss alle Marker behalten, sonst haette der Punkt nie rot werden koennen. */
+/** L1 — Linkschutz am echten Eingangsweg. Bis Welle 36 setzte der Punkt HTML per `innerHTML` in den Antwortbereich, den ein Beobachter (`createStableWriter`, `domGuard`) im Strom ueberwachte.
+ *  Seit dem Kit-Rahmen (Welle 37) ist der Strom reiner Text (`setText`) und Markdown entsteht erst in der Vorschau nach dem Lauf (`neutralizeModelMarkdown`, dann `renderMarkdownGuarded`, dessen
+ *  Waechter nur waehrend des Renderns haengt): den Beobachter im Strom gibt es nicht mehr. Gemessen wird deshalb, was ein Modell tatsaechlich erreichen kann: der Stub antwortet mit dem rohen HTML,
+ *  gezaehlt wird im laufenden Strom (Rumpf des Antwortbereichs) und nach dem Lauf in der Vorschau (`.lt-result`). Gegenprobe: dasselbe HTML per `innerHTML` ausserhalb behaelt alle Marker, sonst
+ *  haette der Punkt nie rot werden koennen. Den Waechter selbst (Kappen waehrend des Renderns) pruefen die Tests des Kits (`dom-guard`). */
 async function pruefeLinkschutz(cdp: Cdp): Promise<void> {
-  const L1 = "LS1 Linkschutz-Haertung (code-kit 0.68.0, dom-guard 0.88.0): rohes HTML mit on*, ping, formaction, form, commandfor, popovertarget und label-for, mitten im laufenden Strom in die Vorschau gesetzt, verliert diese Marker, der https-Link bleibt; Gegenprobe: dasselbe HTML ausserhalb des Beobachters behaelt alle Marker";
+  const L1 = "LS1 Linkschutz: rohes HTML mit on*, ping, formaction, form, commandfor, popovertarget und label-for als Modellantwort wird weder im laufenden Strom noch in der Vorschau zu Elementen mit diesen Markern, sein Text bleibt lesbar; Gegenprobe: dasselbe HTML per innerHTML behaelt alle Marker";
   const MODELL = "link-modell";
   const MARKER = "__ltOnMarker";
   const HTML = [
@@ -1773,8 +1869,9 @@ async function pruefeLinkschutz(cdp: Cdp): Promise<void> {
   let stub: Awaited<ReturnType<typeof startLlmStub>> | null = null;
   let vorher: unknown = null;
   try {
-    // Langsamer Strom: der Beobachter lebt nur bis zum Ende der Antwort, die Probe muss mitten im Strom einfallen.
-    stub = await startLlmStub({ models: [MODELL], takt: 500, standard: { text: "x", model: MODELL }, antwort: () => ({ stuecke: Array.from({ length: 12 }, (_, i) => `Stueck ${i + 1} laeuft, bitte warten. `), model: MODELL }) });
+    // Langsamer Strom in vier Stuecken: gezaehlt wird, solange er laeuft, und danach in der Vorschau.
+    const stuecke = HTML.match(/.{1,60}/g) ?? [HTML];
+    stub = await startLlmStub({ models: [MODELL], takt: 400, standard: { text: "x", model: MODELL }, antwort: () => ({ stuecke, model: MODELL }) });
     vorher = await cdp.evaluate<unknown>(`return app.plugins.plugins[${q(PLUGIN_ID)}].settings.endpoints;`);
     await cdp.evaluate(`
       const p = app.plugins.plugins[${q(PLUGIN_ID)}];
@@ -1793,38 +1890,36 @@ async function pruefeLinkschutz(cdp: Cdp): Promise<void> {
     `);
     await setzeNotiz(cdp, "Keep the offer of another day.");
     await cdp.evaluate(`delete window.${MARKER}; return { ok: true };`);
-    let d: { laeuft: boolean; laeuftNoch: boolean; gegen: Zahl; mess: Zahl; marker: string } | null = null;
-    await laufeTune(cdp, async () => {
-      d = await pollUntil<{ laeuft: boolean; laeuftNoch: boolean; gegen: Zahl; mess: Zahl; marker: string }>(cdp, `
+    let imStrom: { strom: Zahl; text: number } | null = null;
+    const ok = await laufeTune(cdp, async () => {
+      imStrom = await pollUntil<{ strom: Zahl; text: number }>(cdp, `
         const body = document.querySelector(".okit-prompt-panel-stream .okit-stream-body");
-        if (!body || body.textContent.trim().length === 0) return null;
+        if (!body || !document.querySelector(".okit-prompt-panel-status.is-checking") || !body.textContent.includes("h-form")) return null;
         ${ZAEHLE}
-        const lauf = () => !!document.querySelector(".okit-prompt-panel-status.is-checking");
-        const laeuft = lauf();
-        const aussen = document.body.createDiv();
-        aussen.innerHTML = ${q(HTML)};
-        const gegen = zaehle(aussen);
-        const innen = body.createDiv({ cls: "lt-l1-probe" });
-        innen.innerHTML = ${q(HTML)};
-        await new Promise((r) => setTimeout(r, 800));
-        const mess = zaehle(innen);
-        const laeuftNoch = lauf();
-        innen.remove(); aussen.remove();
-        return { laeuft, laeuftNoch, gegen, mess, marker: String(window.${MARKER}) };`, 20_000, 150);
+        return { strom: zaehle(body), text: body.textContent.length };`, 20_000, 100);
     });
-    const m = d as { laeuft: boolean; laeuftNoch: boolean; gegen: Zahl; mess: Zahl; marker: string } | null;
-    if (m === null) { nichtGemessen(L1, "kein Antwortbereich im laufenden Strom gefunden (nach 20 s)"); return; }
-    // Gueltig nur, wenn der Strom waehrend der ganzen Probe lief: danach ist der Beobachter getrennt, „nicht gekappt“ waere kein Befund ueber den Waechter.
-    if (!m.laeuft || !m.laeuftNoch) { nichtGemessen(L1, `der Strom lief nicht waehrend der Probe (Beginn ${String(m.laeuft)}, Ende ${String(m.laeuftNoch)}): der Beobachter war nicht angehaengt`); return; }
-    const g = m.gegen;
+    const nach = await cdp.evaluate<{ vorschau: Zahl | null; text: string; gegen: Zahl; marker: string }>(`
+      ${ZAEHLE}
+      const v = document.querySelector(".lt-result");
+      const aussen = document.body.createDiv();
+      aussen.innerHTML = ${q(HTML)};
+      const gegen = zaehle(aussen);
+      aussen.remove();
+      return { vorschau: v ? zaehle(v) : null, text: v ? v.textContent : "", gegen, marker: String(window.${MARKER}) };`);
+    const s0 = imStrom as { strom: Zahl; text: number } | null;
+    if (!ok || nach.vorschau === null) { nichtGemessen(L1, `der Lauf mit der HTML-Antwort wurde nicht gruen oder zeigte keine Vorschau (Status ${(await text(cdp, ".okit-prompt-panel-status")) ?? "?"})`); return; }
+    if (s0 === null) { nichtGemessen(L1, "das HTML stand nie im laufenden Strom (nach 20 s): der Strom-Teil ist ungemessen"); return; }
+    const g = nach.gegen;
     const gegenText = `form ${g.forms}, formaction ${g.formaction}, on* ${g.on}, ping ${g.ping}, Seitenbezug-Attribute ${g.seite}, Anker-Attribute [${g.anker?.attrs.join(",")}]`;
     if (!(g.forms >= 1 && g.formaction >= 1 && g.on >= 2 && g.ping >= 1 && g.seite >= 6 && g.anker !== null && g.anker.attrs.length >= 2)) {
-      nichtGemessen(L1, `die Gegenprobe ausserhalb des Beobachters behielt nicht alle Marker (${gegenText}): „gekappt“ waere ohne sie nichts wert`);
+      nichtGemessen(L1, `die Gegenprobe ausserhalb behielt nicht alle Marker (${gegenText}): „sauber“ waere ohne sie nichts wert`);
       return;
     }
-    const e = m.mess;
-    const ok = e.anker !== null && e.anker.h === "https://example.org/ok" && e.anker.attrs.length === 0 && e.forms === 0 && e.formaction === 0 && e.on === 0 && e.ping === 0 && e.seite === 0 && m.marker === "undefined";
-    record(L1, ok, `in der Vorschau (Strom lief): https-Anker ${e.anker ? `da, href ${String(e.anker.h)}, on*/ping [${e.anker.attrs.join(",")}]` : "FEHLT"} · form ${e.forms} · formaction ${e.formaction} · on* ${e.on} · ping ${e.ping} · Seitenbezug-Attribute ${e.seite} · Marker ${m.marker} (verlangt: undefined) · Gegenprobe ausserhalb: ${gegenText} (alle verlangt: Marker da)`);
+    const sauber = (z: Zahl): boolean => z.forms === 0 && z.formaction === 0 && z.on === 0 && z.ping === 0 && z.seite === 0 && (z.anker === null || z.anker.attrs.length === 0);
+    const zeige = (z: Zahl): string => `form ${z.forms} · formaction ${z.formaction} · on* ${z.on} · ping ${z.ping} · Seitenbezug ${z.seite} · Anker ${z.anker ? `[${z.anker.attrs.join(",")}]` : "keiner"}`;
+    const lesbar = ["h-ok", "h-p", "h-form", "h-ref", "h-label"].every((w) => nach.text.includes(w));
+    record(L1, sauber(s0.strom) && sauber(nach.vorschau) && lesbar && nach.marker === "undefined",
+      `im Strom (${s0.text} Zeichen, lief): ${zeige(s0.strom)} · Vorschau: ${zeige(nach.vorschau)}, Text ${lesbar ? "lesbar" : "UNVOLLSTAENDIG"} · Marker ${nach.marker} (verlangt: undefined) · Gegenprobe ausserhalb: ${gegenText} (alle verlangt: Marker da)`);
   } catch (e) {
     if (!aufgezeichnet(L1)) nichtGemessen(L1, `Messung abgebrochen: ${(e as Error).message}`);
   } finally {
@@ -2785,20 +2880,28 @@ async function pruefeSchliessen(cdp: Cdp): Promise<void> {
     if (runden !== 1 || !wieder) {
       nichtGemessen(P2, `Vorbedingung fehlt: Runden ${runden}, Panel wieder offen: ${wieder}`);
     } else {
+      // Der Dialog oeffnet im aktiven Dokument; nach den Einstellungen (Abschnitt G) ist das nicht immer das Hauptfenster (gemessen Welle 37: activeDocument mit 2 Dialogen,
+      // document mit 0). Gesucht wird deshalb in beiden, wie `notices()` der Bruecke; ein Dialog, der schon vor dem Schliessen offen stand, zaehlt nicht. Geklickt wird mit
+      // `.click()` im gefundenen Dokument: `clickReal` erreicht nur das Hauptfenster.
+      const DOKS = `const docs = [...new Set([document, typeof activeDocument !== "undefined" ? activeDocument : document])];`;
+      const vorZu = await cdp.evaluate<{ runden: number; laeuft: boolean; dialoge: number }>(`${DOKS} const p = app.plugins.plugins[${q(PLUGIN_ID)}]; window.__ltAlteDialoge = new Set(docs.flatMap((d) => [...d.querySelectorAll(".modal-container .modal")])); return { runden: ${SITZUNG}.rounds.rounds.length, laeuft: p.host.running(), dialoge: window.__ltAlteDialoge.size };`);
       await cdp.evaluate(schliessen);
-      const frage = await pollUntil<{ t: string }>(cdp, `
-        const m = [...document.querySelectorAll(".modal-container .modal")].at(-1);
-        if (!m) return null;
-        const keep = [...m.querySelectorAll("button")].find((b) => /^(Keep|Behalten)$/.test(b.textContent.trim()));
-        return keep ? { t: m.textContent.trim() } : null;
+      const frage = await pollUntil<{ t: string; haupt: boolean }>(cdp, `
+        ${DOKS}
+        for (const d of docs) for (const m of d.querySelectorAll(".modal-container .modal")) {
+          if (window.__ltAlteDialoge.has(m)) continue;
+          const keep = [...m.querySelectorAll("button")].find((b) => /^(Keep|Behalten)$/.test(b.textContent.trim()));
+          if (keep) { window.__ltKeep = keep; return { t: m.textContent.trim(), haupt: d === document }; }
+        }
+        return null;
       `, 5000, 200);
-      if (frage !== null) await clickReal(cdp, `[...[...document.querySelectorAll(".modal-container .modal")].at(-1).querySelectorAll("button")].find((b) => /^(Keep|Behalten)$/.test(b.textContent.trim()))`);
-      await pollUntil<{ ok: boolean }>(cdp, `return document.querySelector(".modal-container .modal") ? null : { ok: true };`, 3000, 150);
-      const bleibt = (await cdp.evaluate<{ n: number }>(`return { n: ${SITZUNG}.rounds.rounds.length };`)).n;
+      if (frage !== null) await cdp.evaluate(`window.__ltKeep.click(); delete window.__ltKeep; return { ok: true };`);
+      await pollUntil<{ ok: boolean }>(cdp, `${DOKS} return docs.some((d) => [...d.querySelectorAll(".modal-container .modal")].some((m) => !window.__ltAlteDialoge.has(m))) ? null : { ok: true };`, 3000, 150);
+      const bleibt = (await cdp.evaluate<{ n: number }>(`delete window.__ltAlteDialoge; return { n: ${SITZUNG}.rounds.rounds.length };`)).n;
       const auf = await oeffnen();
       const steht = auf && (await pollUntil<{ ok: boolean }>(cdp, `const v = document.querySelector(".lt-result"); return v && /Teil 20/.test(v.textContent) ? { ok: true } : null;`, 5000, 200)) !== null;
       record(P2, frage !== null && bleibt === 1 && steht,
-        `Dialog ${frage === null ? "KAM NICHT" : `„${frage.t.slice(0, 90)}…“`}; nach „Keep“ Runden ${bleibt}, Vorschau nach dem Oeffnen ${steht ? "mit der Runde" : "OHNE Runde"}`);
+        `vor dem Schliessen Runden ${vorZu.runden}, Lauf ${vorZu.laeuft}, schon offene Dialoge ${vorZu.dialoge}; Dialog ${frage === null ? "KAM NICHT" : `„${frage.t.slice(0, 90)}…“ (${frage.haupt ? "Hauptfenster" : "aktives Fenster, nicht das Hauptfenster"})`}; nach „Keep“ Runden ${bleibt}, Vorschau nach dem Oeffnen ${steht ? "mit der Runde" : "OHNE Runde"}`);
     }
   } catch (e) {
     for (const n of [P1, P2]) if (!aufgezeichnet(n)) nichtGemessen(n, `Messung abgebrochen: ${(e as Error).message}`);

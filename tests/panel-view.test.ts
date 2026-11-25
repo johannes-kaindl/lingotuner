@@ -19,6 +19,7 @@ type El = { className: string; children: El[]; textContent?: string; disabled?: 
 
 function build(o: { target?: Target; answer?: string; dials?: Dials } = {}) {
   let dials: Dials = o.dials ?? { ...NEUTRAL, directness: -1 };
+  let source: "selection" | "note" | "text" = "text";
   const answer = o.answer ?? "Hallo **Welt** ![x](https://example.com/x.png)";
   const tune = vi.fn((c: { onToken(x: string): void }): Promise<TuneResult> => { c.onToken(answer); return Promise.resolve({ ok: true, text: answer, reasoning: "", model: "m", truncated: false }); });
   const runDeps = { dials: () => dials, sourceOf: () => Promise.resolve({ text: "Quelle", name: "Mail" }), tune };
@@ -34,7 +35,7 @@ function build(o: { target?: Target; answer?: string; dials?: Dials } = {}) {
     pluginId: "lingotuner",
     accept: { app: {} as never, ports: {} as never, lastEditor: () => null, strings: acceptStrings("en"), readingMode: "refuse" },
     ways: (s) => tuneWays(s, () => host.session(), { folder: () => "", stamp: () => "LingoTuner", open: () => undefined }),
-    controls: () => ({ source: "text", readiness: { kind: "ready", text: "Quelle", chars: 6, name: null }, freeText: "Quelle", dials, presets: [...BUILTIN_PRESETS] }),
+    controls: () => ({ source, readiness: source === "text" ? { kind: "ready", text: "Quelle", chars: 6, name: null } : { kind: "no-note" }, freeText: "Quelle", dials, presets: [...BUILTIN_PRESETS] }),
     ...handlers,
     runFromSource: createTuneRun(runDeps, { fromSource: true }),
   };
@@ -42,7 +43,7 @@ function build(o: { target?: Target; answer?: string; dials?: Dials } = {}) {
   const root = makeFakeEl();
   (view as unknown as { contentEl: unknown }).contentEl = root;
   void view.onOpen();
-  return { view, root, host, tune, handlers };
+  return { view, root, host, tune, handlers, setSource: (k: typeof source) => { source = k; } };
 }
 
 // Der Linkschutz-Waechter (`renderMarkdownGuarded`) braucht ein echtes DOM (MutationObserver, Baumlaeufe); im Fake-DOM wirft er, und die Vorschau faellt auf den
@@ -96,6 +97,18 @@ describe("Panel ueber dem Kit-Rahmen", () => {
     expect(handlers.onDial).toHaveBeenCalledWith("context", 2);
     expect(findAllByClass<El>(root, "lt-dial")[1]).toBe(before);
     expect(findAllByClass<El>(root, "lt-dial-level")[1]?.textContent).toBe(t(levelKey("context", 2)));
+  });
+
+  it("mit offener Runde: refreshControls zeichnet Station 3 nach einem Quellenwechsel neu (Textfeld kommt und geht)", async () => {
+    const { root, view, setSource } = build({ target: { kind: "file", path: "Mail.md", label: "Notiz Mail" } });
+    click(findByClass<El>(root, "okit-prompt-panel-send"));
+    await view.settled();
+    setSource("note");
+    view.refreshControls();
+    expect(findByClass(root, "lt-freetext")).toBeNull();
+    setSource("text");
+    view.refreshControls();
+    expect(findByClass(root, "lt-freetext")).not.toBeNull();
   });
 
   it("Quell-Chip meldet die Wahl an das Plugin", () => {
