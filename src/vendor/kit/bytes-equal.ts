@@ -1,4 +1,4 @@
-// vendored from code-kit@0.91.1, src/ts/pure/bytes-equal.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from code-kit@0.93.0, src/ts/pure/bytes-equal.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /** Two byte arrays hold the same bytes. A full comparison, no hash: for the callers that have both files in memory anyway (a snapshot against the file it
  *  would replace, an attachment against the copy on disk, a recording part against the one already written) and want to know whether a write is needed.
  *

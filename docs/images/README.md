@@ -41,10 +41,11 @@ npm run shots:check                                 # readme_lint, muss „keine
 
 ## Status
 
-Alle vier Bilder neu aufgenommen am 2026-11-25 (Nachlauf Welle 37, Kit-Rahmen, obsidian-kit 0.111.0), Zweitinstanz auf Port 9820 über `messlauf.sh` (`RUNNER=shots`, `VAULT=lingotuner-shots`, `SETUP_BEFEHL="npm run shots -- --setup"`, je Motiv ein Lauf mit eigenem Lock), Obsidian 1.15.1, jedes Bild selbst angesehen. Das Fenster bekommt auf diesem Bildschirm 1200 × 949 statt 1200 × 1000.
+Hero, Rounds und Dials neu aufgenommen am 2026-11-25 abends (Welle 38, obsidian-kit 0.113.0 / code-kit 0.93.0: Quelle als Segment-Schalter, Titel „Style interpreter“), alle vier Motive in einem Lauf über `messlauf.sh` auf Port 9783, jedes Bild selbst angesehen; Settings blieb bytegleich. Vorher: alle vier Bilder neu aufgenommen am 2026-11-25 (Nachlauf Welle 37, Kit-Rahmen, obsidian-kit 0.111.0), Zweitinstanz auf Port 9820 über `messlauf.sh` (`RUNNER=shots`, `VAULT=lingotuner-shots`, `SETUP_BEFEHL="npm run shots -- --setup"`, je Motiv ein Lauf mit eigenem Lock), Obsidian 1.15.1, jedes Bild selbst angesehen. Das Fenster bekommt auf diesem Bildschirm 1200 × 949 statt 1200 × 1000.
 
 - Erster Hero zeigte das `aria-label` „Note“ als Tooltip über dem Panel (der Zeiger ruhte nach dem Klick auf „Tune“): `mausWeg` nimmt den Zeiger vor jeder Aufnahme aus dem Bild.
 - Prüfbilder (kein README-Bild): `npm run shots -- --port <p> --only pruef --bilder <ordner>` nimmt das Panel hell und dunkel bei 300 und 366 px auf, vor dem ersten Lauf und nach zwei Runden, oben und ans Ende gerollt. Sie fanden den Knopftext „Refine this result“ vor der ersten Runde und den Preset-Klick ohne Neuzeichnen (beides behoben, Smoke B5b und B6b). Derselbe Lauf schreibt `tastaturweg.txt`: echte Tab-Taste vom Knopf „New“ bis aus dem Panel heraus; am 2026-11-25 folgten die 28 Schritte den Stationen, mit zwei leeren, namenlosen Fokus-Stopps in der Fußzeile (Rahmen-CSS, Task im Cockpit obsidian-kit).
 
 - Die Zeile der aktiven Runde lief bei 300 px einmal links über (2026-09-26); seither bricht sie um (Smoke R1), im Kit-Rahmen kürzt sie mit Auslassungspunkten.
 - Der Fake-Server-Port 1236 muss frei sein; der Treiber meldet es, wenn nicht.
+- Im Mehrmotiv-Lauf fing der Rückfrage-Dialog beim Schließen mit offener Runde (Smoke P2) den Preset-Klick des zweiten Motivs ab; `panelZustand` verwirft die Sitzung seit Welle 38 vor dem Schließen, und `waehlePreset` prüft, dass der Chip aktiv ist und die Regler sich bewegt haben.

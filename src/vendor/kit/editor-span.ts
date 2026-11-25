@@ -1,4 +1,4 @@
-// vendored from code-kit@0.91.1, src/ts/pure/editor-span.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from code-kit@0.93.0, src/ts/pure/editor-span.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Origin: new in code-kit (Welle 37 Nachlauf, n-kit, B1: the target `selection` of the prompt panel and its write path in obsidian-kit `panel-accept`).
 // Lifted from the two plugins that replace a selection after a model run:
 //   * vault-rag `src/main.ts` (`runTransform`: the range `from..to` must still hold the captured text, else refuse; `editor.replaceRange(lead + result + trail, from, to)`)

@@ -1,4 +1,4 @@
-// vendored from code-kit@0.91.1, src/ts/pure/panel-host.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from code-kit@0.93.0, src/ts/pure/panel-host.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Origin: obsidian-plugins `svg-studio/src/obsidian/panel/shell.ts` (svg-studio@0.1.4) — the state and the run of the panel shell: `session`, `offered`,
 // `kept`, `noEndpoint`, `applying` (Z. 168-182), `run`/`runInner`/`stop`/`settle` (Z. 280-359), `apply` (Z. 361-390), `discard`/`startNew` (Z. 398-416)
 // and the target rule of `setTarget` (Z. 580-595). The drawing (Z. 184-264 and 418-573) stays with the frame; this module is the part that has no DOM.

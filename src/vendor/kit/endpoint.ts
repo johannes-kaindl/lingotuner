@@ -1,4 +1,4 @@
-// vendored from code-kit@0.91.1, src/ts/pure/endpoint.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from code-kit@0.93.0, src/ts/pure/endpoint.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /** Normalisiert eine Endpoint-Eingabe: trailing Slashes + ein trailing `/v1` strippen.
  *  Die Clients hängen `/v1/...` selbst an — enthielte der konfigurierte Endpoint bereits
  *  ein `/v1`, entstünde `…/v1/v1/...` (manche Server, z.B. LM Studio, antworten darauf mit
@@ -21,7 +21,7 @@ export function normalizeEndpoint(endpoint: string): string {
  *
  *  @example
  *  await resolveActiveEndpoint(
- *    ["http://localhost:1234", "http://192.168.178.20:1234"],
+ *    ["http://localhost:1234", "http://192.0.2.20:1234"],
  *    ep => fetchReachable(ep),
  *  ) // → erster erreichbarer, normalisierter Endpoint oder null */
 export async function resolveActiveEndpoint(

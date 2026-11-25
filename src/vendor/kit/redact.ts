@@ -1,5 +1,6 @@
-// vendored from code-kit@0.91.1, src/ts/pure/redact.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from code-kit@0.93.0, src/ts/pure/redact.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // uebernommen aus ghostline/src/core/context.ts (redactText) und settings-assistant/src/core/secrets.ts (redactFields), 2026-10-09; vault-crews/src/core/redact.ts und llm-lab/src/core/redact_secrets.ts + redact_pii.ts (redactKeys, redactKeysInValue, createPiiRedactor), 2026-10-10
+import { escapeRegExp } from "./regexp-escape";
 /** Redaction of secrets, in two entry points (plus a reversible session for text): over free
  *  text and over parsed JSON.
  *
@@ -251,8 +252,6 @@ export interface RedactKeysOptions {
   /** Replaces a key and a Bearer token. Default {@link DEFAULT_KEY_MASK}. Inserted literally. */
   mask?: string;
 }
-
-const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** The strings to look for, longest first. Two per key: the raw form (for unserialised text) AND the form
  *  JSON.stringify writes (a key with `"`, `\` or a line break stands there escaped, and the raw search would never

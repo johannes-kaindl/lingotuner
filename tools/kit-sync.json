@@ -4,7 +4,7 @@
       "ref": "0.113.0"
     },
     "code-kit": {
-      "ref": "0.91.1"
+      "ref": "0.93.0"
     }
   },
   "targets": [
@@ -67,7 +67,8 @@
         "rel-path",
         "prompt-override",
         "editor-span",
-        "filename-policy"
+        "filename-policy",
+        "regexp-escape"
       ]
     },
     {

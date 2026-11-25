@@ -83,6 +83,9 @@ async function startFakeModel(): Promise<Fake> {
 // --- Zustand ---------------------------------------------------------------------------
 async function panelZustand(ws: Cdp): Promise<void> {
   await ws.evaluate(`
+    // Jedes Motiv beginnt ohne Runde, und die Sitzung wird VOR dem Schliessen verworfen: mit offener Runde fragt das Panel beim Schliessen nach (Smoke P2), und der
+    // Dialog fing im Mehrmotiv-Lauf den Preset-Klick von „rounds“ ab (Lauf meldete „alle Regler in der Mitte“; einzeln lief jedes Motiv, Welle 38).
+    app.plugins.plugins[${q(PLUGIN_ID)}].host.discard();
     app.workspace.detachLeavesOfType(${q(VIEW_TYPE)});
     app.workspace.detachLeavesOfType("markdown");
     // Standardbreite zurueck (ein Motiv verbreitert die Sidebar) und leere „Untitled"-Notizen weg:
@@ -146,6 +149,16 @@ async function waehlePreset(ws: Cdp, name: string): Promise<void> {
   `)).i;
   if (idx < 0) throw new Error(`Preset „${name}" nicht gefunden`);
   await clickReal(ws, `document.querySelectorAll(".lt-preset-chip")[${idx}]`);
+  // Der Klick muss ankommen: Chip aktiv und die Regler aus der Mitte (sonst meldet der Lauf spaeter nur „nichts zu aendern“).
+  const an = await pollUntil<{ ok: boolean }>(ws, `
+    const b = document.querySelectorAll(".lt-preset-chip")[${idx}];
+    const werte = [...document.querySelectorAll(".lt-dial-input")].map((i) => i.value);
+    return b && b.classList.contains("is-active") && werte.some((w) => w !== "0") ? { ok: true } : null;
+  `, 3000, 150);
+  if (an === null) {
+    const st = await ws.evaluate<unknown>(`const p = app.plugins.plugins[${q(PLUGIN_ID)}]; return { aktiv: [...document.querySelectorAll(".lt-preset-chip.is-active")].map((b) => b.textContent), regler: [...document.querySelectorAll(".lt-dial-input")].map((i) => i.value), lastDials: p.settings.lastDials, panels: document.querySelectorAll(".lt-panel").length, chips: document.querySelectorAll(".lt-preset-chip").length };`);
+    throw new Error(`Preset „${name}“ nicht uebernommen: ${JSON.stringify(st)}`);
+  }
   await sleep(300);
 }
 
