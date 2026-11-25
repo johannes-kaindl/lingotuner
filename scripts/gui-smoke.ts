@@ -94,6 +94,8 @@ const PUNKTE = [
   "B3 vier Preset-Chips",
   "B4 Notiz als Quelle erkannt",
   "B5 Noop: Senden bleibt frei, die Statuszeile nennt den Grund, kein Lauf",
+  "B5b Sendeknopf heisst vor der ersten Runde Tune (nicht Refine this result)",
+  "B6b Preset-Klick zeichnet Chip und Regler sofort neu",
   "B7 Preset zeigt (angepasst)",
   "B8 Textfeld-Quelle zeigt Textarea",
   "B10 Tippen ins Textfeld behaelt den Fokus",
@@ -366,6 +368,26 @@ async function pruefePanel(cdp: Cdp): Promise<void> {
   `, 5000, 200);
   record("B5 Noop: Senden bleibt frei, die Statuszeile nennt den Grund, kein Lauf", noopFrei && noop !== null && noop.runden === 0,
     noop === null ? `Senden frei=${noopFrei}, Statuszeile: „${(await text(cdp, ".okit-prompt-panel-status")) ?? "?"}“` : `Senden frei=${noopFrei}, Statuszeile „${noop.t.trim()}“, Runden ${noop.runden}`);
+  // B5b/B6b aus den Pruefbildern des Nachlaufs (Welle 37): vor der ersten Runde stand „Refine this result“ auf dem Knopf, und ein Preset-Klick
+  // zeichnete Station 3 erst beim naechsten Lauf neu (der Rahmen vergleicht die Sitzung feldweise, eine Kopie gleichen Inhalts zeichnet nichts).
+  const sendText = ((await text(cdp, ".okit-prompt-panel-send")) ?? "").trim();
+  record("B5b Sendeknopf heisst vor der ersten Runde Tune (nicht Refine this result)", sendText === "Tune", `Knopf „${sendText}“, Quelle Notiz, ${await cdp.evaluate<number>(`return ${SITZUNG}.rounds.rounds.length;`)} Runden`);
+  const presetIdx = await cdp.evaluate<number>(`return [...document.querySelectorAll(".lt-preset-chip")].findIndex((b) => (b.textContent || "").trim() === "Maximum clarity");`);
+  if (presetIdx < 0) {
+    nichtGemessen("B6b Preset-Klick zeichnet Chip und Regler sofort neu", "Chip „Maximum clarity“ nicht gefunden");
+  } else {
+    await clickReal(cdp, `document.querySelectorAll(".lt-preset-chip")[${presetIdx}]`);
+    const neu = await pollUntil<{ aktiv: string; werte: string[] }>(cdp, `
+      const aktiv = document.querySelector(".lt-preset-chip.is-active");
+      const werte = [...document.querySelectorAll(".lt-dial-input")].map((i) => i.value);
+      return aktiv && (aktiv.textContent || "").trim() === "Maximum clarity" ? { aktiv: aktiv.textContent.trim(), werte } : null;
+    `, 2000, 100);
+    const st = neu ?? await cdp.evaluate<{ aktiv: string; werte: string[] }>(`return { aktiv: (document.querySelector(".lt-preset-chip.is-active")?.textContent || "keiner").trim(), werte: [...document.querySelectorAll(".lt-dial-input")].map((i) => i.value) };`);
+    record("B6b Preset-Klick zeichnet Chip und Regler sofort neu", neu !== null && neu.werte.every((w) => w !== "0"), `aktiv „${st.aktiv}“, Regler ${st.werte.join("/")} (innerhalb 2 s nach dem Klick, ohne Lauf)`);
+    // Zurueck auf Neutral, damit B7 und die Folgepunkte vom Ausgangszustand ausgehen.
+    await clickReal(cdp, `document.querySelectorAll(".lt-preset-chip")[0]`);
+    await new Promise((r) => setTimeout(r, 300));
+  }
   await cdp.evaluate(`const i = document.querySelectorAll(".lt-dial-input")[2]; i.value = "2"; i.dispatchEvent(new Event("input", { bubbles: true })); return { ok: true };`);
   // Gemessen wird der TEXT, nicht die Existenz: der Marker ist seit dem Fokus-Fix ein fester
   // Platzhalter im DOM (ein Reglerzug schaltet ihn um, ohne die Zeile neu zu bauen — sonst
@@ -1046,16 +1068,19 @@ async function pruefeLaufKern(cdp: Cdp): Promise<void> {
     const C3 = "C3 Notiz ersetzen schreibt Body ohne Rueckfrage, Frontmatter bleibt, Schnappschuss liegt im Plugin-Ordner";
     const schnappschuesse = `
       const wurzel = app.vault.configDir + "/plugins/${PLUGIN_ID}/snapshots";
-      const zaehle = async (d) => { if (!(await app.vault.adapter.exists(d))) return 0; const l = await app.vault.adapter.list(d); let n = l.files.length; for (const f of l.folders) n += await zaehle(f); return n; };
-      return { n: await zaehle(wurzel) };`;
-    const snapVor = (await cdp.evaluate<{ n: number }>(schnappschuesse)).n;
+      const sammle = async (d) => { if (!(await app.vault.adapter.exists(d))) return []; const l = await app.vault.adapter.list(d); let out = [...l.files]; for (const f of l.folders) out = out.concat(await sammle(f)); return out; };
+      return { dateien: await sammle(wurzel) };`;
+    // Gemessen wird der NEUE Stand, nicht die Zahl: die Staffelung des Kits haelt je Datei hoechstens sechs Staende „heute“ und raeumt beim Schreiben
+    // den aeltesten weg; nach mehreren Laeufen am selben Tag blieb die Zahl gleich (7 → 7, Nachlauf Welle 37), obwohl ein Stand entstanden war (CORE-TEST-21).
+    const snapVor = (await cdp.evaluate<{ dateien: string[] }>(schnappschuesse)).dateien;
     const stand = (await cdp.evaluate<{ t: string }>(`return { t: await app.vault.read(app.vault.getAbstractFileByPath(${q(NOTE)})) };`)).t;
     await clickReal(cdp, `${weg("Replace note")}`);
     const changed = await pollUntil<{ t: string }>(cdp, `const t = app.workspace.getMostRecentLeaf(app.workspace.rootSplit).view.editor.getValue(); return t !== ${q(stand)} ? { t } : null;`, 10_000, 250);
     const dialog = (await count(cdp, ".modal-container .modal")) > 0;
-    const snapNach = (await cdp.evaluate<{ n: number }>(schnappschuesse)).n;
-    record(C3, changed !== null && changed.t.startsWith("---\ntype: draft\n---") && !dialog && snapNach === snapVor + 1,
-      changed !== null ? `Body ersetzt, Frontmatter ${changed.t.startsWith("---\ntype: draft\n---") ? "steht" : "WEG"}, Dialog ${dialog ? "OFFEN" : "keiner"}, Schnappschuesse ${snapVor} → ${snapNach}`
+    const snapNach = (await cdp.evaluate<{ dateien: string[] }>(schnappschuesse)).dateien;
+    const snapNeu = snapNach.filter((f) => !snapVor.includes(f));
+    record(C3, changed !== null && changed.t.startsWith("---\ntype: draft\n---") && !dialog && snapNeu.length === 1,
+      changed !== null ? `Body ersetzt, Frontmatter ${changed.t.startsWith("---\ntype: draft\n---") ? "steht" : "WEG"}, Dialog ${dialog ? "OFFEN" : "keiner"}, Schnappschuesse ${snapVor.length} → ${snapNach.length}, neu: ${snapNeu.length === 0 ? "keiner" : snapNeu.map((f) => f.split("/").slice(-2).join("/")).join(", ")}`
                        : `Notiz unveraendert; Statuszeile „${(await text(cdp, ".okit-prompt-panel-status")) ?? "?"}“, Dialog ${dialog ? "offen" : "keiner"}`);
     if (dialog) await cdp.evaluate(`document.querySelectorAll(".modal-container .modal-close-button").forEach((b) => b.click()); return { ok: true };`);
 

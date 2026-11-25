@@ -74,7 +74,6 @@ export const STRINGS = {
 
     "run.tune": "Tune",
     "run.retune": "Tune again from source",
-    "run.refine": "Refine this result",
     "run.abort": "Cancel",
     "run.reset": "Reset",
     "run.resetTitle": "Discard this session?",
@@ -277,7 +276,6 @@ export const STRINGS = {
 
     "run.tune": "Tunen",
     "run.retune": "Neu aus der Quelle tunen",
-    "run.refine": "Dieses Ergebnis nachschärfen",
     "run.abort": "Abbrechen",
     "run.reset": "Zurücksetzen",
     "run.resetTitle": "Diese Sitzung verwerfen?",

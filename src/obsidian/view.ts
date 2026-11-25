@@ -82,7 +82,9 @@ export function panelStrings(): Partial<PromptPanelStrings> {
     promptLabel: t("note.label"),
     instructionOptional: t("note.placeholder"),
     create: t("run.tune"),
-    refine: t("run.refine"),
+    // Der Rahmen meint mit `refine` „bestehenden Text ändern“ (Markierung oder Notiz), schon vor der ersten Runde; „Tune“ stimmt in beiden Lagen: ohne Runde tunt der
+    // Knopf die Quelle, mit Runde die aktive Runde. „Tune again from source“ steht über den Runden.
+    refine: t("run.tune"),
     reasoning: t("preview.thinking"),
     emptyText: "",
     examples: [],

@@ -22,11 +22,13 @@
  * Ende zurueck.
  */
 
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { argv, cwd, exit } from "node:process";
 
 import { Cdp, attachTo, bereiteInstanzVor, clickReal, pollUntil, requireUntil, requireVisible, schliesseEinstellungen, setAppConfig, setPluginSetting } from "../../tools/obsidian-cdp/cdp.js";
 import { startLlmStub, type LlmStub } from "../../tools/obsidian-cdp/llm-stub.js";
-import { boxAround, capture, setWindowSize, writeShot, type Rect } from "../../tools/obsidian-cdp/shot.js";
+import { boxAround, boxOf, capture, setWindowSize, writeShot, type Rect } from "../../tools/obsidian-cdp/shot.js";
 import { buildVault, stagingVaultDir } from "../../tools/obsidian-cdp/vault.js";
 
 const PLUGIN_ID = "lingotuner";
@@ -145,22 +147,24 @@ async function waehlePreset(ws: Cdp, name: string): Promise<void> {
   await sleep(300);
 }
 
-async function tune(ws: Cdp, selector = ".lt-run"): Promise<void> {
-  await clickReal(ws, `document.querySelector(${q(selector)})`);
+/** Senden und warten, bis der Rahmen fertig meldet. `runden`: so viele Zeilen muss die Rundenliste danach tragen (die Liste erscheint erst ab zwei Runden; ab der zweiten Runde steht der Status schon vorher auf is-ok). */
+async function tune(ws: Cdp, runden = 0): Promise<void> {
+  await clickReal(ws, `document.querySelector(".okit-prompt-panel-send")`);
   const fertig = await pollUntil<{ ok: boolean }>(ws, `
-    const s = document.querySelector(".lt-status");
-    return s && s.classList.contains("is-ok") ? { ok: true } : null;
+    const s = document.querySelector(".okit-prompt-panel-status");
+    if (!s || !s.classList.contains("is-ok")) return null;
+    return document.querySelectorAll(".okit-prompt-panel-rounds .okit-vlist-row").length >= ${runden} ? { ok: true } : null;
   `, 30_000, 300);
   if (fertig === null) {
-    const st = await ws.evaluate<{ cls: string; label: string }>(`const s = document.querySelector(".lt-status"); const l = document.querySelector(".lt-status .okit-status-label"); return { cls: s ? s.className : "kein .lt-status", label: l ? l.textContent : "" };`);
-    throw new Error(`Lauf wird nicht fertig (Status nie is-ok): ${st.cls} · „${st.label}"`);
+    const st = await ws.evaluate<{ cls: string; label: string }>(`const s = document.querySelector(".okit-prompt-panel-status"); const l = document.querySelector(".okit-prompt-panel-status .okit-status-label"); return { cls: s ? s.className : "kein .okit-prompt-panel-status", label: l ? l.textContent : "" };`);
+    throw new Error(`Lauf wird nicht fertig (Status nie is-ok oder zu wenige Runden): ${st.cls} · „${st.label}"`);
   }
-  await sleep(500);
+  await sleep(800);   // die Vorschau rendert Markdown nach dem Ende des Stroms
 }
 
 async function notiz(ws: Cdp, text: string): Promise<void> {
   await ws.evaluate(`
-    const el = document.querySelector(".lt-note");
+    const el = document.querySelector(".okit-prompt-panel-input");
     el.value = ${q(text)};
     el.dispatchEvent(new Event("input", { bubbles: true }));
     return { ok: true };
@@ -182,7 +186,7 @@ const MOTIVE: Motiv[] = [
       await panelZustand(ws);
       await oeffneMitMarkierung(ws);
       await waehlePreset(ws, "Maximum clarity");
-      await tune(ws);
+      await tune(ws, 0);
       return ganzesFenster(ws);
     },
   },
@@ -193,10 +197,10 @@ const MOTIVE: Motiv[] = [
       await panelZustand(ws);
       await oeffneMitMarkierung(ws);
       await waehlePreset(ws, "Maximum clarity");
-      await tune(ws);
+      await tune(ws, 0);
       fake.setAnswer(ANSWERS.refined);
       await notiz(ws, "Keep the offer of another day.");
-      await tune(ws, ".lt-refine");
+      await tune(ws, 2);
       return ganzesFenster(ws);
     },
   },
@@ -206,12 +210,55 @@ const MOTIVE: Motiv[] = [
       await panelZustand(ws);
       await oeffneMitMarkierung(ws);
       await waehlePreset(ws, "Collegial");
-      const box = await boxAround(ws, [".lt-sources", ".lt-outputs"], 4);
+      // Vom Ziel (Station 1) bis zum Knopf Tune (Station 4); Statuszeile und Vorschau zeigt der Rahmen erst mit einem Lauf.
+      const box = await boxAround(ws, [".okit-prompt-panel-top", ".okit-prompt-panel-send"], 4);
       if (!box) throw new Error("Panel-Bereiche nicht gefunden");
       return capture(ws, box, 2);
     },
   },
 ];
+
+// --- Pruefbilder (kein README-Bild) ------------------------------------------------------
+/** Das Panel hell und dunkel bei Seitenleistenbreite (300 px) und bei 366 px, vor dem ersten Lauf und nach zwei Runden, je oben und
+ *  ganz nach unten gerollt. Fuer die Layout-Pruefung vor einem Release (alle Bedienteile erreichbar, nichts abgeschnitten); die Bilder
+ *  gehen in `--bilder`/`--out`, nie nach `docs/images/`. Aufruf: `npm run shots -- --port <p> --only pruef --bilder <ordner>`. */
+async function pruefBilder(ws: Cdp, fake: Fake, outDir: string): Promise<string[]> {
+  if (outDir === "docs/images") throw new Error("--only pruef braucht --bilder <ordner> (Pruefbilder gehoeren nicht nach docs/images)");
+  mkdirSync(outDir, { recursive: true });
+  const geschrieben: string[] = [];
+  const rollbereich = `(() => { let el = document.querySelector(".okit-prompt-panel"); while (el && el !== document.body) { const o = getComputedStyle(el).overflowY; if ((o === "auto" || o === "scroll") && el.scrollHeight > el.clientHeight) return el; el = el.parentElement; } return null; })()`;
+  const reihe = async (stand: string): Promise<void> => {
+    for (const thema of ["moonstone", "obsidian"] as const) {
+      await setAppConfig(ws, "theme", thema);
+      for (const breite of [300, 366]) {
+        await ws.evaluate(`app.workspace.rightSplit.setSize(${breite}); await new Promise((r) => setTimeout(r, 500)); return { ok: true };`);
+        for (const lage of ["oben", "unten"] as const) {
+          const m = await ws.evaluate<{ rollt: boolean; h: number; c: number }>(`const r = ${rollbereich}; if (r) r.scrollTop = ${lage === "oben" ? 0 : "r.scrollHeight"}; return { rollt: Boolean(r), h: r ? r.scrollHeight : 0, c: r ? r.clientHeight : 0 };`);
+          if (lage === "unten" && !m.rollt) continue;   // passt alles in die Hoehe, reicht das obere Bild
+          await sleep(300);
+          const box = await boxOf(ws, ".lt-panel");
+          if (!box) throw new Error("Panel nicht sichtbar");
+          const datei = join(outDir, `pruef-${stand}-${thema === "moonstone" ? "hell" : "dunkel"}-${breite}-${lage}.png`);
+          writeFileSync(datei, await capture(ws, box, 2));
+          geschrieben.push(`${datei} (Panel ${Math.round(box.width)} px, Rollbereich ${m.rollt ? `${m.h}/${m.c}` : "keiner"})`);
+        }
+      }
+    }
+    await setAppConfig(ws, "theme", "moonstone");
+    await ws.evaluate(`app.workspace.rightSplit.setSize(300); return { ok: true };`);
+  };
+  fake.setAnswer(ANSWERS.clarity);
+  await panelZustand(ws);
+  await oeffneMitMarkierung(ws);
+  await waehlePreset(ws, "Maximum clarity");
+  await reihe("bereit");
+  await tune(ws, 0);
+  fake.setAnswer(ANSWERS.refined);
+  await notiz(ws, "Keep the offer of another day.");
+  await tune(ws, 2);
+  await reihe("runden");
+  return geschrieben;
+}
 
 /** Einstellungen: ab Obsidian 1.13 ein eigenes Fenster ohne `window.app`. */
 async function settingsBild(ws: Cdp, port: number, outDir: string): Promise<string> {
@@ -275,7 +322,7 @@ async function main(): Promise<void> {
   const port = Number(flag("port"));
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("--port <1024-65535> ist Pflicht (Port deiner Zweitinstanz) — kein Standardport.");
   const only = flag("only");
-  const outDir = flag("out") ?? "docs/images";
+  const outDir = flag("bilder") ?? flag("out") ?? "docs/images";   // --bilder: so reicht messlauf.sh (BILDER) den Ordner durch
 
   const ws = await attachTo("workspace", port, VAULT_NAME);
   if (!ws) throw new Error(`Kein Obsidian-Fenster fuer Vault „${VAULT_NAME}" auf Port ${port}`);
@@ -297,6 +344,10 @@ async function main(): Promise<void> {
     await sleep(600);
 
     fake = await startFakeModel();
+    if (only === "pruef") {
+      for (const zeile of await pruefBilder(ws, fake, outDir)) console.log("  ✓", zeile);
+      return;
+    }
     const wanted = MOTIVE.filter((m) => only === undefined || m.name === only);
     for (const m of wanted) {
       const png = await m.nimm(ws, fake, port);

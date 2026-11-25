@@ -62,6 +62,16 @@ describe("Panel ueber dem Kit-Rahmen", () => {
     expect(findByClass<El>(root, "okit-prompt-panel-send")?.textContent).toBe(t("run.tune"));
   });
 
+  // Der Rahmen nennt eine Quelle aus der Notiz eine Aenderung (`taskKind` = refine) schon vor der ersten Runde; „Refine this result“ stand dort, ohne dass es ein
+  // Ergebnis gab (Pruefbilder Nachlauf Welle 37). Der Knopf heisst darum immer „Tune“: vor der ersten Runde tunt er die Quelle, danach die aktive Runde.
+  it.each([
+    ["Markierung", { kind: "selection", path: "a.md", from: 0, to: 6, label: "Markierung in a", text: "Quelle" }],
+    ["Notiz", { kind: "file", path: "a.md", label: "a" }],
+  ] as const)("Quelle %s ohne Runde: der Sendeknopf heisst Tune, nicht Refine this result", (_name, target) => {
+    const { root } = build({ target: target as Target });
+    expect(findByClass<El>(root, "okit-prompt-panel-send")?.textContent).toBe(t("run.tune"));
+  });
+
   it("Senden mit leerer Anmerkung startet den Lauf (instructionOptional); das Ergebnis steht mit Kopierknopf in der Vorschau", async () => {
     const { root, view, tune } = build();
     click(findByClass<El>(root, "okit-prompt-panel-send"));

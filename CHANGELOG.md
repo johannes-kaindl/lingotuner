@@ -8,7 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- **The system prompt can be edited in the settings** („System prompt“, shared library obsidian-kit 0.110.0 `system-prompt-setting`). It replaces the role and rules at the top of the prompt; the dial instructions, example pairs and the note are added as before. Order: the settings field (if not empty), then `system.md` in the override folder, then the shipped text. Leaving it empty keeps the shipped text, which follows later updates; "Load shipped prompt" fills the field without saving, "Reset" copies own text to the clipboard first.
+- **The system prompt can be edited in the settings** („System prompt“, shared library obsidian-kit 0.110.0 `system-prompt-setting`). It replaces the role and rules at the top of the prompt; the dial instructions, example pairs and the note are added as before. Order: the settings field (if not empty), then `system.md` in the override folder, then the shipped text. Leaving it empty keeps the shipped text, which follows later updates; "Edit shipped prompt" fills the empty field without saving, "Reset to the shipped prompt" copies your own text to the clipboard first.
 
 ### Changed
 
@@ -25,6 +25,12 @@ All notable changes to this project are documented here. The format follows
 - **"New note" is created by the shared library** (`createNote`): same folder setting and name as before (`<source note> (tuned).md`, pasted text `LingoTuner <date time> (tuned).md`, a taken name gets ` 2`, ` 3` …), opened in a new tab. The name now passes through the filename policy (the Filename Sanitizer plugin, if installed), and the panel stays on its source afterwards.
 - **Text typed into the note field during a run is kept** when the run ends (shared library fix B11).
 - **Nothing to do is reported, not blocked:** with all dials in the middle and an empty note, Tune stays clickable and the status line says why nothing was sent.
+- **README, getting-started guide, troubleshooting and screenshots describe the new panel**: the ways out per source, the copy button on the preview, the snapshot before writing, runs that survive closing the panel, and the system prompt setting.
+
+### Fixed
+
+- **The send button says "Tune" before the first round.** With a selection or the active note as the source, it read "Refine this result" although there was no result yet; it now reads "Tune" before and after the first round (with a round, it tunes the result you are looking at).
+- **Clicking a preset moves the dials at once.** Since the panel moved onto the shared frame, the chip and the dials only redrew with the next run; the run itself already used the preset.
 
 ## [0.15.3] — 2026-11-24
 

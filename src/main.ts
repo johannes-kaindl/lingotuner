@@ -186,15 +186,16 @@ export default class LingoTunerPlugin extends Plugin {
         if (p === undefined) return;
         this.settings.lastDials = { ...p.dials };
         void this.saveSettings();
-        // Die Regler stehen in den Einstellungen, nicht in der Sitzung: neu zeichnen ueber eine Sitzung gleichen Inhalts (der Rahmen vergleicht per Referenz).
-        this.host.setSession({ ...this.host.session() });
+        // Die Regler stehen in den Einstellungen, nicht in der Sitzung: Station 3 selbst neu zeichnen. Eine Sitzungskopie gleichen Inhalts zeichnete nichts (der Rahmen
+        // vergleicht feldweise, `sameKey`): Chip und Regler sprangen erst beim naechsten Lauf (Smoke B6b, Nachlauf Welle 37).
+        this.panel()?.refreshControls();
       },
       savePreset: (name) => {
         const { list, replaced } = upsertUserPreset(this.settings.userPresets, name, this.settings.lastDials);
         this.settings.userPresets = list;
         void this.saveSettings();
         new Notice(replaced ? t("preset.exists") : t("preset.saved", name));
-        this.host.setSession({ ...this.host.session() });
+        this.panel()?.refreshControls();
       },
       runFromSource,
     }));
