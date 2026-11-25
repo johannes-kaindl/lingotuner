@@ -417,15 +417,15 @@ async function pruefMobil(halter: { ws: Cdp }, fake: Fake, outDir: string, port:
     if (!flags.phone) throw new Error(`is-phone nicht gesetzt bei ${flags.w}x${flags.h} (Klassen: ${flags.tablet ? "is-tablet" : "keine Telefonklasse"}) - die Messung waere keine Telefonmessung`);
     await ws.evaluate(`app.vault.setConfig("nativeMenus", false); return { ok: true };`);
 
-    // Landeplatz: der Weg des Befehls „LingoTuner: Open panel“, auf leerem Blatt (ohne Markierung)
+    // Landeplatz: der Weg des Befehls „LingoTuner: Open style interpreter“, auf leerem Blatt (ohne Markierung)
     fake.setAnswer(ANSWERS.clarity);
     await panelZustand(ws);
     await ws.evaluate(`app.commands.executeCommandById(${q(`${PLUGIN_ID}:open-panel`)}); return { ok: true };`);
     const da0 = await pollUntil<{ ok: boolean }>(ws, `return document.querySelector(".lt-panel") ? { ok: true } : null;`, 10_000, 300);
-    if (da0 === null) throw new Error("Open panel oeffnet im Mobil-Modus kein Panel");
+    if (da0 === null) throw new Error("Open style interpreter oeffnet im Mobil-Modus kein Panel");
     await sleep(900);
     const platz = await ws.evaluate<Record<string, unknown>>(LANDEPLATZ);
-    aus(`Landeplatz (Befehl Open panel, kein Editor offen): ${JSON.stringify(platz)}`);
+    aus(`Landeplatz (Befehl Open style interpreter, kein Editor offen): ${JSON.stringify(platz)}`);
     alleMasse["landeplatz"] = platz;
     await panelZustand(ws);
     await oeffneMitMarkierung(ws);

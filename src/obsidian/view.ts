@@ -109,7 +109,7 @@ export class LingoTunerView extends ItemView {
   constructor(leaf: WorkspaceLeaf, private readonly deps: ViewDeps) { super(leaf); }
 
   getViewType(): string { return VIEW_TYPE_LINGOTUNER; }
-  getDisplayText(): string { return t("plugin.name"); }
+  getDisplayText(): string { return t("view.title"); }
   getIcon(): string { return PANEL_ICON; }
 
   onOpen(): Promise<void> {

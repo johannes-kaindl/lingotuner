@@ -63,7 +63,7 @@ Copy `main.js`, `manifest.json` and `styles.css` into `<vault>/.obsidian/plugins
 
 ## Usage
 
-1. Open the panel — ribbon icon (a speaking head) or the command **Open panel**. With text selected, **Open panel with selection** opens the panel and takes the selection with it.
+1. Open the panel — ribbon icon (a speaking head) or the command **Open style interpreter** (the panel's title). With text selected, **Open style interpreter with selection** opens the panel and takes the selection with it.
 2. Pick a source: **Selection**, **Active note** or **Text field**. The status line says what was picked up ("Selection: 412 characters in Mail to X") or why nothing can run ("Select some text in a note first", "The note is in reading mode").
 3. Move the dials or pick a preset, and add a note if something specific should change.
 4. Press **Tune**. The answer streams in as plain text and becomes a rendered preview with a copy button when it is done. **Cancel** stops the run: the partial text stays visible, but no round is kept. With every dial in the middle and an empty note, Tune sends nothing and the status line says there is nothing to change.

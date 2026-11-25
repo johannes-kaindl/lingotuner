@@ -23,6 +23,11 @@ All notable changes to this project are documented here. The format follows [Kee
 - **"New note" is created by the shared library** (`createNote`): same folder setting and name as before (`<source note> (tuned).md`, pasted text `LingoTuner <date time> (tuned).md`, a taken name gets ` 2`, ` 3` …), opened in a new tab. The name now passes through the filename policy (the Filename Sanitizer plugin, if installed), and the panel stays on its source afterwards.
 - **Text typed into the note field during a run is kept** when the run ends (shared library fix B11).
 - **Nothing to do is reported, not blocked:** with all dials in the middle and an empty note, Tune stays clickable and the status line says why nothing was sent.
+- **The panel is called "Style interpreter"** (German „Stil-Dolmetscher“) instead of the plugin name, and its commands say what they open: **Open style interpreter** and **Open style interpreter with selection** (before: "Open panel", "Open panel with selection"; UI-STANDARD §11). The command ids stay the same, hotkeys keep working.
+- **The source is a segmented switch** (obsidian-kit 0.112.0 `buildSegmentedControl`): Selection · Active note · Text field as one radio group with arrow keys, filling the row; in a narrow sidebar the labels wrap instead of pushing the panel wider.
+- **Touch targets on the phone are at least 44 px**: the source switch, the preset chips, the save-preset button and the four dials (before: 21.5 px chips, 6 px dial track).
+- **The selection is captured by the shared library** (obsidian-kit 0.112.0 `captureSelection`, `mainMarkdownView`): it also finds a note in a pop-out window, and with no note open at all the panel says "no note" instead of showing an old selection.
+- **Removed 47 interface texts that nothing displayed any more** (left over from the panel before the shared frame); a test now keeps every text in use.
 - **README, getting-started guide, troubleshooting and screenshots describe the new panel**: the ways out per source, the copy button on the preview, the snapshot before writing, runs that survive closing the panel, and the system prompt setting.
 
 ### Fixed

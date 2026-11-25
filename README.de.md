@@ -63,7 +63,7 @@ Danach `main.js`, `manifest.json` und `styles.css` nach `<vault>/.obsidian/plugi
 
 ## Verwendung
 
-1. Panel öffnen — Ribbon-Icon (sprechender Kopf) oder der Befehl **Panel öffnen**. Bei markiertem Text öffnet **Panel mit Markierung öffnen** das Panel und nimmt die Markierung mit.
+1. Panel öffnen — Ribbon-Icon (sprechender Kopf) oder der Befehl **Stil-Dolmetscher öffnen** (so heißt das Panel). Bei markiertem Text öffnet **Stil-Dolmetscher mit Markierung öffnen** das Panel und nimmt die Markierung mit.
 2. Quelle wählen: **Markierung**, **Aktive Notiz** oder **Textfeld**. Die Statuszeile sagt, was aufgenommen wurde („Markierung: 412 Zeichen in Mail an X“) oder warum nichts läuft („Markiere zuerst Text in einer Notiz“, „Die Notiz ist im Lesemodus“).
 3. Regler stellen oder ein Preset wählen, bei Bedarf eine Anmerkung dazuschreiben.
 4. **Tunen** drücken. Die Antwort streamt als reiner Text herein und wird, sobald sie fertig ist, zu einer gerenderten Vorschau mit Kopierknopf. **Abbrechen** hält den Lauf an: der Teiltext bleibt sichtbar, eine Runde entsteht nicht. Stehen alle Regler in der Mitte und ist die Anmerkung leer, schickt Tunen nichts los, und die Statuszeile sagt, dass nichts zu ändern ist.

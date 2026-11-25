@@ -556,8 +556,10 @@
 /* ── Eigene Regeln: Station 3 des Kit-Rahmens (Quelle, Voreinstellungen, Regler) und die Vorschau des Ergebnisses ── */
 /* Den Rahmen, die Abstaende zwischen den Stationen und das Rollen traegt PROMPT_PANEL_CSS oben; das Panel rollt als Ganzes (view-content). */
 .lt-controls { display: flex; flex-direction: column; gap: var(--size-4-2); }
-/* Die Quelle ist der Segment-Schalter des Kits (SEGMENTED_CONTROL_CSS oben); er steht links und nimmt nicht die ganze Zeile. */
-.lt-sources { align-self: flex-start; max-width: 100%; }
+/* Die Quelle ist der Segment-Schalter des Kits (SEGMENTED_CONTROL_CSS oben). Er fuellt die Zeile und teilt sie gleich auf; in einer schmalen Seitenleiste (230 px, Smoke R3) bricht die Beschriftung
+   im Knopf um, statt den Schalter ueber den Rand zu schieben (der Kit-Schalter bricht nicht um; dieselbe Anordnung traegt die Kit-Karte okit-review-ways). */
+.lt-controls .lt-sources.okit-segmented { display: flex; width: 100%; }
+.lt-sources .okit-segmented-btn { flex: 1 1 0; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 .lt-presets { display: flex; flex-wrap: wrap; gap: var(--size-2-2); align-items: center; }
 /* Zustands-Knopf (UI-STANDARD § 8): aria-pressed traegt die Aussage, die Farbe ist der zweite Kanal, der Schriftschnitt der dritte. */
 .lt-preset-chip { font-size: var(--font-ui-small); padding: var(--size-2-1) var(--size-4-2); border-radius: var(--radius-s); background: var(--background-secondary); color: var(--text-muted); height: auto; }
