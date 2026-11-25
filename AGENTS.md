@@ -83,7 +83,7 @@ Tabelle der Übernahmen, Herkunftsstempel-Regel und die vier Spec-Abweichungen: 
 ```bash
 npm run dev / build / deploy      # esbuild watch · prod-Bundle (tsc + esbuild) · Copy nach $OBSIDIAN_PLUGIN_DIR
 npm run lint                      # check-no-inline-disables + eslint src --max-warnings 0
-npm test                          # NUL-Byte-Check + vitest run (177 Tests)
+npm test                          # NUL-Byte-Check + vitest run (178 Tests)
 npm run typecheck                 # tsc --noEmit (dazu: typecheck:test, typecheck:scripts)
 npm run check:pure                # src/core darf `obsidian` nicht importieren
 npm run gate                      # lint + alle Typechecks + test + check:pure + build
