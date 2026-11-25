@@ -1,7 +1,7 @@
 {
   "sources": {
     "obsidian-kit": {
-      "ref": "0.112.0"
+      "ref": "0.113.0"
     },
     "code-kit": {
       "ref": "0.91.1"
@@ -155,7 +155,8 @@
         "capture-selection",
         "main-markdown-view",
         "segmented-control",
-        "prompt-text"
+        "prompt-text",
+        "plugin-settings"
       ],
       "rewrite": [
         [

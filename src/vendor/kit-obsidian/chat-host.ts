@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.112.0, src/obsidian/chat-host.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.113.0, src/obsidian/chat-host.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /** Der Host eines Chats auf dem Handy (seit 0.76.1 ein eigener Baustein; `buildChatWindow` benutzt ihn selbst). Für Chats, die ihr Fenster von Hand bauen (koda-agent) und deshalb weder
  *  `buildChatWindow` noch `chat-window.ts` vendoren.
  *

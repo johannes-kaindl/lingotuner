@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.112.0, src/obsidian/status-bar-item.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.113.0, src/obsidian/status-bar-item.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { Setting } from "obsidian";
 import type { SettingDefinitionRender } from "obsidian";
 

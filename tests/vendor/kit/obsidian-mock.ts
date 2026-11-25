@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.112.0, src/testing/obsidian-mock.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.113.0, src/testing/obsidian-mock.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Self-contained Obsidian test double for obsidian-kit.
 // - Zero external imports (NOT from "obsidian", NOT from "vitest").
 // - Consumed via vitest `resolve.alias` as a drop-in for `import ... from "obsidian"`,
@@ -843,6 +843,24 @@ let mockLanguage = "en";
 export function __setMockLanguage(lang?: string): void { mockLanguage = lang === undefined || lang === "" ? "en" : lang; }
 export function getLanguage(): string { return mockLanguage; }
 
+/** `Keymap.isModEvent` nach Obsidians Regel (Welle 38, `open-note`): Mittelklick oder Mod (Strg/Cmd) → `"tab"`, Mod+Alt → `"split"`, Mod+Alt+Umschalt → `"window"`, sonst `false`. */
+export class Keymap {
+  static isModEvent(evt?: any): "tab" | "split" | "window" | boolean {
+    if (!evt) return false;
+    if (evt.button === 1) return "tab";
+    const mod = Boolean(evt.ctrlKey || evt.metaKey);
+    if (!mod) return false;
+    if (evt.altKey && evt.shiftKey) return "window";
+    if (evt.altKey) return "split";
+    return "tab";
+  }
+}
+/** `parseLinktext` wie Obsidian: der Unterpfad beginnt am ersten `#` und behält es (`"A#B"` → `{ path: "A", subpath: "#B" }`). */
+export function parseLinktext(linktext: string): { path: string; subpath: string } {
+  const i = linktext.indexOf("#");
+  return i < 0 ? { path: linktext, subpath: "" } : { path: linktext.slice(0, i), subpath: linktext.slice(i) };
+}
+
 // ---------------------------------------------------------------------------
 // Welle 19: Zusätze aus den Hand-Kopien (calendar-notes, health-vitals/vault-rag).
 // ---------------------------------------------------------------------------
@@ -954,6 +972,8 @@ export function makeFakeApp(): any {
   // Der Workspace haelt eine Selbstreferenz, damit `iterateAllLeaves` ueber die vom Test
   // registrierten Leaves laufen kann (`workspace.__leaves`).
   const workspace: any = {};
+  // Dasselbe für den Vault: `getFileByPath`/`getFolderByPath` schlagen zur Aufrufzeit über `vault.getAbstractFileByPath` nach (K8, Welle 38).
+  const vault: any = {};
   return {
     // Schlüsselbund-Double (Obsidian ≥ 1.11.4): Map statt Keychain. Die ID-Regel der echten
     // API („lowercase alphanumeric with optional dashes", setSecret wirft sonst) wird
@@ -969,7 +989,7 @@ export function makeFakeApp(): any {
         },
       };
     })(),
-    vault: {
+    vault: Object.assign(vault, {
       adapter: {
         read: fn().mockResolvedValue(""),
         readBinary: fn().mockResolvedValue(new ArrayBuffer(0)),
@@ -989,7 +1009,12 @@ export function makeFakeApp(): any {
       create: fn().mockResolvedValue(new TFile()),
       modify: fn().mockResolvedValue(undefined),
       on: fn().mockReturnValue({ id: "mock-event" }),
-    },
+      /** Obsidian ≥ 1.5.7. Vorgabe: `getAbstractFileByPath` zur Aufrufzeit, nur eine `TFile` zählt — ein Test, der `getAbstractFileByPath` mockt oder ersetzt, trägt weiter
+       *  (vault-crews `src/obsidian/vault-port.ts`, Bestellung K8). */
+      getFileByPath: fn((path: string) => { const f = vault.getAbstractFileByPath(path); return f instanceof TFile ? f : null; }),
+      /** Obsidian ≥ 1.5.7. Wie `getFileByPath`, nur ein `TFolder` zählt. */
+      getFolderByPath: fn((path: string) => { const f = vault.getAbstractFileByPath(path); return f instanceof TFolder ? f : null; }),
+    }),
     workspace: Object.assign(workspace, {
       getActiveFile: fn().mockReturnValue(null),
       getActiveViewOfType: fn().mockReturnValue(null),
@@ -1223,6 +1248,8 @@ export const defaultStubs = {
   ButtonComponent,
   ExtraButtonComponent,
   getLanguage,
+  Keymap,
+  parseLinktext,
   setCssStyles,
   debounce,
   // seit 0.61.1

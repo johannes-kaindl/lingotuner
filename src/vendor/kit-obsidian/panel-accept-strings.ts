@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.112.0, src/obsidian/panel-accept-strings.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.113.0, src/obsidian/panel-accept-strings.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import type { AcceptStrings, InsertWhere } from "./panel-accept";
 
 // Standardtexte des Übernehmens (`AcceptStrings` von `panel-accept`), seit 0.111.0 (Welle 37 Nachlauf, n-kit, K-A). Vorher baute jedes Plugin dieselben Sätze selbst: svg-studio

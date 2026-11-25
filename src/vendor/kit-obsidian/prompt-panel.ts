@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.112.0, src/obsidian/prompt-panel.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.113.0, src/obsidian/prompt-panel.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Rahmen der Auftrags-Fenster (K9, Welle 36): zeichnet die acht Stationen eines Fensters, das einen Auftrag an ein Modell gibt, das Ergebnis zeigt und es auf Knopfdruck schreibt.
 // Herkunft: svg-studio@0.1.4 `src/obsidian/panel/shell.ts` (`buildPanelShell`, 628 Zeilen), verschoben und auf den Halter umgebaut; die Tests stammen aus `tests/obsidian/panel-shell.test.ts`
 // (17 Tests, von happy-dom auf das Fake-DOM des Kits umgeschrieben). Spec: Cockpit `_SDD/2026-11-15-auftrags-fenster-rahmen-design`, Plan `…-plan-etappe-1-3`.
@@ -217,7 +217,7 @@ let frameSeq = 0;
  *  - `background`: die Hintergrundfarbe des nächsten deckenden Vorfahren (Schublade am Telefon, Seitenleiste, Tab), `null` ohne deckenden Vorfahren (dann gilt die Vorgabe `--background-primary`).
  *  - `left`, `right`: der Abstand des Fensters zum Innenrand des rollenden Bereichs; die Fußzeile reicht um so viel nach außen (kein Inhalt scheint links und rechts vorbei).
  *  - `bottom`: der untere Innenabstand des rollenden Bereichs ohne die Tastaturhöhe; um so viel rückt die klebende Fußzeile nach unten bis an seinen Rand (kein Inhalt scheint darunter durch).
- *  - `padBottom`: was am unteren Rand verdeckt ist (Home-Leiste, schwebende Navigationsleiste am Telefon), als Innenabstand der Fußzeile, damit ihre Knöpfe darüber stehen.
+ *  - `padBottom`: was am unteren Rand verdeckt ist (Home-Leiste und schwebende Navigationsleiste am Telefon, Statusleiste am Desktop), als Innenabstand der Fußzeile, damit ihre Knöpfe darüber stehen.
  *  - `stick`: am Telefon `false`, wenn die Fußzeile mehr als ein Fünftel des rollenden Bereichs nähme; dann steht sie am Ende des Inhalts statt zu kleben. */
 export interface EndFit { background: string | null; left: number; right: number; bottom: number; padBottom: number; stick: boolean }
 
@@ -227,7 +227,7 @@ export interface EndFitEnv {
   /** Das oberste Element an einem Punkt des Fensters (`document.elementFromPoint`). */
   hit(x: number, y: number): Element | null;
   viewportHeight: number;
-  /** Am Telefon (`is-phone`): nur dort gilt die Fünftel-Regel und die Suche nach einer Überdeckung am unteren Rand. */
+  /** Am Telefon (`is-phone`): nur dort gilt die Fünftel-Regel. Die Suche nach einer Überdeckung am unteren Rand gilt seit 0.112.1 an beiden Geräten. */
   phone: boolean;
   /** Obsidians Variablen am `body`: `--keyboard-height` und `--safe-area-inset-bottom` (beide in px). */
   rootVar(name: string): string;
@@ -247,6 +247,18 @@ function opaque(color: string): boolean {
   const c = color.trim();
   if (c === "" || c === "transparent") return false;
   return !/(,|\/)\s*0(\.0+)?\s*\)$/.test(c);
+}
+
+/** Wie tief `measureEndFit` über dem unteren Rand des rollenden Bereichs nach einer Überdeckung sucht (px). */
+const END_SCAN_DEPTH = 160;
+
+/** Die x-Werte, an denen `measureEndFit` den unteren Rand abtastet: beide Innenränder (2 px eingerückt) und dazwischen gleich verteilt, höchstens 48 px auseinander. */
+function endScanColumns(left: number, right: number): number[] {
+  const a = left + 2;
+  const b = right - 2;
+  if (b <= a) return [(left + right) / 2];
+  const n = Math.max(2, Math.ceil((b - a) / 48) + 1);
+  return Array.from({ length: n }, (_, i) => a + ((b - a) * i) / (n - 1));
 }
 
 /** Misst, was die klebende Fußzeile `endEl` des Fensters `panelEl` braucht (siehe `EndFit`). Ohne rollenden Vorfahren klebt nichts: die Ränder bleiben 0. Nur der Rahmen ruft das, bei jedem Zeichnen, bei
@@ -274,15 +286,29 @@ export function measureEndFit(panelEl: HTMLElement, endEl: HTMLElement, env: End
   const base = endEl.getBoundingClientRect().height - px(env.style(endEl).getPropertyValue("--okit-prompt-panel-end-pad-bottom"));
   const stick = !env.phone || base <= END_STICK_MAX_SHARE * scroller.clientHeight;
   let padBottom = 0;
-  if (stick && env.phone && keyboard === 0) {
-    // Home-Leiste: nur wenn der rollende Bereich bis an den unteren Rand des Fensters reicht (Obsidian setzt die Variable bei offener Tastatur auf deren Höhe, darum nur ohne Tastatur).
+  if (stick && keyboard === 0) {
+    // Home-Leiste: nur wenn der rollende Bereich bis an den unteren Rand des Fensters reicht (Obsidian setzt die Variable bei offener Tastatur auf deren Höhe, darum nur ohne Tastatur; am Desktop ist sie 0).
     if (innerBottom >= env.viewportHeight - 1) padBottom = px(env.rootVar("--safe-area-inset-bottom"));
-    // Was über dem unteren Rand liegt und nicht zum rollenden Bereich gehört (die schwebende Navigationsleiste im Hauptbereich): die untersten 160 px abtasten; der höchste verdeckte Punkt zählt. Nicht am ersten
-    // freien Punkt aufhören: die Leiste schwebt, unter ihr liegt ein Streifen des Bereichs selbst (gemessen 390 x 844: Leiste 760 bis 812, Bereich bis 844).
-    const x = (s.left + s.right) / 2;
-    for (let d = 1; d <= 160; d += 4) {
-      const el = env.hit(x, innerBottom - d);
-      if (el !== null && !scroller.contains(el)) padBottom = Math.max(padBottom, d + 4);
+    // Was über dem unteren Rand liegt und nicht zum rollenden Bereich gehört, an beiden Geräten nach derselben Regel (Welle 38, Teil 0): am Telefon die schwebende Navigationsleiste im Hauptbereich, am
+    // Desktop die Statusleiste über der rechten Seitenleiste (sie liegt im unteren Innenabstand des Bereichs, in den `bottom` die Fußzeile rückt; gemessen 1280 x 800: Leiste 1182..1280 x 773..800,
+    // „Discard“ lag darunter). Abgetastet werden die untersten 160 px in Spalten über die ganze Breite des Bereichs, beide Ränder eingeschlossen (die Statusleiste ist schmal und sitzt rechts); der höchste
+    // verdeckte Punkt zählt. Nicht am ersten freien Punkt aufhören: die Navigationsleiste schwebt, unter ihr liegt ein Streifen des Bereichs selbst (gemessen 390 x 844: Leiste 760 bis 812, Bereich bis 844).
+    // Es zählt nur, was im abgetasteten Streifen beginnt (Oberkante unter innerBottom - 160): der Griff zum Ändern der Breite einer Seitenleiste liegt über die volle Höhe am Rand des Bereichs und
+    // gehört nicht zu ihm (gemessen 1280 x 800, erster Lauf des Fixes: 161 px Innenabstand auch ohne Statusleiste); was von weiter oben herabreicht, ist keine Leiste am unteren Rand.
+    // Benannte Grenze: eine Überdeckung, schmaler als der Spaltenabstand (höchstens 48 px) und nicht am Rand, kann zwischen zwei Spalten fallen.
+    const xs = endScanColumns(innerLeft, innerRight);
+    const band = innerBottom - END_SCAN_DEPTH;
+    const unten = new Map<Element, boolean>();
+    const amRand = (el: Element): boolean => {
+      let v = unten.get(el);
+      if (v === undefined) { v = !scroller.contains(el) && el.getBoundingClientRect().top > band; unten.set(el, v); }
+      return v;
+    };
+    for (let d = 1; d <= END_SCAN_DEPTH; d += 4) {
+      for (const x of xs) {
+        const el = env.hit(x, innerBottom - d);
+        if (el !== null && amRand(el)) { padBottom = Math.max(padBottom, d + 4); break; }
+      }
     }
   }
   return { background, left, right, bottom, padBottom: Math.round(padBottom), stick };

@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.112.0, src/obsidian/file-snapshot.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.113.0, src/obsidian/file-snapshot.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Herkunft: obsidian-transmute `src/obsidian/snapshot-io.ts` (`snapshotRoot`, `ensureDir`, `writeSnapshot`, `rotateSnapshots`) und `src/core/vault/snapshot.ts`
 // (`snapshotDirName`), auf eine Einzeldatei zugeschnitten; REGISTRY „Rückholbarkeit für Schreibvorgänge“ führte transmute als Kit-Kandidaten, svg-studio ist
 // der zweite Träger (K15, bedingt durch die Messung A4 vom 2026-11-04: Obsidians Dateiwiederherstellung erfasst nur Markdown, `.svg` und andere Dateien nicht).

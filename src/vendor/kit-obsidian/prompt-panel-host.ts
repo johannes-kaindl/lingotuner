@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.112.0, src/obsidian/prompt-panel-host.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.113.0, src/obsidian/prompt-panel-host.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Verdrahtung des Halters eines Auftrags-Fensters (K9, Welle 36): der Halter-Kern aus code-kit (`createPanelHost`, vendort aus `panel-host`) plus das, was ein Plugin im Obsidian-Raum
 // dazu braucht, wenn das Fenster zu ist: ein Eintrag in der Statusleiste und eine Meldung am Ende des Laufs. Der Kern bleibt ohne `obsidian`; hier hängt es dran.
 //

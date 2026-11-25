@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.112.0, src/obsidian/prompt-panel-strings.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.113.0, src/obsidian/prompt-panel-strings.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Texte des Auftrags-Fensters (`prompt-panel.ts`), Deutsch und Englisch vollständig, formatneutral.
 // Herkunft: svg-studio@0.1.4 `src/i18n/strings.ts` (`panelStrings()` und die Schlüssel `panel.*`, `run.aborted`, `run.start`, `accept.backupFailed`),
 // dort an das Format gebunden („Neues SVG“, „Panel“); hier ohne Format. Das Plugin überschreibt, was fachlich seins ist: Platzhalter, Beispiele,

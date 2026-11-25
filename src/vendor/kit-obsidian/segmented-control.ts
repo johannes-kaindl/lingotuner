@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.112.0, src/obsidian/segmented-control.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.113.0, src/obsidian/segmented-control.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /**
  * Segment-Schalter (UI-STANDARD §8, Zustands-Knopf für mehr als zwei Stellungen): eine Gruppe von Knöpfen, von denen
  * genau einer gewählt ist — „Aus · Beschreibung · Ganz".

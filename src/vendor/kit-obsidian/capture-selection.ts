@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.112.0, src/obsidian/capture-selection.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.113.0, src/obsidian/capture-selection.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /** Captures the selection in the note the user means as the `selection` target of `acceptPanel` (`panel-accept`, Ziel `selection`,
  *  since 0.111.0), or answers why there is none as a value. The note comes from {@link mainMarkdownView}: the focus may sit in the
  *  plugin's side panel, where `getActiveViewOfType(MarkdownView)` is `null` (Bestellung K1, Welle 38 „Markierung mitschreiben“).

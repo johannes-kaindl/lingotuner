@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.112.0, src/obsidian/endpoint-source.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.113.0, src/obsidian/endpoint-source.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { Notice, Setting, type App } from "obsidian";
 import { resolveModelChoice, type ModelHintKey } from "../kit/model-choice";
 import type { EndpointConfig } from "../kit/endpoint_config";
@@ -10,6 +10,7 @@ import { renderModelPicker } from "./model-picker";
 import { hydrateLocalEndpoints } from "./endpoint-secrets";
 import { readPluginApi } from "./plugin-api";
 import { realClock, type ClockPort } from "./clock";
+import { openPluginSettings } from "./plugin-settings";
 
 /** Bei JEDEM Aufruf frisch lesen — das Plugin kann jederzeit deaktiviert werden. */
 export function findEndpointManager(app: App): LlmEndpointManagerApi | null {
@@ -142,9 +143,7 @@ export type EndpointSourceSectionOptions = EndpointSourceSectionBase & (
 /** Öffnet die Einstellungen des LLM Endpoint Managers (Obsidians Einstellungsfenster, Tab des Plugins). Ohne Einstellungsfenster
  *  (Test, Mobil ohne `app.setting`) ohne Wirkung. Der „Manager-Einstellungen öffnen“-Knopf und „Familie im Manager setzen“ nutzen sie. */
 export function openEndpointManagerSettings(app: unknown): void {
-  const setting = (app as { setting?: { open(): void; openTabById(id: string): void } }).setting;
-  setting?.open();
-  setting?.openTabById(LLM_ENDPOINT_MANAGER_PLUGIN_ID);
+  openPluginSettings(app as App, LLM_ENDPOINT_MANAGER_PLUGIN_ID);
 }
 
 /** Settings-Baustein des Konsumenten: Manager da → „Endpunkte kommen vom Manager" + Wahl +

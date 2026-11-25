@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.112.0, src/obsidian/version-list.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.113.0, src/obsidian/version-list.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /**
  * Versionsliste (UI-STANDARD §8, Listen-Zeile): der Verlauf mehrerer Stände als klickbare,
  * nummerierte Liste — Rückwahl auf einen früheren Stand.

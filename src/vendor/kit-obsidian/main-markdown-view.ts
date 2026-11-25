@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.112.0, src/obsidian/main-markdown-view.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.113.0, src/obsidian/main-markdown-view.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /** Which note the user means while the focus is in a plugin's side panel. `getActiveViewOfType(MarkdownView)` is `null` then: the panel
  *  is the active view, and `workspace.activeEditor` is `null` too. {@link mainMarkdownView} answers with the Markdown view of the note
  *  the user worked in last, with its file and, in editing mode, its editor; a view without a file never counts.
