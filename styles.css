@@ -594,7 +594,8 @@ textarea.okit-prompt-field { resize: vertical; min-height: calc(var(--size-4-12)
    Drei Selektorteile mit Element, damit Obsidians Knopf- und Reglerregeln am Telefon nicht gewinnen. */
 .is-mobile .lt-presets button.lt-preset-chip { min-height: calc(var(--size-4-10) + var(--size-4-1)); padding-inline: var(--size-4-3); }
 .is-mobile .lt-presets button.lt-preset-save { min-height: calc(var(--size-4-10) + var(--size-4-1)); min-width: calc(var(--size-4-10) + var(--size-4-1)); }
-.is-mobile .lt-dial-line input.lt-dial-input { min-height: calc(var(--size-4-10) + var(--size-4-1)); }
+/* Regler: die Tippflaeche waechst ueber Polster, die Spur bleibt so duenn wie vorher (Hintergrund und Schatten nur in der Inhaltsbox; mit min-height allein fuellte Obsidians Spur-Hintergrund die ganzen 44 px). */
+.is-mobile .lt-dial-line input.lt-dial-input { box-sizing: content-box; padding-block: calc((var(--size-4-10) + var(--size-4-1) - var(--slider-track-height, 6px)) / 2); background-clip: content-box; box-shadow: none; }
 
 /* Vorschau des Ergebnisses (Slot renderPreview): Kopierknopf rechts oben, Warnung bei abgeschnittener Antwort, das Ergebnis als gerendertes Markdown. */
 .lt-result-bar { display: flex; justify-content: flex-end; }
