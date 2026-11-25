@@ -75,15 +75,15 @@ Each entry starts with what you see — the wording is the plugin's own English 
 | The note is in reading mode — switch to editing mode to use it. | Switch the note to editing mode. |
 | Paste or type the text to tune. | The **Text field** source is empty. |
 
-## The replace buttons are greyed out or refuse
+## Replace selection or Replace note writes nothing
 
-> The note changed since it was read — select or reload before writing.
-> The note is no longer open in editing mode — nothing was written.
 > The selection or note changed since this result was made — select the original text again or tune anew.
+> The selected text has changed since the run started; nothing was written. Select it again and repeat.
+> The note is in reading view; nothing was written. Switch it to editing.
 
-**Cause:** **Replace selection** and **Replace note** only work while the source is still live: the same note, still in editing mode, with the text unchanged since it was read. The plugin refuses rather than overwrite something you edited in the meantime.
+**Cause:** **Replace selection** and **Replace note** write only into the text the run started from. If the selected text or the note body changed in the meantime, or the note is in reading view, the plugin writes nothing rather than overwrite something you edited.
 
-**Fix:** select the original text again, or press **Tune again from source**. **Copy** and **New note** always work.
+**Fix:** switch the note to editing, select the original text again, or press **Tune again from source**. **New note** and the copy button always work.
 
 ## The endpoint list is managed elsewhere
 

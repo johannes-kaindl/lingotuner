@@ -31,18 +31,20 @@ Click the speaking-head icon in the ribbon, or run the command **Open panel** fr
 2. In the panel, the status line reads "Selection: … characters in …". If you would rather paste text, choose **Text field** as the source instead.
 3. Pick a preset such as **Maximum clarity**, or move a dial. Each dial has five steps; the middle one leaves that dimension alone.
 4. Optionally write a **Note**, for instance "use first names". It outranks the dials.
-5. Press **Tune**. The result streams into the preview.
+5. Press **Tune**. The answer streams in as plain text; when it is done, it shows as a rendered preview.
 
 ## 6. Take the result out
 
-Choose one of the four buttons under the preview:
+Under the preview, the panel offers the ways that fit your source:
 
-- **Replace selection** puts the text where the selection was. Cmd+Z (Ctrl+Z) undoes it in one step.
-- **Replace note** replaces the whole body after asking; the frontmatter stays.
-- **Copy** puts the text on the clipboard.
-- **New note** creates a note in the vault root, or in the folder you set under **Folder for new notes**.
+- **Replace selection** (source: a selection) puts the text where the selection was.
+- **Replace note** (source: the active note) replaces the whole body; the frontmatter stays.
+- **New note** creates a note in the vault root, or in the folder you set under **Folder for new notes**, and opens it in a new tab.
+- The copy button on the preview puts the text on the clipboard.
 
-Not quite right? **Refine this result** applies a new note to the result you are looking at, and **Tune again from source** starts over from the original text. Every run is kept under **Rounds**.
+Before replacing, LingoTuner stores a snapshot of the whole note in the plugin's folder, and Cmd+Z (Ctrl+Z) in the note undoes the change.
+
+Not quite right? Write a note and press **Tune** again: it tunes the result you are looking at. **Tune again from source** starts over from the original text. Every finished run is kept under **Rounds**.
 
 ## Where to go next
 

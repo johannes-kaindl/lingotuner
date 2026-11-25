@@ -171,10 +171,21 @@ async function notiz(ws: Cdp, text: string): Promise<void> {
   `);
 }
 
+/** Das Element, das das Panel rollt (der erste Vorfahr mit overflow auto/scroll, der wirklich ueberlaeuft), oder null. */
+const ROLLBEREICH = `(() => { let el = document.querySelector(".okit-prompt-panel"); while (el && el !== document.body) { const o = getComputedStyle(el).overflowY; if ((o === "auto" || o === "scroll") && el.scrollHeight > el.clientHeight) return el; el = el.parentElement; } return null; })()`;
+
 // --- Motive ----------------------------------------------------------------------------
 type Motiv = { name: string; datei: string; thumb: boolean; nimm: (ws: Cdp, fake: Fake, port: number) => Promise<Buffer> };
 
+/** Zeiger aus dem Bild: nach `clickReal` ruht er auf dem Knopf, und Obsidian zeigt das `aria-label` des Feldes darueber als Tooltip („Note“ im ersten Hero, Nachlauf Welle 37). */
+async function mausWeg(ws: Cdp): Promise<void> {
+  await ws.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 2, y: 2 });
+  await ws.evaluate(`document.querySelectorAll(".tooltip").forEach((t) => t.remove()); return { ok: true };`);
+  await sleep(300);
+}
+
 async function ganzesFenster(ws: Cdp): Promise<Buffer> {
+  await mausWeg(ws);
   return capture(ws, undefined, 2);
 }
 
@@ -201,6 +212,9 @@ const MOTIVE: Motiv[] = [
       fake.setAnswer(ANSWERS.refined);
       await notiz(ws, "Keep the offer of another day.");
       await tune(ws, 2);
+      // Nach zwei Runden ist das Panel hoeher als das Fenster, und die feste Fusszeile (Station 7) deckt die Rundenliste ab: ans Ende rollen.
+      await ws.evaluate(`const r = ${ROLLBEREICH}; if (r) r.scrollTop = r.scrollHeight; return { ok: true };`);
+      await sleep(300);
       return ganzesFenster(ws);
     },
   },
@@ -213,6 +227,7 @@ const MOTIVE: Motiv[] = [
       // Vom Ziel (Station 1) bis zum Knopf Tune (Station 4); Statuszeile und Vorschau zeigt der Rahmen erst mit einem Lauf.
       const box = await boxAround(ws, [".okit-prompt-panel-top", ".okit-prompt-panel-send"], 4);
       if (!box) throw new Error("Panel-Bereiche nicht gefunden");
+      await mausWeg(ws);
       return capture(ws, box, 2);
     },
   },
@@ -226,16 +241,16 @@ async function pruefBilder(ws: Cdp, fake: Fake, outDir: string): Promise<string[
   if (outDir === "docs/images") throw new Error("--only pruef braucht --bilder <ordner> (Pruefbilder gehoeren nicht nach docs/images)");
   mkdirSync(outDir, { recursive: true });
   const geschrieben: string[] = [];
-  const rollbereich = `(() => { let el = document.querySelector(".okit-prompt-panel"); while (el && el !== document.body) { const o = getComputedStyle(el).overflowY; if ((o === "auto" || o === "scroll") && el.scrollHeight > el.clientHeight) return el; el = el.parentElement; } return null; })()`;
   const reihe = async (stand: string): Promise<void> => {
     for (const thema of ["moonstone", "obsidian"] as const) {
       await setAppConfig(ws, "theme", thema);
       for (const breite of [300, 366]) {
         await ws.evaluate(`app.workspace.rightSplit.setSize(${breite}); await new Promise((r) => setTimeout(r, 500)); return { ok: true };`);
         for (const lage of ["oben", "unten"] as const) {
-          const m = await ws.evaluate<{ rollt: boolean; h: number; c: number }>(`const r = ${rollbereich}; if (r) r.scrollTop = ${lage === "oben" ? 0 : "r.scrollHeight"}; return { rollt: Boolean(r), h: r ? r.scrollHeight : 0, c: r ? r.clientHeight : 0 };`);
+          const m = await ws.evaluate<{ rollt: boolean; h: number; c: number }>(`const r = ${ROLLBEREICH}; if (r) r.scrollTop = ${lage === "oben" ? 0 : "r.scrollHeight"}; return { rollt: Boolean(r), h: r ? r.scrollHeight : 0, c: r ? r.clientHeight : 0 };`);
           if (lage === "unten" && !m.rollt) continue;   // passt alles in die Hoehe, reicht das obere Bild
           await sleep(300);
+          await mausWeg(ws);
           const box = await boxOf(ws, ".lt-panel");
           if (!box) throw new Error("Panel nicht sichtbar");
           const datei = join(outDir, `pruef-${stand}-${thema === "moonstone" ? "hell" : "dunkel"}-${breite}-${lage}.png`);
@@ -282,10 +297,13 @@ async function settingsBild(ws: Cdp, port: number, outDir: string): Promise<stri
     // Der Tab ist laenger als der Bildschirm: gezeigt wird die Inhaltsspalte von „Connection" bis
     // zum Ende der Gruppe „Style" (Ausgabe-Gruppe steht in der README-Tabelle).
     const stil = await boxAround(fenster, [".vertical-tab-content .setting-item"], 0);
+    // Bis zum Ende der Zeile „System prompt“ (Gruppe Style): seit der Systemprompt-Einstellung ist Style hoeher als das Fenster, ein Ausschnitt bis „Output“
+    // reichte unter den Fensterrand und zeigte dort Schwarz (Nachlauf Welle 37).
     const bis = await fenster.evaluate<{ y: number }>(`
       const namen = [...document.querySelectorAll(".setting-item-name")];
-      const out = namen.find((e) => (e.textContent || "").trim() === "Output");
-      return { y: out ? out.getBoundingClientRect().top : -1 };
+      const sp = namen.find((e) => (e.textContent || "").trim() === "System prompt");
+      const zeile = sp ? sp.closest(".setting-item") : null;
+      return { y: zeile ? Math.min(zeile.getBoundingClientRect().bottom + 14, window.innerHeight) + 14 : -1 };   // nie unter den Fensterrand: dort malt die Aufnahme Schwarz
     `);
     if (!stil || bis.y < 0) throw new Error("Einstellungs-Inhalt nicht gefunden");
     const von = await fenster.evaluate<{ y: number }>(`

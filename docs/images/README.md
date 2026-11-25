@@ -17,10 +17,10 @@ Der Treiber startet auf Port 1236 den zentralen LLM-Stub (`tools/obsidian-cdp/ll
 
 | Datei | Klasse | referenziert von | muss zeigen |
 |---|---|---|---|
-| `hero.png` | hero | README.md, README.de.md (Kopf) | Das ganze Fenster: Notiz „Draft reply to Sam" im Editor, rechts das LingoTuner-Panel mit Quelle „Selection: 175 characters", Preset „Maximum clarity" aktiv, vier Reglern am linken Anschlag, der Modellzeile (Modellname und die Denkstufe „○ off“ mit dem Gehirn-Symbol, Neu laden), dem gestreamten Ergebnis und den vier Ausgängen (Replace selection, Replace note, Copy, New note) |
-| `rounds.png` | feature | README.md, README.de.md (Usage) | Dasselbe Fenster nach zwei Runden: die Anmerkung „Keep the offer of another day.", die Modellzeile mit der Denkstufe, das Ergebnis von Runde 2 und die Liste „Rounds" mit „Round 1 · from source · no note" und der aktiven „Round 2 · refined from round 1 · …". Aufgenommen in der Standardbreite der Seitenleiste (~300 px) |
-| `settings.png` | feature | README.md, README.de.md (Configuration) | Den Einstellungen-Tab von „Connection" bis zum Ende von „Style": Endpunkt-Zeile mit grünem Haken und „active — this one is used", aufklappbares „Request" (zugeklappt), Modell, Override-Ordner, „Write shipped texts into the folder", „No saved presets yet." Die Gruppe „Output" fehlt bewusst: der Tab ist länger als der Bildschirm |
-| `dials.png` | detail | README.md, README.de.md (Usage) | Nur das Panel, Preset „Collegial" aktiv, die vier Regler auf verschiedenen Stufen mit ihren Stufennamen („somewhat more direct", „somewhat warmer"), leere Anmerkung, die Modellzeile mit Modellname und Denkstufe „○ off“, Knopf „Tune", Statuszeile „Ready" und der leere Vorschaubereich „The tuned text appears here." |
+| `hero.png` | hero | README.md, README.de.md (Kopf) | Das ganze Fenster: Notiz „Draft reply to Sam" im Editor, rechts das LingoTuner-Panel auf dem Kit-Rahmen: Ziel „Selection in Draft reply to Sam“ mit „New“, die Modellzeile (Modellname, Gehirn-Symbol, Denkstufe „○“, Neu laden), „Tune again from source“, Quelle „Selection: 175 characters in Draft reply to Sam“, Preset „Maximum clarity" aktiv, vier Regler am linken Anschlag mit ihren Stufennamen, leere Anmerkung, „Tune“, Status „Done“, „Preview of round 1“ mit Kopierknopf und dem gerenderten Ergebnis, darunter die Wege „Replace selection“, „New note“, „Discard“ |
+| `rounds.png` | feature | README.md, README.de.md (Usage) | Dasselbe Fenster nach zwei Runden, das Panel ans Ende gerollt (es ist höher als das Fenster, und die feste Fußzeile deckte sonst die Liste ab): Regler, „Tune“, „Done“, „Preview of round 2“ mit dem nachgeschärften Ergebnis und die Liste „Rounds" mit „Round 1 · no note“ (from source) und der aktiven „Round 2 · Keep the …“ (refined from round 1), darunter die Wege. Aufgenommen in der Standardbreite der Seitenleiste (300 px) |
+| `settings.png` | feature | README.md, README.de.md (Configuration) | Den Einstellungen-Tab von „Connection" bis zum Ende der Zeile „System prompt“: Endpunkt-Zeile mit grünem Haken und „active — this one is used", aufklappbares „Request" (zugeklappt), dann „Style“ mit „System prompt“ (Beschreibung, der ausgelieferte Prompt als Platzhalter im Feld, „Edit shipped prompt“, Kopieren, Zurücksetzen). Der Rest von „Style“ und die Gruppe „Output" fehlen bewusst: der Tab ist länger als das Fenster, und ein Ausschnitt darüber hinaus malt Schwarz |
+| `dials.png` | detail | README.md, README.de.md (Usage) | Nur das Panel vom Ziel bis zum Knopf „Tune“, vor dem ersten Lauf: Preset „Collegial" aktiv, die vier Regler auf verschiedenen Stufen mit ihren Stufennamen („somewhat more direct", „unchanged“, „somewhat warmer", „unchanged“), leere Anmerkung, die Modellzeile mit Modellname und Denkstufe „○“ |
 
 Kein GIF: der Stream ist das einzige bewegte Ereignis, und ein Standbild des Ergebnisses trägt die Aussage.
 
@@ -41,7 +41,10 @@ npm run shots:check                                 # readme_lint, muss „keine
 
 ## Status
 
-Alle vier Bilder liegen (2026-09-26), Zweitinstanz auf Port 9325, jedes Bild selbst angesehen.
+Alle vier Bilder neu aufgenommen am 2026-11-25 (Nachlauf Welle 37, Kit-Rahmen, obsidian-kit 0.111.0), Zweitinstanz auf Port 9820 über `messlauf.sh` (`RUNNER=shots`, `VAULT=lingotuner-shots`, `SETUP_BEFEHL="npm run shots -- --setup"`, je Motiv ein Lauf mit eigenem Lock), Obsidian 1.15.1, jedes Bild selbst angesehen. Das Fenster bekommt auf diesem Bildschirm 1200 × 949 statt 1200 × 1000.
 
-- `rounds.png` entstand zuerst bei 460 px Seitenleiste, weil die Zeile der aktiven Runde in der Standardbreite links abgeschnitten wurde. Der Fehler ist behoben (`styles.css`: `.lt-history-row` bricht um), gemessen vom Smoke-Punkt R1; das Bild ist in Standardbreite neu aufgenommen.
+- Erster Hero zeigte das `aria-label` „Note“ als Tooltip über dem Panel (der Zeiger ruhte nach dem Klick auf „Tune“): `mausWeg` nimmt den Zeiger vor jeder Aufnahme aus dem Bild.
+- Prüfbilder (kein README-Bild): `npm run shots -- --port <p> --only pruef --bilder <ordner>` nimmt das Panel hell und dunkel bei 300 und 366 px auf, vor dem ersten Lauf und nach zwei Runden, oben und ans Ende gerollt. Sie fanden den Knopftext „Refine this result“ vor der ersten Runde und den Preset-Klick ohne Neuzeichnen (beides behoben, Smoke B5b und B6b).
+
+- Die Zeile der aktiven Runde lief bei 300 px einmal links über (2026-09-26); seither bricht sie um (Smoke R1), im Kit-Rahmen kürzt sie mit Auslassungspunkten.
 - Der Fake-Server-Port 1236 muss frei sein; der Treiber meldet es, wenn nicht.
