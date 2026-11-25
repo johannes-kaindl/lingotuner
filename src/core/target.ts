@@ -7,7 +7,8 @@
  *    (`noteLines`: nur damit findet der Baustein die Markierung wieder, wenn Zeilen darueber dazukamen oder wegfielen).
  *  - Quelle nicht bereit (keine Markierung, Lesemodus, keine Notiz) → `other` mit dem Grund als Beschriftung: der Rahmen sperrt Senden und zeigt den Grund. */
 import type { Target } from "../vendor/kit/panel-session";
-import { splitFrontmatter, type CaptureState, type Readiness, type SourceKind } from "./source";
+import { splitFrontmatter } from "../vendor/kit/frontmatter";
+import { type CaptureState, type Readiness, type SourceKind } from "./source";
 import { readiness } from "./source";
 
 export interface TargetLabels {

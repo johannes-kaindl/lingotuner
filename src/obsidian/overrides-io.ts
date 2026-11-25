@@ -1,5 +1,6 @@
 import { normalizePath, type App } from "obsidian";
 import type { OverrideReader, OverrideWriter } from "../core/examples/overrides";
+import { ensureDir } from "../vendor/kit/ensure-dir";
 
 export function vaultOverrideReader(app: App): OverrideReader {
   return {
@@ -15,10 +16,7 @@ export function vaultOverrideWriter(app: App): OverrideWriter {
   return {
     exists: (path) => Promise.resolve(app.vault.getAbstractFileByPath(normalizePath(path)) !== null),
     async write(path, content) { await app.vault.create(normalizePath(path), content); },
-    async ensureFolder(path) {
-      const p = normalizePath(path);
-      if (p === "" || p === "/") return;
-      if (app.vault.getAbstractFileByPath(p) === null) await app.vault.createFolder(p);
-    },
+    // Ordner samt Eltern, ein paralleler Gewinner ist kein Fehler (code-kit `ensureDir`, wie Kit `createNote`; vorher `createFolder`: nicht rekursiv, warf beim Rennen).
+    async ensureFolder(path) { await ensureDir(app.vault.adapter, normalizePath(path)); },
   };
 }

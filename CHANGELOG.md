@@ -27,6 +27,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - **The source is a segmented switch** (obsidian-kit 0.112.0 `buildSegmentedControl`): Selection · Active note · Text field as one radio group with arrow keys, filling the row; in a narrow sidebar the labels wrap instead of pushing the panel wider.
 - **Touch targets on the phone are at least 44 px**: the source switch, the preset chips, the save-preset button and the four dials (before: 21.5 px chips, 6 px dial track).
 - **The selection is captured by the shared library** (obsidian-kit 0.112.0 `captureSelection`, `mainMarkdownView`): it also finds a note in a pop-out window, and with no note open at all the panel says "no note" instead of showing an old selection.
+- **"Save as preset" asks for the name in the shared text dialog** (obsidian-kit `promptText`): Enter confirms, an empty name keeps the dialog open, Cancel and Escape close it without saving.
 - **Removed 47 interface texts that nothing displayed any more** (left over from the panel before the shared frame); a test now keeps every text in use.
 - **README, getting-started guide, troubleshooting and screenshots describe the new panel**: the ways out per source, the copy button on the preview, the snapshot before writing, runs that survive closing the panel, and the system prompt setting.
 

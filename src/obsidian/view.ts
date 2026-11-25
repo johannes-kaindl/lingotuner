@@ -9,7 +9,7 @@
 // der Voll-Draw mit Cursor-Rettung (der Rahmen ersetzt Felder unter dem Cursor nicht), die eigene Rundenliste, der eigene Lauf-Slot, der Teiltext als Runde nach
 // einem Abbruch (der Halter verwirft das Ergebnis eines abgebrochenen Laufs; der Teiltext bleibt im Antwortbereich sichtbar) und Markdown im laufenden Strom
 // (der Rahmen zeigt den Strom als Text, Markdown erst in der Vorschau).
-import { Component, ItemView, Modal, Setting, type App, type WorkspaceLeaf } from "obsidian";
+import { Component, ItemView, type WorkspaceLeaf } from "obsidian";
 import type { Dimension, Level } from "../core/dials";
 import type { Round, TuneSession } from "../core/session";
 import type { SourceKind } from "../core/source";
@@ -18,6 +18,7 @@ import type { Target } from "../vendor/kit/panel-session";
 import { neutralizeModelMarkdown } from "../vendor/kit/safe-markdown";
 import { getLang, t } from "../vendor/kit/i18n";
 import { createCopyButton } from "../vendor/kit-obsidian/copy-button";
+import { promptText } from "../vendor/kit-obsidian/prompt-text";
 import { renderMarkdownGuarded } from "../vendor/kit-obsidian/dom-guard";
 import type { LlmConnection } from "../vendor/kit-obsidian/llm-connection";
 import type { AcceptEnv } from "../vendor/kit-obsidian/panel-accept";
@@ -51,26 +52,6 @@ export interface ViewDeps {
   savePreset(name: string): void;
   /** Lauf aus der Quelle, auch wenn Runden offen sind (eine neue Kette neben der alten). */
   runFromSource: (call: HostRunCall<TuneSession>) => Promise<HostRunResult<TuneSession>>;
-}
-
-class PresetNameModal extends Modal {
-  constructor(app: App, private readonly onSubmit: (name: string) => void) { super(app); }
-  onOpen(): void {
-    this.titleEl.setText(t("preset.saveTitle"));
-    let name = "";
-    const submit = (): void => {
-      if (name.trim() === "") return;
-      this.onSubmit(name.trim());
-      this.close();
-    };
-    new Setting(this.contentEl).addText((tx) => {
-      tx.setPlaceholder(t("preset.namePlaceholder"));
-      tx.onChange((v) => { name = v; });
-      tx.inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
-    });
-    new Setting(this.contentEl).addButton((b) => b.setButtonText(t("preset.save")).setCta().onClick(submit));
-  }
-  onClose(): void { this.contentEl.empty(); }
 }
 
 /** Was der Rahmen in lingotuners Worten sagt; der Rest kommt aus dem Kit. */
@@ -173,7 +154,10 @@ export class LingoTunerView extends ItemView {
           onFreeText: (v) => { d.onFreeText(v); },
           onDial: (dim, level) => { d.onDial(dim, level); },
           onPreset: (id) => { d.onPreset(id); },
-          onSavePreset: () => { new PresetNameModal(this.app, (name) => { d.savePreset(name); }).open(); },
+          onSavePreset: () => {
+            void promptText(this.app, { title: t("preset.saveTitle"), placeholder: t("preset.namePlaceholder"), okLabel: t("preset.save"), cancelLabel: t("preset.cancel") })
+              .then((name) => { if (name !== null) d.savePreset(name); });
+          },
         });
       },
       instructionOptional: true,

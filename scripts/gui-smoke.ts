@@ -97,6 +97,7 @@ const PUNKTE = [
   "B5b Sendeknopf heisst vor der ersten Runde Tune (nicht Refine this result)",
   "B6b Preset-Klick zeichnet Chip und Regler sofort neu",
   "B7 Preset zeigt (angepasst)",
+  "B12 Preset speichern: der Kit-Dialog promptText fragt den Namen, der neue Chip steht danach in der Zeile",
   "B8 Textfeld-Quelle zeigt Textarea",
   "B10 Tippen ins Textfeld behaelt den Fokus",
   "B10b Gegenprobe: ein Neuzeichnen mit Fokusverlust macht B10 rot",
@@ -395,6 +396,48 @@ async function pruefePanel(cdp: Cdp): Promise<void> {
   // und damit ein Pruefpunkt, der nichts mehr misst.
   const marker = (await text(cdp, ".lt-preset-custom")) ?? "";
   record("B7 Preset zeigt (angepasst)", (await count(cdp, ".lt-preset-custom")) === 1 && marker !== "", `Marker-Text ${JSON.stringify(marker)}`);
+
+  // B12: Speichern-Knopf → Kit-Dialog (promptText, seit Welle 38 statt des eigenen PresetNameModal) → Name tippen, bestaetigen → Chip mit dem Namen da, in den Einstellungen gespeichert.
+  // Danach raeumt der Punkt das Preset wieder ab (Einstellungen und Zeile), damit B3 im naechsten Lauf weiter vier Chips zaehlt.
+  {
+    const NAME_B12 = "B12 Preset speichern: der Kit-Dialog promptText fragt den Namen, der neue Chip steht danach in der Zeile";
+    const SMOKE_PRESET = "Smoke-Preset";
+    try {
+      await clickReal(cdp, `document.querySelector(".lt-preset-save")`);
+      const feld = await pollUntil<{ ok: boolean }>(cdp, `return document.querySelector(".modal .okit-prompt-field") ? { ok: true } : null;`, 3000, 100);
+      if (feld === null) {
+        record(NAME_B12, false, "kein Dialog mit .okit-prompt-field nach dem Klick auf Speichern");
+      } else {
+        const r = await cdp.evaluate<{ chip: boolean; gespeichert: boolean; dialogZu: boolean }>(`
+          const f = document.querySelector(".modal .okit-prompt-field");
+          f.value = ${JSON.stringify(SMOKE_PRESET)};
+          f.dispatchEvent(new Event("input", { bubbles: true }));
+          const ok = document.querySelector(".modal .modal-button-container button.mod-cta");
+          ok.click();
+          for (let i = 0; i < 20 && document.querySelector(".modal .okit-prompt-field"); i++) await new Promise((r) => setTimeout(r, 100));
+          await new Promise((r) => setTimeout(r, 300));
+          const p = app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}];
+          return {
+            chip: [...document.querySelectorAll(".lt-preset-chip")].some((c) => (c.textContent || "").trim() === ${JSON.stringify(SMOKE_PRESET)}),
+            gespeichert: p.settings.userPresets.some((x) => x.name === ${JSON.stringify(SMOKE_PRESET)}),
+            dialogZu: !document.querySelector(".modal .okit-prompt-field"),
+          };
+        `);
+        record(NAME_B12, r.chip && r.gespeichert && r.dialogZu, `Dialog zu ${r.dialogZu}, Chip „${SMOKE_PRESET}“ ${r.chip ? "da" : "fehlt"}, in den Einstellungen ${r.gespeichert ? "gespeichert" : "fehlt"}`);
+      }
+    } catch (e) {
+      record(NAME_B12, false, `Fehler: ${(e as Error).message}`);
+    } finally {
+      await cdp.evaluate(`
+        document.querySelectorAll(".modal-container").forEach((m) => m.querySelector(".modal-close-button")?.click());
+        const p = app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}];
+        p.settings.userPresets = p.settings.userPresets.filter((x) => x.name !== ${JSON.stringify(SMOKE_PRESET)});
+        await p.saveSettings();
+        p.panel()?.refreshControls();
+        return { ok: true };
+      `).catch(() => null);
+    }
+  }
 
   const klick8 = await waehleQuelle(cdp, 2);
   const ta = await pollUntil<{ ok: boolean }>(cdp, `return document.querySelector(".lt-freetext") ? { ok: true } : null;`, 3000, 200);

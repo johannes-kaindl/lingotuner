@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
-  EMPTY_CAPTURE, readiness, readinessKey, splitFrontmatter, noteName, type Capture,
+  EMPTY_CAPTURE, readiness, readinessKey, noteName, type Capture,
 } from "../src/core/source";
+import { splitFrontmatter } from "../src/vendor/kit/frontmatter";
 
 const cap = (kind: "selection" | "note", text: string): Capture =>
   ({ kind, path: "Ordner/Mail.md", name: "Mail", text, from: { line: 0, ch: 0 }, to: { line: 0, ch: text.length } });

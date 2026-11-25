@@ -154,7 +154,8 @@
         "safe-file-name",
         "capture-selection",
         "main-markdown-view",
-        "segmented-control"
+        "segmented-control",
+        "prompt-text"
       ],
       "rewrite": [
         [

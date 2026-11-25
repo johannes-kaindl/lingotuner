@@ -365,6 +365,17 @@
   position: static;
 }
 
+/* uebernommen aus src/vendor/kit-obsidian/prompt-text.ts (PROMPT_TEXT_CSS), obsidian-kit 0.112.0 */
+/* Ein Feld füllt die Zeile: eine Adresse oder ein Kommentar ist lang, und ein Feld von Standardbreite schnitt den Platzhalter ab (anysource-sideloader, asl-url-field). */
+.okit-prompt-field { display: block; width: 100%; box-sizing: border-box; }
+textarea.okit-prompt-field { resize: vertical; min-height: calc(var(--size-4-12) * 2); }
+/* Mit Fokus gewinnt Obsidians input:focus (Rand und Schein in der Fokusfarbe, gemessen 1.15.1: der Fehlerrand blieb grau), also nennt die Regel den Fokus mit. */
+.okit-prompt-field[aria-invalid="true"], .okit-prompt-field[aria-invalid="true"]:focus { border-color: var(--text-error); }
+.okit-prompt-field[aria-invalid="true"]:focus { box-shadow: 0 0 0 2px var(--text-error); }
+/* Die Meldung ist Text (der zweite Kanal neben der Randfarbe); leer behält sie ihren Platz nicht, der Dialog darf beim ersten Fehler wachsen. */
+.okit-prompt-error { margin: var(--size-4-1) 0 0; color: var(--text-error); font-size: var(--font-ui-small); }
+.okit-prompt-error:empty { display: none; }
+
 /* uebernommen aus src/vendor/kit-obsidian/request-section.ts (REQUEST_SECTION_CSS), obsidian-kit 0.112.0 */
 .okit-request-warning { color: var(--text-warning); margin: var(--size-4-2) 0; }
 .okit-request-note { color: var(--text-muted); font-size: var(--font-ui-small); }

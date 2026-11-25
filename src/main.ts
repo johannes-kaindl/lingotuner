@@ -10,7 +10,8 @@ import { DEFAULT_SETTINGS, LEGACY_REQUEST_MIGRATIONS, allPresets, loadSettings, 
 import { type Dials } from "./core/dials";
 import { buildMessages, withSystemSetting, type ChatMessage } from "./core/prompt";
 import { loadOverrides } from "./core/examples/overrides";
-import { noteName, readiness as readinessOf, readinessKey, splitFrontmatter, type SourceKind } from "./core/source";
+import { noteName, readiness as readinessOf, readinessKey, type SourceKind } from "./core/source";
+import { splitFrontmatter } from "./vendor/kit/frontmatter";
 import { freshSession, type TuneSession } from "./core/session";
 import { targetFor } from "./core/target";
 import { createTuneRun, type TuneRunDeps } from "./core/panel-run";

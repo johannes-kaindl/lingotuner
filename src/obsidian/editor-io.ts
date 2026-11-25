@@ -2,7 +2,8 @@
 // Geschrieben wird nur ueber den Rahmen (`acceptPanel`, Ziel `selection`/`file`).
 import type { App } from "obsidian";
 import { captureSelection } from "../vendor/kit-obsidian/capture-selection";
-import { EMPTY_CAPTURE, noteName, splitFrontmatter, type Capture, type CaptureState } from "../core/source";
+import { splitFrontmatter } from "../vendor/kit/frontmatter";
+import { EMPTY_CAPTURE, noteName, type Capture, type CaptureState } from "../core/source";
 
 /** Schreibt den Editor-Stand mit, weil ein Klick ins Panel den Editor-Fokus nimmt: zum Zeitpunkt des Knopfdrucks gibt es keine Markierung mehr.
  *  Welche Notiz gemeint ist, sagt der Kit (`mainMarkdownView`: die zuletzt genutzte Notiz im Hauptbereich oder in einem Pop-out, auch mit dem Fokus im Panel);
