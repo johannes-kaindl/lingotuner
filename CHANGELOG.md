@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-11-25
+
 ### Added
 
 - **The system prompt can be edited in the settings** („System prompt“, shared library obsidian-kit 0.110.0 `system-prompt-setting`). It replaces the role and rules at the top of the prompt; the dial instructions, example pairs and the note are added as before. Order: the settings field (if not empty), then `system.md` in the override folder, then the shipped text. Leaving it empty keeps the shipped text, which follows later updates; "Edit shipped prompt" fills the empty field without saving, "Reset to the shipped prompt" copies your own text to the clipboard first.
