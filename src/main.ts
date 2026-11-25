@@ -8,7 +8,7 @@ import { managerErrorText, resolveLlmConnectionStrings, transportMissingText } f
 import { loadRequestSettings, onLevelFor, thinkingFor } from "./vendor/kit/sampling-profiles";
 import { DEFAULT_SETTINGS, LEGACY_REQUEST_MIGRATIONS, allPresets, loadSettings, upsertUserPreset, type LingoTunerSettings } from "./core/settings";
 import { type Dials } from "./core/dials";
-import { buildMessages, type ChatMessage } from "./core/prompt";
+import { buildMessages, withSystemSetting, type ChatMessage } from "./core/prompt";
 import { loadOverrides } from "./core/examples/overrides";
 import { noteName, readiness as readinessOf, readinessKey, splitFrontmatter, type SourceKind } from "./core/source";
 import { freshSession, type TuneSession } from "./core/session";
@@ -318,7 +318,10 @@ export default class LingoTunerPlugin extends Plugin {
       return { ok: false, error: { kind: "network" }, partial: "" };
     }
 
-    const { overrides, problems } = await loadOverrides(vaultOverrideReader(this.app), this.settings.overrideFolder);
+    const loaded = await loadOverrides(vaultOverrideReader(this.app), this.settings.overrideFolder);
+    const problems = loaded.problems;
+    // Vorrang des Systemteils: Feld in den Einstellungen, dann system.md, dann der ausgelieferte Text. Dieselben `overrides` bauen Lauf, Logbuch und Lab-Meldung.
+    const overrides = withSystemSetting(loaded.overrides, this.settings.systemPrompt, getLang());
     // Nur melden, wenn sich die Problemmenge geaendert hat — und ueber die API (quiet) gar nicht
     // per Notice: ein Fremdaufruf soll dem Nutzer keine Meldung ins Fenster schieben.
     const key = problems.join("\n");

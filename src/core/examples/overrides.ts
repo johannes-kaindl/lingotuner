@@ -3,7 +3,7 @@
 import { DIMENSIONS, type Dimension } from "../dials";
 import { examplesFor, type PromptOverrides } from "../prompt";
 import { exampleKey, type ExampleLevel } from "./types";
-import { PROMPT_TEXT } from "../prompt-text";
+import { SHIPPED_SYSTEM } from "../prompt-text";
 import type { Lang } from "../../vendor/kit/i18n";
 
 export interface OverrideReader { read(path: string): Promise<string | null> }
@@ -39,9 +39,9 @@ export function renderExampleFile(pair: { before: string; after: string }): stri
 }
 
 export function renderSystemFile(lang: Lang): string {
-  const t = PROMPT_TEXT[lang];
-  return [t.role, "", ...t.invariants.map((s) => `- ${s}`), ""].join("\n");
+  return `${SHIPPED_SYSTEM[lang]}\n`;
 }
+
 
 export async function loadOverrides(
   reader: OverrideReader,

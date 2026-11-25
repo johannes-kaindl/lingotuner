@@ -13,6 +13,8 @@ export interface UserPreset { name: string; dials: Dials }
 export interface LingoTunerSettings {
   endpoints: EndpointConfig[];
   overrideFolder: string;
+  /** Eigener Systemteil (Kit `system-prompt-setting`); `""` heisst: `system.md` aus dem Override-Ordner, sonst der ausgelieferte Text. */
+  systemPrompt: string;
   userPresets: UserPreset[];
   lastDials: Dials;
   logbookEnabled: boolean;
@@ -29,6 +31,7 @@ export interface LingoTunerSettings {
 export const DEFAULT_SETTINGS: LingoTunerSettings = {
   endpoints: [{ url: "http://127.0.0.1:1234" }],
   overrideFolder: "",
+  systemPrompt: "",
   userPresets: [],
   lastDials: { ...NEUTRAL },
   logbookEnabled: false,

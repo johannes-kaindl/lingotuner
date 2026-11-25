@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   exampleFileName, parseExampleFile, renderExampleFile, loadOverrides, writeShippedTexts, SYSTEM_FILE,
+  renderSystemFile,
 } from "../src/core/examples/overrides";
+import { SHIPPED_SYSTEM } from "../src/core/prompt-text";
+import { systemPrompt, withSystemSetting } from "../src/core/prompt";
+import { NEUTRAL } from "../src/core/dials";
 
 function memFs(files: Record<string, string>) {
   return {
@@ -65,5 +69,30 @@ describe("overrides", () => {
     expect(fs.files["LT/directness_1.md"]).toBe("meins");
     expect(fs.files[`LT/${SYSTEM_FILE}`]).toContain("Dolmetscher");
     expect(parseExampleFile(fs.files["LT/semantics_2.md"])).not.toBeNull();
+  });
+});
+
+describe("Systemprompt aus den Einstellungen (Kit prompt-override, Welle 37 Teil 2)", () => {
+  const shipped = SHIPPED_SYSTEM.en;
+
+  it("der ausgelieferte Text ist der Kopf des Systemprompts ohne Ueberschreibung", () => {
+    expect(systemPrompt(NEUTRAL, { lang: "en" })).toBe(shipped);
+    expect(renderSystemFile("de")).toBe(`${SHIPPED_SYSTEM.de}\n`);
+  });
+
+  it("Vorrang: Feld in den Einstellungen vor system.md vor dem ausgelieferten Text", () => {
+    expect(withSystemSetting({ system: "aus der Datei" }, "aus dem Feld", "en").system).toBe("aus dem Feld");
+    expect(withSystemSetting({ system: "aus der Datei" }, "", "en").system).toBe("aus der Datei");
+    expect(withSystemSetting({}, "", "en").system).toBeUndefined();
+    expect(systemPrompt(NEUTRAL, { lang: "en", overrides: withSystemSetting({ system: "aus der Datei" }, "aus dem Feld", "en") })).toBe("aus dem Feld");
+  });
+
+  it("leer, Leerraum und der ausgelieferte Text gelten als nicht ueberschrieben: system.md bleibt wirksam, Beispielpaare bleiben", () => {
+    const files = { system: "aus der Datei", examples: { "directness:2": { before: "a", after: "b" } } };
+    for (const stored of ["", "  \n", shipped, `\n${shipped}\n`]) {
+      const o = withSystemSetting(files, stored, "en");
+      expect(o.system).toBe("aus der Datei");
+      expect(o.examples).toEqual(files.examples);
+    }
   });
 });

@@ -1,4 +1,4 @@
-// vendored from code-kit@0.89.0, src/ts/pure/panel-session.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from code-kit@0.90.0, src/ts/pure/panel-session.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Origin: obsidian-plugins `3d-codeblocks/src/core/shapes/panel-state.ts` (`PanelTarget`, `sameTarget`, `followTarget`, `resolveChain`/`chainOf`,
 // `acceptText`, `baseTextForRefine`) and `src/obsidian/prompt-panel.ts` (`kind()`, `settleTarget()`), generalised: the round type `R` is the caller's,
 // the format-bound steps (`applyChanges`, the round kinds `create`/`refine`, the `shapes-block`/`shapes-file` names) are parameters or renamed.

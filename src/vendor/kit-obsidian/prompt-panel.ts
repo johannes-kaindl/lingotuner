@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.109.1, src/obsidian/prompt-panel.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.110.0, src/obsidian/prompt-panel.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Rahmen der Auftrags-Fenster (K9, Welle 36): zeichnet die acht Stationen eines Fensters, das einen Auftrag an ein Modell gibt, das Ergebnis zeigt und es auf Knopfdruck schreibt.
 // Herkunft: svg-studio@0.1.4 `src/obsidian/panel/shell.ts` (`buildPanelShell`, 628 Zeilen), verschoben und auf den Halter umgebaut; die Tests stammen aus `tests/obsidian/panel-shell.test.ts`
 // (17 Tests, von happy-dom auf das Fake-DOM des Kits umgeschrieben). Spec: Cockpit `_SDD/2026-11-15-auftrags-fenster-rahmen-design`, Plan `…-plan-etappe-1-3`.

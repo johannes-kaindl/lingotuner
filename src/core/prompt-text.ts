@@ -97,3 +97,10 @@ export const PROMPT_TEXT: Record<Lang, PromptText> = {
     },
   },
 };
+
+/** Der ausgelieferte Systemteil (Rolle und Invarianten) je Sprache: Inhalt von `system.md` beim Schreiben des Auslieferungsstands,
+ *  Platzhalter des Feldes in den Einstellungen und Kopf des Prompts ohne Ueberschreibung (`systemPrompt`). Eine Quelle fuer alle drei. */
+export const SHIPPED_SYSTEM: Record<Lang, string> = {
+  en: [PROMPT_TEXT.en.role, "", ...PROMPT_TEXT.en.invariants.map((s) => `- ${s}`)].join("\n"),
+  de: [PROMPT_TEXT.de.role, "", ...PROMPT_TEXT.de.invariants.map((s) => `- ${s}`)].join("\n"),
+};

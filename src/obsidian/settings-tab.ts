@@ -3,6 +3,8 @@ import type LingoTunerPlugin from "../main";
 import { t } from "../vendor/kit/i18n";
 import { githubHelpUrls, helpSettingDefinition } from "../vendor/kit-obsidian/help-setting";
 import { statusBarSettingDefinition } from "../vendor/kit-obsidian/status-bar-item";
+import { systemPromptSettingDefinition } from "../vendor/kit-obsidian/system-prompt-setting";
+import { SHIPPED_SYSTEM } from "../core/prompt-text";
 import { renderSettingDefinitions, settingBodyHost, refreshSettingsTab } from "../vendor/kit-obsidian/settings_walker";
 import { installTabRefreshOnOpen } from "../vendor/kit-obsidian/settings_walker";
 import { writeShippedTexts } from "../core/examples/overrides";
@@ -38,6 +40,17 @@ export class LingoTunerSettingTab extends PluginSettingTab {
         type: "group",
         heading: t("set.groupStyle"),
         items: [
+          // Kit-Baustein Systemprompt-Einstellung (UI-STANDARD § 8): gespeichert wird normalisiert, `""` heisst ausgeliefert; Vorrang vor system.md (`withSystemSetting`).
+          systemPromptSettingDefinition({
+            value: this.plugin.settings.systemPrompt,
+            shipped: SHIPPED_SYSTEM[getLang()],
+            onChange: async (v) => {
+              this.plugin.settings.systemPrompt = v;
+              await this.plugin.saveSettings();
+            },
+            rows: 10,
+            strings: { lang: getLang(), desc: t("set.systemPromptDesc") },
+          }),
           { name: t("set.overrideFolder"), desc: t("set.overrideFolderDesc"), control: { type: "folder", key: "overrideFolder" } },
           { name: t("set.overrideWrite"), desc: t("set.overrideWriteDesc"), render: (s) => { this.renderOverrideWrite(s); } },
           { name: t("set.presets"), desc: t("set.presetsDesc"), render: (s) => { this.renderPresets(s); } },

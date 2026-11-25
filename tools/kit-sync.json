@@ -1,10 +1,10 @@
 {
   "sources": {
     "obsidian-kit": {
-      "ref": "0.109.1"
+      "ref": "0.110.0"
     },
     "code-kit": {
-      "ref": "0.89.0"
+      "ref": "0.90.0"
     }
   },
   "targets": [
@@ -64,7 +64,8 @@
         "rotation",
         "ensure-dir",
         "bytes-equal",
-        "rel-path"
+        "rel-path",
+        "prompt-override"
       ]
     },
     {
@@ -143,7 +144,8 @@
         "prompt-panel-strings",
         "status-bar-item",
         "version-list",
-        "chat-host"
+        "chat-host",
+        "system-prompt-setting"
       ],
       "rewrite": [
         [

@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **The system prompt can be edited in the settings** („System prompt“, shared library obsidian-kit 0.110.0 `system-prompt-setting`). It replaces the role and rules at the top of the prompt; the dial instructions, example pairs and the note are added as before. Order: the settings field (if not empty), then `system.md` in the override folder, then the shipped text. Leaving it empty keeps the shipped text, which follows later updates; "Load shipped prompt" fills the field without saving, "Reset" copies own text to the clipboard first.
+
 ### Changed
 
 - **The panel is built on the shared prompt-window frame** (obsidian-kit 0.109.1 `buildPromptPanel`, `createPromptPanelHost`; UI-STANDARD §8 „Auftrags-Fenster“). Source, presets and the four dials sit where the frame puts a plugin's own controls; the note is the frame's optional instruction field; model line, answer area, rounds list and the write buttons come from the frame.
