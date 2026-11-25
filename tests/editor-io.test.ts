@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { MarkdownView, TFile } from "./__mocks__/obsidian";
-import type { Workspace } from "obsidian";
+import type { App } from "obsidian";
 import { SelectionTracker } from "../src/obsidian/editor-io";
 import "../src/i18n/strings";
 
@@ -10,12 +10,15 @@ function scene(content: string, mode: "source" | "preview" = "source") {
   view.editor.setValue(content);
   view.getMode = () => mode;
   const leaf = { view };
+  // Der Fokus liegt im Panel: keine aktive Markdown-Ansicht, die Notiz kommt ueber die zuletzt genutzte Ansicht (Kit `mainMarkdownView`, Schritt „recent“).
   const workspace = {
     rootSplit: {},
+    getActiveViewOfType: () => null,
     getMostRecentLeaf: () => leaf,
     getLeavesOfType: () => [leaf],
-  } as unknown as Workspace;
-  return { view, workspace, tracker: new SelectionTracker(workspace) };
+  };
+  const app = { workspace } as unknown as App;
+  return { view, workspace, tracker: new SelectionTracker(app, () => "de") };
 }
 
 describe("SelectionTracker", () => {
@@ -43,12 +46,19 @@ describe("SelectionTracker", () => {
     expect(s.tracker.get()).toMatchObject({ selection: null, note: null, blocked: "reading-mode" });
   });
 
-  it("ohne MarkdownView bleibt der alte Stand stehen (Panel hat den Fokus)", () => {
+  it("Fokus im Panel: die Notiz kommt ueber die zuletzt genutzte Ansicht", () => {
+    const s = scene("Hallo Welt");
+    s.view.editor.setSelection({ line: 0, ch: 0 }, { line: 0, ch: 5 });
+    s.tracker.capture();
+    expect(s.tracker.get()).toMatchObject({ blocked: null, selection: { text: "Hallo", path: "A/Mail.md", name: "Mail" } });
+  });
+
+  it("gar keine Notiz offen: „keine Notiz“ statt des alten Stands (Kit captureSelection, seit 0.112.0)", () => {
     const s = scene("Text");
     s.tracker.capture();
-    (s.workspace as unknown as { getMostRecentLeaf: () => unknown }).getMostRecentLeaf = () => ({ view: {} });
+    s.workspace.getMostRecentLeaf = () => ({ view: {} }) as never;
     s.tracker.capture();
-    expect(s.tracker.get().note?.text).toBe("Text");
+    expect(s.tracker.get()).toMatchObject({ selection: null, note: null, blocked: "no-note" });
   });
 
   it("Markierung traegt die Zeilenzahl der Notiz (noteLines, fuer das Wiederfinden im Kit)", () => {

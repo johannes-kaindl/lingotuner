@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.111.0, src/obsidian/lab-client.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.112.0, src/obsidian/lab-client.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /** Konsumentenseite von llm-labs Plugin-API (`app.plugins.plugins["llm-lab"].api`, Vertrag v4).
  *
  *  Herkunft (Welle 8, 2026-09-25): vier byte-gleiche Kopien (bis auf Kommentare) —

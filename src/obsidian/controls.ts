@@ -7,6 +7,7 @@ import { setIcon } from "obsidian";
 import { DIMENSIONS, levelKey, presetFor, type Dials, type Dimension, type Level, type Preset } from "../core/dials";
 import { readinessKey, type Readiness, type SourceKind } from "../core/source";
 import { t } from "../vendor/kit/i18n";
+import { buildSegmentedControl } from "../vendor/kit-obsidian/segmented-control";
 
 export interface ControlsModel {
   source: SourceKind;
@@ -42,8 +43,14 @@ function chip(row: HTMLElement, text: string, cls: string, active: boolean, onCl
 export function renderControls(host: HTMLElement, m: ControlsModel, h: ControlsHandlers): void {
   const box = host.createDiv({ cls: "lt-controls" });
 
-  const sources = box.createDiv({ cls: "lt-sources", attr: { role: "group", "aria-label": t("source.group") } });
-  for (const k of ["selection", "note", "text"] as const) chip(sources, t(`source.${k}`), "lt-source-chip", m.source === k, () => { h.onSource(k); });
+  // Quelle: ein Segment-Schalter mit drei Stellungen (Kit `buildSegmentedControl`, UI-STANDARD § 8): Radiogruppe mit Pfeiltasten, am Telefon 44 px (K4).
+  buildSegmentedControl<SourceKind>(box, {
+    options: (["selection", "note", "text"] as const).map((k) => ({ value: k, label: t(`source.${k}`) })),
+    value: m.source,
+    ariaLabel: t("source.group"),
+    cls: "lt-sources",
+    onChange: (k) => { h.onSource(k); },
+  });
   const line = box.createDiv({ cls: "lt-source-line", text: readinessLine(m.readiness, m.source) });
   line.toggleClass("is-blocked", m.readiness.kind !== "ready");
   if (m.source === "text") {

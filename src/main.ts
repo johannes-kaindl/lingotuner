@@ -26,7 +26,8 @@ import { createShortcutsBridge, type ShortcutsBridge } from "./vendor/kit-obsidi
 import { createShortcutsChatTransport } from "./vendor/kit-obsidian/chat-transport";
 import { redactExchange } from "./vendor/kit-obsidian/chat-client";
 import { logToLab } from "./vendor/kit-obsidian/lab-client";
-import { SelectionTracker, activeMarkdownView } from "./obsidian/editor-io";
+import { SelectionTracker } from "./obsidian/editor-io";
+import { mainMarkdownView } from "./vendor/kit-obsidian/main-markdown-view";
 import { acceptStrings, tuneWays } from "./obsidian/accept";
 import { vaultOverrideReader } from "./obsidian/overrides-io";
 import { appendLogEntry } from "./obsidian/logbook-io";
@@ -78,7 +79,7 @@ export default class LingoTunerPlugin extends Plugin {
     // Das globale Modell ist in die Zeilen gewandert (loadSettings): einmal speichern, damit der Altschluessel
     // aus der data.json verschwindet.
     if (typeof raw === "object" && raw !== null && "model" in raw) await this.saveSettings();
-    this.tracker = new SelectionTracker(this.app.workspace);
+    this.tracker = new SelectionTracker(this.app, () => (getLang() === "de" ? "de" : "en"));
     this.shortcutsBridge = createShortcutsBridge(this, { protocolAction: "lingotuner-shortcut" });
     this.llm = createLlmConnection({
       app: this.app,
@@ -159,7 +160,7 @@ export default class LingoTunerPlugin extends Plugin {
       accept: {
         app: this.app,
         ports: obsidianWritePorts(this.app),
-        lastEditor: () => activeMarkdownView(this.app.workspace),
+        lastEditor: () => mainMarkdownView(this.app)?.view ?? null,
         strings: acceptStrings(getLang() === "de" ? "de" : "en"),
         readingMode: "refuse",
       },
@@ -249,8 +250,8 @@ export default class LingoTunerPlugin extends Plugin {
     this.tracker.capture();
     this.offerTarget();
     this.panel()?.refreshAccept();
-    // Die Bereitschaftszeile nennt die Markierung; beim Textfeld nicht neu zeichnen (ein Neuzeichnen naehme dem Tippenden den Fokus, Smoke B10).
-    if (this.panelState.source !== "text") this.panel()?.refreshControls();
+    // Die Bereitschaftszeile nennt die Markierung. Hat ein Textfeld des Slots den Fokus, schiebt der Rahmen das Neuzeichnen auf, bis er den Slot verlaesst (Smoke B10).
+    this.panel()?.refreshControls();
   }
 
   /** Bietet das Ziel der gewaehlten Quelle an, aber nur, wenn es ein anderes ist: jedes Angebot meldet `target` (und ohne Runde `session`) und zeichnet neu. */

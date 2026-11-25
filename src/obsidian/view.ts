@@ -104,8 +104,6 @@ export function roundMeta(round: Round): string {
 
 export class LingoTunerView extends ItemView {
   private panel: PromptPanel | null = null;
-  /** Der Slot von Station 3, zuletzt vom Rahmen uebergeben: `refreshControls()` zeichnet ihn neu. */
-  private controlsEl: HTMLElement | null = null;
   private md: Component | null = null;
 
   constructor(leaf: WorkspaceLeaf, private readonly deps: ViewDeps) { super(leaf); }
@@ -141,7 +139,6 @@ export class LingoTunerView extends ItemView {
     // Obsidian wartet in onClose nicht auf einen Dialog: die Rueckfrage laeuft nach destroy() weiter und erreicht den Halter (Verwerfen verwirft, jeder andere Ausgang behaelt).
     const panel = this.panel;
     this.panel = null;
-    this.controlsEl = null;
     if (panel) {
       void panel.requestClose();
       panel.destroy();
@@ -152,27 +149,9 @@ export class LingoTunerView extends ItemView {
 
   /** Die zuletzt aktive Notiz hat gewechselt: Schreibwege und Sperrgruende neu bewerten. */
   refreshAccept(): void { this.panel?.refreshAccept(); }
-  /** Quelle oder Mitschrift haben sich geaendert: Station 3 (Quellen-Chips, Textfeld, Bereitschaftszeile) neu zeichnen. Der Rahmen tut das bei `session`, aber nicht bei
-   *  `target`, und mit offenen Runden meldet der Halter einen Quellenwechsel nur als `target` (Ziel gemerkt, nicht uebernommen): ohne diesen Aufruf fehlte das Textfeld nach
-   *  dem Wechsel auf „Textfeld“ (Smoke ML1–ML7, P1, P2, Welle 37). Im Lauf ist Station 3 gesperrt und wird nicht angefasst. Bestellung ans Kit: Station 3 bei `target` neu zeichnen. */
-  refreshControls(): void {
-    const el = this.controlsEl;
-    if (el === null || this.panel === null || this.deps.host.busy()) return;
-    el.empty();
-    this.drawControls(el);
-  }
+  /** Quelle, Mitschrift oder Regler haben sich geaendert: Station 3 neu zeichnen (Rahmen `refreshControls`, seit obsidian-kit 0.112.0; im Lauf nicht, bei einem Textfeld mit Fokus aufgeschoben). */
+  refreshControls(): void { this.panel?.refreshControls(); }
 
-  private drawControls(host: HTMLElement): void {
-    const d = this.deps;
-    this.controlsEl = host;
-    renderControls(host, d.controls(), {
-      onSource: (k) => { d.onSource(k); },
-      onFreeText: (v) => { d.onFreeText(v); },
-      onDial: (dim, level) => { d.onDial(dim, level); },
-      onPreset: (id) => { d.onPreset(id); },
-      onSavePreset: () => { new PresetNameModal(this.app, (name) => { d.savePreset(name); }).open(); },
-    });
-  }
   /** Modell, Endpunkt oder Denkstufe haben sich ausserhalb geaendert: die Modellzeile zieht nach. */
   refreshModelBar(): void { this.panel?.refreshModelBar(); }
   /** Laedt die Modell-Liste der Zeile neu (Endpunkt oder Manager haben gewechselt). */
@@ -188,7 +167,15 @@ export class LingoTunerView extends ItemView {
   private slots(): PromptPanelSlots<Round, TuneSession> {
     const d = this.deps;
     return {
-      renderControls: (host) => { this.drawControls(host); },
+      renderControls: (host) => {
+        renderControls(host, d.controls(), {
+          onSource: (k) => { d.onSource(k); },
+          onFreeText: (v) => { d.onFreeText(v); },
+          onDial: (dim, level) => { d.onDial(dim, level); },
+          onPreset: (id) => { d.onPreset(id); },
+          onSavePreset: () => { new PresetNameModal(this.app, (name) => { d.savePreset(name); }).open(); },
+        });
+      },
       instructionOptional: true,
       notices: (host, ctx) => {
         if (ctx.session().rounds.rounds.length === 0) return;

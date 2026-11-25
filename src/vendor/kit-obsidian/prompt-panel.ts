@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.111.0, src/obsidian/prompt-panel.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.112.0, src/obsidian/prompt-panel.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Rahmen der Auftrags-Fenster (K9, Welle 36): zeichnet die acht Stationen eines Fensters, das einen Auftrag an ein Modell gibt, das Ergebnis zeigt und es auf Knopfdruck schreibt.
 // Herkunft: svg-studio@0.1.4 `src/obsidian/panel/shell.ts` (`buildPanelShell`, 628 Zeilen), verschoben und auf den Halter umgebaut; die Tests stammen aus `tests/obsidian/panel-shell.test.ts`
 // (17 Tests, von happy-dom auf das Fake-DOM des Kits umgeschrieben). Spec: Cockpit `_SDD/2026-11-15-auftrags-fenster-rahmen-design`, Plan `…-plan-etappe-1-3`.
@@ -48,6 +48,11 @@
 //   (`renderFields`) tragen Knöpfe und Eingabefelder des Plugins und gelten für denselben Schlüssel samt `busy` (sie werden beim Zeichnen gesperrt), die Felder zusätzlich mit dem Text, den sie bekamen; erzwungen zeichnen sie am Ende eines
 //   Laufs und Schreibens (`run`, `apply`, `releaseAfterBusy`). Die **Rundenliste** hängt nur an `session.rounds` und zeichnet bei einer anderen Referenz darauf. Die **Vorschau** zeichnet weiter bei jedem Angebot: sie ist der Weg, auf dem eine
 //   auf der Platte geänderte Datei sichtbar wird (der Schlüssel kennt die Platte nicht), und sie trägt keine Bedienung des Rahmens. Die **Beispiele** sind feste Knöpfe (nur Sichtbarkeit), **Neu**, **Verwerfen**, **Senden** und **Abbrechen** feste Knöpfe.
+// - **`refreshControls()` zeichnet die Bedienteile auf Zuruf neu (Welle 38, Teil D, Bestellung lingotuner).** Mit offenen Runden meldet der Halter einen Zielwechsel nur als `target`, und `target` zeichnet Station 3 nicht:
+//   lingotuners Quellen-Chips und das Textfeld blieben auf dem alten Stand (Smoke ML1 bis ML7). Bewusst die Methode und kein Neuzeichnen bei jedem `target`: nur das Plugin weiß, wann sein Slot veraltet ist, und ein Neuzeichnen
+//   bei jedem Angebot nähme allen Trägern den Fokus aus einem aktiven Feld (lingotuner Smoke B10). Im Lauf und beim Schreiben zeichnet sie nicht (Ergebnis `"busy"`): das Ende des Laufs zeichnet den Slot ohnehin neu
+//   (`run`, `apply`). Fokus: steht er in einem Textfeld des Slots (`textarea`, `input` mit Texteingabe, `contenteditable`), wird das Neuzeichnen aufgeschoben (`"deferred"`) und geschieht einmal, sobald der Fokus den
+//   Slot verlässt; auf einem anderen Element des Slots (Chip, Regler) zeichnet sie gleich und gibt den Fokus dem Element an derselben Stelle (Index unter den fokussierbaren Elementen des Slots) zurück, sonst niemandem.
 // - **Keine Abweichung mehr beim Entsperren:** `shell.ts` zeichnete nach jedem Laufende alles neu (`runInner` `finally`, `stop()`: `settle(); renderAll()`); der erste Stand dieses Rahmens zeichnete nur die Bedienteile
 //   (ein Fehler, keine gewollte Abweichung). Seit dem Fix zeichnet er Prüfliste und Felder neu und die Vorschau nicht; das ist der einzige Unterschied zum Neuzeichnen von allem, und er hat den Grund oben (die Vorschau ist teuer).
 // - **Die Rundenliste erscheint ab zwei Runden** (`minItems` des Bausteins `buildVersionList`, Standard 2) wie in svg-studio, dem besten Exemplar; bei einer Runde zeigt die Vorschau sie ohnehin.
@@ -194,6 +199,9 @@ export interface PromptPanel {
   refreshModelBar(): void;
   /** Wertet die Schreibwege und ihre Sperrgründe neu aus (die zuletzt aktive Notiz hat gewechselt). */
   refreshAccept(): void;
+  /** Seit Welle 38: zeichnet die Bedienteile (Slot `renderControls`, Station 3) neu, wenn ihr Stand außerhalb der Sitzung gewechselt hat (etwa die Quelle mit offenen Runden). `"drawn"`: neu gezeichnet;
+   *  `"busy"`: im Lauf oder beim Schreiben nicht (das Ende zeichnet ohnehin neu); `"deferred"`: ein Textfeld des Slots hat den Fokus, gezeichnet wird einmal, wenn er den Slot verlässt. Fokus siehe Kopf. */
+  refreshControls(): "drawn" | "busy" | "deferred";
   /** Lädt die Modell-Liste der Zeile neu. */
   reloadModels(): void;
   /** Testnaht: wartet auf Lauf, Schreiben und eine laufende Vorschau. */
@@ -204,6 +212,81 @@ export interface PromptPanel {
 
 /** Zähler für Ids: zwei Rahmen im selben Dokument haben nie dieselbe id. */
 let frameSeq = 0;
+
+/** Was die klebende Fußzeile (Station 7) vom Blatt übernimmt, auf dem das Fenster wirklich liegt (Welle 38, Teil A). Alle Längen in px.
+ *  - `background`: die Hintergrundfarbe des nächsten deckenden Vorfahren (Schublade am Telefon, Seitenleiste, Tab), `null` ohne deckenden Vorfahren (dann gilt die Vorgabe `--background-primary`).
+ *  - `left`, `right`: der Abstand des Fensters zum Innenrand des rollenden Bereichs; die Fußzeile reicht um so viel nach außen (kein Inhalt scheint links und rechts vorbei).
+ *  - `bottom`: der untere Innenabstand des rollenden Bereichs ohne die Tastaturhöhe; um so viel rückt die klebende Fußzeile nach unten bis an seinen Rand (kein Inhalt scheint darunter durch).
+ *  - `padBottom`: was am unteren Rand verdeckt ist (Home-Leiste, schwebende Navigationsleiste am Telefon), als Innenabstand der Fußzeile, damit ihre Knöpfe darüber stehen.
+ *  - `stick`: am Telefon `false`, wenn die Fußzeile mehr als ein Fünftel des rollenden Bereichs nähme; dann steht sie am Ende des Inhalts statt zu kleben. */
+export interface EndFit { background: string | null; left: number; right: number; bottom: number; padBottom: number; stick: boolean }
+
+/** Was `measureEndFit` von der Umgebung liest (im Rahmen: `getComputedStyle`, `elementFromPoint`, Fensterhöhe, `is-phone` am `body`; Tests geben eigene Werte). */
+export interface EndFitEnv {
+  style(el: Element): Pick<CSSStyleDeclaration, "backgroundColor" | "overflowY" | "paddingBottom" | "getPropertyValue">;
+  /** Das oberste Element an einem Punkt des Fensters (`document.elementFromPoint`). */
+  hit(x: number, y: number): Element | null;
+  viewportHeight: number;
+  /** Am Telefon (`is-phone`): nur dort gilt die Fünftel-Regel und die Suche nach einer Überdeckung am unteren Rand. */
+  phone: boolean;
+  /** Obsidians Variablen am `body`: `--keyboard-height` und `--safe-area-inset-bottom` (beide in px). */
+  rootVar(name: string): string;
+}
+
+/** Anteil am rollenden Bereich, ab dem die Fußzeile am Telefon nicht mehr klebt. */
+export const END_STICK_MAX_SHARE = 0.2;
+
+const px = (v: string): number => {
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/** Deckend heißt: eine Farbe mit Deckkraft über null (`transparent`, `rgba(…, 0)` und `… / 0)` zählen nicht). Ein halb durchsichtiger Vorfahr zählt als deckend (benannte Grenze: seine Farbe ist dann
+ *  nicht genau, was man sieht; gemessen sind nur deckende Themes). */
+function opaque(color: string): boolean {
+  const c = color.trim();
+  if (c === "" || c === "transparent") return false;
+  return !/(,|\/)\s*0(\.0+)?\s*\)$/.test(c);
+}
+
+/** Misst, was die klebende Fußzeile `endEl` des Fensters `panelEl` braucht (siehe `EndFit`). Ohne rollenden Vorfahren klebt nichts: die Ränder bleiben 0. Nur der Rahmen ruft das, bei jedem Zeichnen, bei
+ *  geänderter Größe und bei einem Themenwechsel; exportiert für die Tests. */
+export function measureEndFit(panelEl: HTMLElement, endEl: HTMLElement, env: EndFitEnv): EndFit {
+  let background: string | null = null;
+  let scroller: HTMLElement | null = null;
+  for (let a = panelEl.parentElement; a !== null; a = a.parentElement) {
+    const cs = env.style(a);
+    if (scroller === null && /^(auto|scroll|overlay)$/.test(cs.overflowY)) scroller = a;
+    if (background === null && opaque(cs.backgroundColor)) background = cs.backgroundColor;
+    if (background !== null && scroller !== null) break;
+  }
+  if (scroller === null) return { background, left: 0, right: 0, bottom: 0, padBottom: 0, stick: true };
+  const s = scroller.getBoundingClientRect();
+  const p = panelEl.getBoundingClientRect();
+  const innerLeft = s.left + scroller.clientLeft;
+  const innerRight = innerLeft + scroller.clientWidth;
+  const innerBottom = s.top + scroller.clientTop + scroller.clientHeight;
+  const keyboard = px(env.rootVar("--keyboard-height"));
+  const left = Math.max(0, Math.round(p.left - innerLeft));
+  const right = Math.max(0, Math.round(innerRight - p.right));
+  const bottom = Math.max(0, Math.round(px(env.style(scroller).paddingBottom) - keyboard));
+  // Die Fünftel-Regel misst die Fußzeile ohne den Innenabstand, den die letzte Messung gesetzt hat: sonst schaltete sie hin und her (kleben → Abstand wächst → nicht kleben → Abstand fällt → kleben).
+  const base = endEl.getBoundingClientRect().height - px(env.style(endEl).getPropertyValue("--okit-prompt-panel-end-pad-bottom"));
+  const stick = !env.phone || base <= END_STICK_MAX_SHARE * scroller.clientHeight;
+  let padBottom = 0;
+  if (stick && env.phone && keyboard === 0) {
+    // Home-Leiste: nur wenn der rollende Bereich bis an den unteren Rand des Fensters reicht (Obsidian setzt die Variable bei offener Tastatur auf deren Höhe, darum nur ohne Tastatur).
+    if (innerBottom >= env.viewportHeight - 1) padBottom = px(env.rootVar("--safe-area-inset-bottom"));
+    // Was über dem unteren Rand liegt und nicht zum rollenden Bereich gehört (die schwebende Navigationsleiste im Hauptbereich): die untersten 160 px abtasten; der höchste verdeckte Punkt zählt. Nicht am ersten
+    // freien Punkt aufhören: die Leiste schwebt, unter ihr liegt ein Streifen des Bereichs selbst (gemessen 390 x 844: Leiste 760 bis 812, Bereich bis 844).
+    const x = (s.left + s.right) / 2;
+    for (let d = 1; d <= 160; d += 4) {
+      const el = env.hit(x, innerBottom - d);
+      if (el !== null && !scroller.contains(el)) padBottom = Math.max(padBottom, d + 4);
+    }
+  }
+  return { background, left, right, bottom, padBottom: Math.round(padBottom), stick };
+}
 
 export function buildPromptPanel<R, S extends PanelSession<R>>(root: HTMLElement, host: PanelHost<S>, deps: PromptPanelDeps, slots: PromptPanelSlots<R, S>): PromptPanel {
   const uid = ++frameSeq;
@@ -309,7 +392,38 @@ export function buildPromptPanel<R, S extends PanelSession<R>>(root: HTMLElement
   discardBtn.addEventListener("click", () => { void discard(); });
   newBtn.addEventListener("click", () => { void startNew(); });
 
-  interface WayView { way: PromptPanelWay<S>; btn: HTMLButtonElement; hint: HTMLElement; hintId: string }
+  /** Die Fußzeile übernimmt Hintergrund, Ränder und unteren Abstand des Blatts (`measureEndFit`); ohne Fenster-API (Tests im Fake-DOM, nicht im Dokument) bleibt sie bei den Vorgaben der CSS.
+   *  Gemessen wird bei jedem Zeichnen, bei geänderter Größe von Fenster oder rollendem Bereich (auch die Tastatur ändert dessen Innenabstand) und bei einem Themenwechsel (`css-change`). */
+  function fitEnd(): void {
+    if (destroyed || end.hidden || typeof getComputedStyle !== "function" || !panelEl.isConnected) return;
+    const doc = panelEl.ownerDocument;
+    const fit = measureEndFit(panelEl, end, {
+      style: (el) => getComputedStyle(el),
+      hit: (x, y) => doc.elementFromPoint(x, y),
+      viewportHeight: doc.documentElement.clientHeight,
+      phone: doc.body.hasClass("is-phone"),
+      rootVar: (name) => getComputedStyle(doc.body).getPropertyValue(name),
+    });
+    end.toggleClass("is-static", !fit.stick);
+    // Custom Properties: eslint-plugin-obsidianmd 0.5.0 lässt in `setCssProps` nur `--name` zu; die Regel `.okit-prompt-panel-end` liest sie. Leer entfernt die Eigenschaft (dann gilt die Vorgabe der Regel).
+    end.setCssProps({
+      "--okit-prompt-panel-end-bg": fit.background ?? "",
+      "--okit-prompt-panel-end-left": `${String(fit.left)}px`,
+      "--okit-prompt-panel-end-right": `${String(fit.right)}px`,
+      "--okit-prompt-panel-end-bottom": `${String(fit.bottom)}px`,
+      "--okit-prompt-panel-end-pad-bottom": `${String(fit.padBottom)}px`,
+    });
+  }
+  let resizeObserver: ResizeObserver | null = null;
+  if (typeof ResizeObserver !== "undefined") {
+    resizeObserver = new ResizeObserver(() => { fitEnd(); });
+    resizeObserver.observe(panelEl);
+    resizeObserver.observe(root);
+  }
+  const workspace = (deps.app as Partial<App>).workspace;
+  const cssRef = workspace?.on("css-change", () => { fitEnd(); }) ?? null;
+
+  interface WayView { way: PromptPanelWay<S>; btn: HTMLButtonElement; hint: HTMLButtonElement; hintId: string }
   let wayViews: WayView[] = [];
 
   // ---- Zustand ------------------------------------------------------------------------------
@@ -444,16 +558,68 @@ export function buildPromptPanel<R, S extends PanelSession<R>>(root: HTMLElement
   function renderControlsSlot(force = true): void {
     if (!force && sameKey(drawnControls, keyNow(), { busy: true })) return;
     drawnControls = keyNow();
+    controlsPending = false;
     controlsHost.empty();
     slots.renderControls?.(controlsHost, changesCtx());
     if (host.busy()) lock(controlsHost, "input, button, select, textarea");
   }
+
+  /** `refreshControls()`: aufgeschoben, solange ein Textfeld des Slots den Fokus hat. */
+  let controlsPending = false;
+  /** Die fokussierbaren Elemente des Slots in Dokumentreihenfolge (Tiefensuche über `children`; das Fake-DOM der Tests kennt keine Selektorlisten). */
+  const focusables = (hostEl: Element): HTMLElement[] => {
+    const out: HTMLElement[] = [];
+    const walk = (el: Element): void => {
+      for (const c of Array.from(el.children)) {
+        if (["BUTTON", "INPUT", "SELECT", "TEXTAREA"].includes(c.tagName.toUpperCase()) || c.getAttribute("tabindex") !== null || c.getAttribute("contenteditable") === "true") out.push(c as HTMLElement);
+        walk(c);
+      }
+    };
+    walk(hostEl);
+    return out;
+  };
+  /** Liegt `node` in `host` (über `parentElement`, das Fake-DOM der Tests kennt kein `contains` für Knoten). */
+  const within = (hostEl: HTMLElement, node: Element | null): boolean => {
+    for (let n: Element | null = node; n !== null; n = n.parentElement) if (n === hostEl) return true;
+    return false;
+  };
+  const activeEl = (): Element | null => (root.ownerDocument as Document | undefined)?.activeElement ?? null;
+  const isTextField = (el: Element): boolean => {
+    const tag = el.tagName.toUpperCase();
+    if (tag === "TEXTAREA") return true;
+    if ((el as HTMLElement).isContentEditable || el.getAttribute("contenteditable") === "true") return true;
+    if (tag !== "INPUT") return false;
+    const type = (el.getAttribute("type") ?? "text").toLowerCase();
+    return !["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"].includes(type);
+  };
+  function refreshControlsNow(): "drawn" | "busy" | "deferred" {
+    if (destroyed) return "drawn";
+    if (host.busy()) { controlsPending = false; return "busy"; }
+    const active = activeEl();
+    const focused = active !== null && within(controlsHost, active) ? active : null;
+    if (focused !== null && isTextField(focused)) { controlsPending = true; return "deferred"; }
+    controlsPending = false;
+    const index = focused === null ? -1 : focusables(controlsHost).indexOf(focused as HTMLElement);
+    renderControlsSlot();
+    if (index >= 0) focusables(controlsHost)[index]?.focus();
+    return "drawn";
+  }
+  // Ein aufgeschobenes Neuzeichnen geschieht, sobald der Fokus den Slot verlässt (`relatedTarget` außerhalb oder keins).
+  controlsHost.addEventListener("focusout", (e: FocusEvent) => {
+    if (!controlsPending) return;
+    const next = (e.relatedTarget as Element | null) ?? null;
+    if (next !== null && within(controlsHost, next)) return;
+    refreshControlsNow();
+  });
 
   function renderControls(): void {
     if (destroyed) return;
     const running = host.running();
     const busy = host.busy();
     const n = roundCount();
+    // Station 7 erscheint erst mit der ersten Runde, wie die Vorschau (Welle 38, Teil B): ohne Runde gäbe es nur gesperrte Knöpfe ohne Grund, und am Telefon läge die klebende Zeile über den Bedienteilen.
+    // `hidden`, nicht nur eine Klasse: die Knöpfe darin sind dann auch nicht fokussierbar.
+    end.hidden = n === 0;
     modelBar.update(); // die Sperre der Modellzeile folgt demselben Zustand
     sendBtn.disabled = !canSend();
     stopBtn.toggleClass("is-hidden", !running);
@@ -462,6 +628,9 @@ export function buildPromptPanel<R, S extends PanelSession<R>>(root: HTMLElement
       v.btn.disabled = n === 0 || busy || blocked !== null;
       const hintText = blocked === null ? "" : wayViews.length === 1 ? blocked : `${v.way.label}: ${blocked}`;
       v.hint.setText(hintText);
+      // Ein leerer Hinweis ist weder sichtbar noch fokussierbar (Welle 38, Teil C): `hidden` trägt die Regel der CSS, `disabled` hält auch, wenn ein Theme die Anzeige des Knopfs überschreibt.
+      v.hint.hidden = hintText === "";
+      v.hint.disabled = hintText === "";
       // Der Text steht voll im DOM (aria-describedby liest ihn ganz); die Fußzeile zeigt eine Zeile, der Hinweis klappt auf (Umschalter); der title ist nur Zugabe, nie der einzige Weg.
       if (hintText === "") {
         v.hint.removeAttribute("title");
@@ -481,6 +650,7 @@ export function buildPromptPanel<R, S extends PanelSession<R>>(root: HTMLElement
     if (busy) lock(fieldsHost, "input");
     renderExamples();
     previewWrap.toggleClass("is-hidden", n === 0 && baseShown === null);
+    fitEnd();
   }
 
   /** Die Schreibweg-Knöpfe: bei gleicher Form der Wegliste (gleiche Anzahl, gleiche Beschriftungen in gleicher Reihenfolge) bleiben die Elemente stehen, nur `wayViews[i].way` wird auf das neue Weg-Objekt gesetzt
@@ -748,6 +918,9 @@ export function buildPromptPanel<R, S extends PanelSession<R>>(root: HTMLElement
       renderWays();
       renderControls();
     },
+    refreshControls() {
+      return refreshControlsNow();
+    },
     reloadModels() {
       void modelBar.refresh();
     },
@@ -763,6 +936,8 @@ export function buildPromptPanel<R, S extends PanelSession<R>>(root: HTMLElement
       if (destroyed) return;
       destroyed = true;
       unsubscribe();
+      resizeObserver?.disconnect();
+      if (cssRef !== null) workspace?.offref(cssRef);
       modelBar.destroy();
       offChatHost();
       slots.dispose?.();
@@ -782,7 +957,7 @@ export const PROMPT_PANEL_CSS = `
 /* Zahlenfeld am Handy (iPhone, gemessen 2026-11-05): Die Dezimaltastatur hat keine Fertig-Taste und Obsidian verkleinert das Blatt der Seitenleiste nicht, Übernehmen lag unter der Tastatur. Der Abstand
    unten in Höhe der Tastatur macht den Rest erreichbar (keyboard-height ist 0px, solange keine Tastatur offen ist). Vier Klassen schlagen Obsidians workspace-leaf-content view-content. */
 .is-mobile .workspace-leaf-content .view-content.okit-prompt-panel-host {
-  padding-bottom: max(var(--size-4-8), var(--keyboard-height, 0px));
+  padding-bottom: max(var(--size-4-8), var(--safe-area-inset-bottom, 0px), var(--keyboard-height, 0px));
 }
 
 .okit-prompt-panel {
@@ -868,7 +1043,9 @@ export const PROMPT_PANEL_CSS = `
   text-overflow: clip;
 }
 
-.okit-prompt-panel-accept-hint:empty {
+/* Ein leerer Hinweis ist weder sichtbar noch fokussierbar: dieselbe Kette wie die Regel oben (drei Selektorteile), sonst gewinnt deren display block (Welle 38, Teil C). Der Rahmen setzt zusätzlich hidden und disabled. */
+.okit-prompt-panel-end button.okit-prompt-panel-accept-hint:empty,
+.okit-prompt-panel-end button.okit-prompt-panel-accept-hint[hidden] {
   display: none;
 }
 
@@ -939,16 +1116,30 @@ export const PROMPT_PANEL_CSS = `
   margin-bottom: var(--size-4-1);
 }
 
-/* Die Knopfzeile klebt unten: Übernehmen und Verwerfen bleiben bei langem Inhalt erreichbar, die Sperrgründe stehen mit darin, je eine Zeile (der volle Text steht im DOM und am Knopf über aria-describedby). */
+/* Die Knopfzeile klebt unten: Übernehmen und Verwerfen bleiben bei langem Inhalt erreichbar, die Sperrgründe stehen mit darin, je eine Zeile (der volle Text steht im DOM und am Knopf über aria-describedby).
+   Sie trägt den Hintergrund des Blatts, auf dem das Fenster liegt (Schublade am Telefon, Seitenleiste, Tab), reicht über die ganze Breite des rollenden Bereichs und bis an seinen unteren Rand: der Rahmen misst
+   das am nächsten deckenden und am rollenden Vorfahren und setzt die Custom Properties (measureEndFit, Welle 38, Teil A); ohne Messung gelten die Vorgaben. */
 .okit-prompt-panel-end {
   position: sticky;
-  bottom: 0;
+  bottom: calc(-1 * var(--okit-prompt-panel-end-bottom, 0px));
   z-index: 1;
   display: flex;
   flex-direction: column;
   gap: var(--size-4-1);
-  padding: var(--size-4-2) 0;
-  background: var(--background-primary);
+  margin-left: calc(-1 * var(--okit-prompt-panel-end-left, 0px));
+  margin-right: calc(-1 * var(--okit-prompt-panel-end-right, 0px));
+  padding: var(--size-4-2) var(--okit-prompt-panel-end-right, 0px) calc(var(--size-4-2) + var(--okit-prompt-panel-end-pad-bottom, 0px)) var(--okit-prompt-panel-end-left, 0px);
+  background: var(--okit-prompt-panel-end-bg, var(--background-primary));
   border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Ohne Runde gibt es keine Fußzeile (der Rahmen setzt hidden): die Regel oben setzt display flex und schlüge sonst das hidden des Browsers. */
+.okit-prompt-panel-end[hidden] {
+  display: none;
+}
+
+/* Am Telefon nähme die klebende Zeile mehr als ein Fünftel des Blatts: sie steht am Ende des Inhalts (der Rahmen setzt is-static). */
+.okit-prompt-panel-end.is-static {
+  position: static;
 }
 `;

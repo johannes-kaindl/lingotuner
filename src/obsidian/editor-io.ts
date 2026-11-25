@@ -1,29 +1,23 @@
-// uebernommen aus vault-rag/src/main.ts (captureSelection) und obsidian-transmute/src/obsidian/editor-io.ts (activeMarkdownView), 2026-09-07.
-// Geschrieben wird seit Kit 0.111.0 nur noch ueber den Rahmen (`acceptPanel`, Ziel `selection`/`file`); die frueheren Wege `replaceCapture` und `createTunedNote` sind entfallen.
-import { MarkdownView, type Workspace } from "obsidian";
+// Die Markierungs-Haelfte ist seit obsidian-kit 0.112.0 der Kit-Baustein `captureSelection` (K1, Welle 38); eigen bleibt die zweite Quelle, die ganze Notiz ohne Frontmatter.
+// Geschrieben wird nur ueber den Rahmen (`acceptPanel`, Ziel `selection`/`file`).
+import type { App } from "obsidian";
+import { captureSelection } from "../vendor/kit-obsidian/capture-selection";
 import { EMPTY_CAPTURE, noteName, splitFrontmatter, type Capture, type CaptureState } from "../core/source";
 
-/** Die zuletzt genutzte Notiz im Hauptbereich — NICHT getActiveViewOfType: sobald man ins
- *  Seitenpanel klickt, IST das Panel die aktive Ansicht. rootSplit klammert die Sidebars aus. */
-export function activeMarkdownView(workspace: Workspace): MarkdownView | null {
-  const leaf = workspace.getMostRecentLeaf(workspace.rootSplit);
-  return leaf?.view instanceof MarkdownView ? leaf.view : null;
-}
-
-/** Schreibt den Editor-Stand mit, weil ein Klick ins Panel den Editor-Fokus nimmt: zum Zeitpunkt des Knopfdrucks gibt es keine Markierung mehr. */
+/** Schreibt den Editor-Stand mit, weil ein Klick ins Panel den Editor-Fokus nimmt: zum Zeitpunkt des Knopfdrucks gibt es keine Markierung mehr.
+ *  Welche Notiz gemeint ist, sagt der Kit (`mainMarkdownView`: die zuletzt genutzte Notiz im Hauptbereich oder in einem Pop-out, auch mit dem Fokus im Panel);
+ *  ist gar keine Notiz offen, heisst das „keine Notiz“ statt eines alten Stands einer vielleicht geschlossenen Notiz. */
 export class SelectionTracker {
   private state: CaptureState = EMPTY_CAPTURE;
 
-  constructor(private readonly workspace: Workspace) {}
+  constructor(private readonly app: App, private readonly lang: () => "en" | "de") {}
 
-  /** Liegt gerade KEIN Markdown-View vorn (Fokus im Panel), bleibt der gemerkte Stand stehen —
-   *  genau dafuer existiert die Mitschrift. */
   capture(): void {
-    const view = activeMarkdownView(this.workspace);
-    if (view === null) return;
-    if (view.getMode() !== "source") { this.state = { selection: null, note: null, blocked: "reading-mode" }; return; }
-    const file = view.file;
-    if (!file) { this.state = { selection: null, note: null, blocked: "no-note" }; return; }
+    const sel = captureSelection(this.app, { strings: { lang: this.lang() } });
+    if (!sel.ok && sel.reason !== "no-selection") { this.state = { selection: null, note: null, blocked: sel.reason }; return; }
+    const view = sel.view;
+    const file = view?.file;
+    if (!view || !file) { this.state = { selection: null, note: null, blocked: "no-note" }; return; }
     const editor = view.editor;
     const name = noteName(file.path);
 
@@ -34,11 +28,9 @@ export class SelectionTracker {
       from: editor.offsetToPos(head.length), to: editor.offsetToPos(value.length),
     };
 
-    const sel = editor.getSelection();
-    const selection: Capture | null = sel.trim() === "" ? null : {
-      kind: "selection", path: file.path, name, text: sel,
-      from: editor.getCursor("from"), to: editor.getCursor("to"), noteLines: editor.lineCount(),
-    };
+    const selection: Capture | null = sel.ok
+      ? { kind: "selection", path: sel.target.path, name, text: sel.target.text, from: sel.target.from, to: sel.target.to, noteLines: sel.target.noteLines }
+      : null;
 
     this.state = { selection, note, blocked: null };
   }

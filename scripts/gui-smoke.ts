@@ -270,10 +270,10 @@ async function modelle(): Promise<string[]> {
  *  bleibt. */
 async function waehleQuelle(cdp: Cdp, index: number): Promise<string> {
   for (let versuch = 1; versuch <= 3; versuch += 1) {
-    await clickReal(cdp, `document.querySelectorAll(".lt-source-chip")[${index}]`);
+    await clickReal(cdp, `document.querySelectorAll(".lt-sources .okit-segmented-btn")[${index}]`);
     const aktiv = await pollUntil<{ ok: boolean }>(
       cdp,
-      `const b = document.querySelectorAll(".lt-source-chip")[${index}]; return b && b.classList.contains("is-active") ? { ok: true } : null;`,
+      `const b = document.querySelectorAll(".lt-sources .okit-segmented-btn")[${index}]; return b && b.classList.contains("is-active") ? { ok: true } : null;`,
       2000,
       200,
     );
@@ -345,7 +345,7 @@ const pflichtBilanz: PflichtBilanz = {
 
 async function pruefePanel(cdp: Cdp): Promise<void> {
   console.log("\nB · Panel ohne Modell");
-  record("B1 drei Quellen-Chips", (await count(cdp, ".lt-source-chip")) === 3, `${await count(cdp, ".lt-source-chip")} Chips`);
+  record("B1 drei Quellen-Chips", (await count(cdp, ".lt-sources .okit-segmented-btn")) === 3, `${await count(cdp, ".lt-sources .okit-segmented-btn")} Chips`);
   record("B2 vier Regler", (await count(cdp, ".lt-dial-input")) === 4, `${await count(cdp, ".lt-dial-input")} range-Inputs`);
   record("B3 vier Preset-Chips", (await count(cdp, ".lt-preset-chip")) === 4, `${await count(cdp, ".lt-preset-chip")} Chips`);
 

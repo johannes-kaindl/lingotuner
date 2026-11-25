@@ -1,7 +1,7 @@
 /* Nur Theme-CSS-Variablen (UI-STANDARD). Praefix lt-. Kein !important.
    Aufbau: erst die Kit-Konstanten (wortgleich, der Test tests/kit-css.test.ts prueft es), dann die eigenen Regeln des Panels (Station 3 und Vorschau). */
 
-/* uebernommen aus src/vendor/kit-obsidian/chat-host.ts (CHAT_HOST_CSS), obsidian-kit 0.110.0 */
+/* uebernommen aus src/vendor/kit-obsidian/chat-host.ts (CHAT_HOST_CSS), obsidian-kit 0.112.0 */
 /* Host-Abstand im Hauptbereich auf dem Handy (0.76.0, Befund der Realprobe am iPhone: 215 px leere Fläche zwischen Senden und Tastatur). Die schwebende Navigationsleiste liegt über dem unteren Rand und braucht Platz
    (--navbar-height plus die echte Safe-Area); bei offener Tastatur verkleinert Obsidian den App-Container selbst und die Leiste ist weg, dann braucht der Host nichts. Zwei Fallen: Obsidian setzt bei offener Tastatur
    die Variable --safe-area-inset-bottom auf die Tastaturhöhe (328 px, darum env() statt der Variable: es bleibt der echte Wert), und es gibt keine Tastaturklasse, nur --keyboard-height (0px, offen die Tastaturhöhe):
@@ -10,7 +10,7 @@
    Ungemessen: eine angedockte (nicht schwebende) Leiste, dort bleibt Obsidians Regel. */
 .is-mobile.is-floating-nav .mod-root .view-content.okit-chat-host { box-sizing: border-box; padding-bottom: max(0px, calc(var(--navbar-height) + env(safe-area-inset-bottom) - 10 * var(--keyboard-height, 0px))); }
 
-/* uebernommen aus src/vendor/kit-obsidian/collapsible.ts (COLLAPSIBLE_CSS), obsidian-kit 0.110.0 */
+/* uebernommen aus src/vendor/kit-obsidian/collapsible.ts (COLLAPSIBLE_CSS), obsidian-kit 0.112.0 */
 .okit-collapsible-header {
   display: flex; align-items: center; gap: var(--size-4-2);
   cursor: pointer; padding: var(--size-4-2) 0;
@@ -27,14 +27,14 @@
 .okit-collapsible-body { padding-top: var(--size-4-2); }
 .okit-collapsible-body.is-collapsed { display: none; }
 
-/* uebernommen aus src/vendor/kit-obsidian/copy-button.ts (COPY_BUTTON_CSS), obsidian-kit 0.110.0 */
+/* uebernommen aus src/vendor/kit-obsidian/copy-button.ts (COPY_BUTTON_CSS), obsidian-kit 0.112.0 */
 .okit-copy-button { color: var(--text-faint); height: auto; padding: var(--size-2-1) var(--size-2-2); }
 .okit-copy-button.is-copied { color: var(--text-success); }
 .okit-copy-button .svg-icon { width: var(--icon-xs); height: var(--icon-xs); }
 .is-mobile .okit-copy-button { position: relative; }
 .is-mobile .okit-copy-button::after { content: ""; position: absolute; top: 50%; left: 50%; width: calc(var(--size-4-10) + var(--size-4-1)); height: calc(var(--size-4-10) + var(--size-4-1)); transform: translate(-50%, -50%); }
 
-/* uebernommen aus src/vendor/kit-obsidian/endpoint-list.ts (ENDPOINT_LIST_CSS), obsidian-kit 0.110.0 */
+/* uebernommen aus src/vendor/kit-obsidian/endpoint-list.ts (ENDPOINT_LIST_CSS), obsidian-kit 0.112.0 */
 /* Pro-Zeile-Status der Endpunkt-Fallback-Liste: Form trägt die Bedeutung, Farbe sekundär (WCAG 1.4.1). */
 .okit-ep-status { display: inline-flex; align-items: center; margin-right: 8px; vertical-align: middle; color: var(--text-muted); }
 .okit-ep-status svg { width: 14px; height: 14px; }
@@ -147,7 +147,7 @@
   text-overflow: ellipsis;
 }
 
-/* uebernommen aus src/vendor/kit-obsidian/model-bar.ts (MODEL_BAR_CSS), obsidian-kit 0.110.0 */
+/* uebernommen aus src/vendor/kit-obsidian/model-bar.ts (MODEL_BAR_CSS), obsidian-kit 0.112.0 */
 .okit-model-bar { position: relative; width: 100%; min-width: 0; container-type: inline-size; container-name: okit-model-bar; }
 .okit-model-bar-row { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--size-2-2) var(--size-4-1); min-width: 0; }
 .okit-model-bar-label { flex: 0 0 auto; color: var(--text-muted); font-size: var(--font-ui-small); white-space: nowrap; }
@@ -169,7 +169,7 @@
 @container okit-model-bar (width < 200px) { .okit-model-bar-row { flex-wrap: wrap; } }
 .okit-model-bar-status { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; white-space: nowrap; }
 
-/* uebernommen aus src/vendor/kit-obsidian/prompt-panel.ts (PROMPT_PANEL_CSS), obsidian-kit 0.110.0 */
+/* uebernommen aus src/vendor/kit-obsidian/prompt-panel.ts (PROMPT_PANEL_CSS), obsidian-kit 0.112.0 */
 /* Auftrags-Fenster (buildPromptPanel): nur Theme-Variablen und Obsidians Größenvariablen. Die Kit-Bausteine darin (Modellzeile, Antwortbereich, Rundenliste, Status) bringen ihr Aussehen aus ihren eigenen Konstanten mit. */
 /* Obsidian blendet is-hidden nicht global aus: jeder Baustein setzt die Regel selbst. */
 .okit-prompt-panel .is-hidden {
@@ -179,7 +179,7 @@
 /* Zahlenfeld am Handy (iPhone, gemessen 2026-11-05): Die Dezimaltastatur hat keine Fertig-Taste und Obsidian verkleinert das Blatt der Seitenleiste nicht, Übernehmen lag unter der Tastatur. Der Abstand
    unten in Höhe der Tastatur macht den Rest erreichbar (keyboard-height ist 0px, solange keine Tastatur offen ist). Vier Klassen schlagen Obsidians workspace-leaf-content view-content. */
 .is-mobile .workspace-leaf-content .view-content.okit-prompt-panel-host {
-  padding-bottom: max(var(--size-4-8), var(--keyboard-height, 0px));
+  padding-bottom: max(var(--size-4-8), var(--safe-area-inset-bottom, 0px), var(--keyboard-height, 0px));
 }
 
 .okit-prompt-panel {
@@ -265,7 +265,9 @@
   text-overflow: clip;
 }
 
-.okit-prompt-panel-accept-hint:empty {
+/* Ein leerer Hinweis ist weder sichtbar noch fokussierbar: dieselbe Kette wie die Regel oben (drei Selektorteile), sonst gewinnt deren display block (Welle 38, Teil C). Der Rahmen setzt zusätzlich hidden und disabled. */
+.okit-prompt-panel-end button.okit-prompt-panel-accept-hint:empty,
+.okit-prompt-panel-end button.okit-prompt-panel-accept-hint[hidden] {
   display: none;
 }
 
@@ -336,20 +338,34 @@
   margin-bottom: var(--size-4-1);
 }
 
-/* Die Knopfzeile klebt unten: Übernehmen und Verwerfen bleiben bei langem Inhalt erreichbar, die Sperrgründe stehen mit darin, je eine Zeile (der volle Text steht im DOM und am Knopf über aria-describedby). */
+/* Die Knopfzeile klebt unten: Übernehmen und Verwerfen bleiben bei langem Inhalt erreichbar, die Sperrgründe stehen mit darin, je eine Zeile (der volle Text steht im DOM und am Knopf über aria-describedby).
+   Sie trägt den Hintergrund des Blatts, auf dem das Fenster liegt (Schublade am Telefon, Seitenleiste, Tab), reicht über die ganze Breite des rollenden Bereichs und bis an seinen unteren Rand: der Rahmen misst
+   das am nächsten deckenden und am rollenden Vorfahren und setzt die Custom Properties (measureEndFit, Welle 38, Teil A); ohne Messung gelten die Vorgaben. */
 .okit-prompt-panel-end {
   position: sticky;
-  bottom: 0;
+  bottom: calc(-1 * var(--okit-prompt-panel-end-bottom, 0px));
   z-index: 1;
   display: flex;
   flex-direction: column;
   gap: var(--size-4-1);
-  padding: var(--size-4-2) 0;
-  background: var(--background-primary);
+  margin-left: calc(-1 * var(--okit-prompt-panel-end-left, 0px));
+  margin-right: calc(-1 * var(--okit-prompt-panel-end-right, 0px));
+  padding: var(--size-4-2) var(--okit-prompt-panel-end-right, 0px) calc(var(--size-4-2) + var(--okit-prompt-panel-end-pad-bottom, 0px)) var(--okit-prompt-panel-end-left, 0px);
+  background: var(--okit-prompt-panel-end-bg, var(--background-primary));
   border-top: 1px solid var(--background-modifier-border);
 }
 
-/* uebernommen aus src/vendor/kit-obsidian/request-section.ts (REQUEST_SECTION_CSS), obsidian-kit 0.110.0 */
+/* Ohne Runde gibt es keine Fußzeile (der Rahmen setzt hidden): die Regel oben setzt display flex und schlüge sonst das hidden des Browsers. */
+.okit-prompt-panel-end[hidden] {
+  display: none;
+}
+
+/* Am Telefon nähme die klebende Zeile mehr als ein Fünftel des Blatts: sie steht am Ende des Inhalts (der Rahmen setzt is-static). */
+.okit-prompt-panel-end.is-static {
+  position: static;
+}
+
+/* uebernommen aus src/vendor/kit-obsidian/request-section.ts (REQUEST_SECTION_CSS), obsidian-kit 0.112.0 */
 .okit-request-warning { color: var(--text-warning); margin: var(--size-4-2) 0; }
 .okit-request-note { color: var(--text-muted); font-size: var(--font-ui-small); }
 .okit-request-own { border-color: var(--interactive-accent); }
@@ -361,7 +377,35 @@
 .okit-request-deviation-action { margin-inline-start: var(--size-4-2); }
 .okit-request-deviation { color: var(--text-muted); font-size: var(--font-ui-small); padding-left: var(--size-4-6); }
 
-/* uebernommen aus src/vendor/kit-obsidian/status-indicator.ts (STATUS_INDICATOR_CSS), obsidian-kit 0.110.0 */
+/* uebernommen aus src/vendor/kit-obsidian/segmented-control.ts (SEGMENTED_CONTROL_CSS), obsidian-kit 0.112.0 */
+.okit-segmented {
+  display: inline-flex; flex-wrap: nowrap; align-items: stretch;
+  border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s);
+  background: var(--background-secondary); overflow: hidden;
+}
+.okit-segmented-btn {
+  flex: 0 0 auto; margin: 0; padding: var(--size-2-1) var(--size-4-2);
+  border: 0; border-radius: 0; box-shadow: none;
+  background: transparent; color: var(--text-muted);
+  font-size: var(--font-ui-small); cursor: var(--cursor);
+}
+.okit-segmented-btn + .okit-segmented-btn { border-inline-start: 1px solid var(--background-modifier-border); }
+.okit-segmented-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+/* Der gewählte Knopf unterscheidet sich im Schnitt UND durch die Fläche, nicht nur durch Farbe (WCAG 1.4.1). */
+.okit-segmented-btn.is-active {
+  background: var(--background-primary); color: var(--text-normal); font-weight: var(--font-semibold);
+  box-shadow: inset 0 -2px 0 var(--interactive-accent);
+}
+.okit-segmented-btn:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: -2px; }
+.okit-segmented-btn:disabled { color: var(--text-faint); cursor: not-allowed; }
+/* Am Telefon eine Tippfläche von mindestens 44 px (Welle 38, K4; vorher rund 21 px bei allen Trägern). Drei Selektorteile mit Element: die Kit-Mobilregel, damit Obsidians Knopfregeln am Telefon nicht gewinnen. */
+.is-mobile .okit-segmented button.okit-segmented-btn {
+  min-height: calc(var(--size-4-10) + var(--size-4-1));
+  min-width: calc(var(--size-4-10) + var(--size-4-1));
+  padding-inline: var(--size-4-3);
+}
+
+/* uebernommen aus src/vendor/kit-obsidian/status-indicator.ts (STATUS_INDICATOR_CSS), obsidian-kit 0.112.0 */
 .okit-status { display: flex; gap: var(--size-2-2); align-items: center; font-size: var(--font-ui-small); color: var(--text-muted); }
 .okit-status-icon { display: inline-flex; align-items: center; }
 .okit-status-icon svg { width: 14px; height: 14px; }
@@ -372,7 +416,7 @@
 @keyframes okit-status-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .okit-status.is-checking .okit-status-icon svg { animation: none; } }
 
-/* uebernommen aus src/vendor/kit-obsidian/stream-area.ts (STREAM_AREA_CSS), obsidian-kit 0.110.0 */
+/* uebernommen aus src/vendor/kit-obsidian/stream-area.ts (STREAM_AREA_CSS), obsidian-kit 0.112.0 */
 .okit-stream { display: flex; flex-direction: column; min-height: 0; gap: var(--size-4-2); }
 .okit-stream-body {
   flex: 1 1 auto; min-height: 0; overflow-y: auto;
@@ -409,14 +453,14 @@
    Statuszeile nicht nutzt (Befund aus der ersten Adoption, 2026-09-11). */
 .okit-stream-status:empty, .okit-stream-reasoning-slot:empty { display: none; }
 
-/* uebernommen aus src/vendor/kit-obsidian/system-prompt-setting.ts (SYSTEM_PROMPT_SETTING_CSS), obsidian-kit 0.110.0 */
+/* uebernommen aus src/vendor/kit-obsidian/system-prompt-setting.ts (SYSTEM_PROMPT_SETTING_CSS), obsidian-kit 0.112.0 */
 .okit-sysprompt-setting { flex-wrap: wrap; }
 .okit-sysprompt-setting > .setting-item-control { flex: 1 1 100%; flex-wrap: wrap; justify-content: flex-start; }
 .okit-sysprompt-textarea { width: 100%; min-height: 8em; font-family: var(--font-monospace); }
 .okit-sysprompt-warnings { flex: 1 1 100%; display: flex; flex-direction: column; gap: var(--size-4-1); margin-top: var(--size-4-1); }
 .okit-sysprompt-warnings:empty { display: none; }
 
-/* uebernommen aus src/vendor/kit-obsidian/thinking-control.ts (THINKING_CONTROL_CSS), obsidian-kit 0.110.0 */
+/* uebernommen aus src/vendor/kit-obsidian/thinking-control.ts (THINKING_CONTROL_CSS), obsidian-kit 0.112.0 */
 .okit-thinking-control { display: inline-flex; align-items: center; }
 .okit-thinking-toggle {
   display: inline-flex; align-items: center; gap: var(--size-2-1);
@@ -432,7 +476,7 @@
 .okit-thinking-icon { display: inline-flex; align-items: center; margin-inline-end: var(--size-2-1); color: var(--icon-color); }
 .okit-thinking-icon svg { width: var(--icon-xs); height: var(--icon-xs); }
 
-/* uebernommen aus src/vendor/kit-obsidian/version-list.ts (VERSION_LIST_CSS), obsidian-kit 0.110.0 */
+/* uebernommen aus src/vendor/kit-obsidian/version-list.ts (VERSION_LIST_CSS), obsidian-kit 0.112.0 */
 .okit-vlist {
   display: flex;
   flex-direction: column;
@@ -512,11 +556,13 @@
 /* ── Eigene Regeln: Station 3 des Kit-Rahmens (Quelle, Voreinstellungen, Regler) und die Vorschau des Ergebnisses ── */
 /* Den Rahmen, die Abstaende zwischen den Stationen und das Rollen traegt PROMPT_PANEL_CSS oben; das Panel rollt als Ganzes (view-content). */
 .lt-controls { display: flex; flex-direction: column; gap: var(--size-4-2); }
-.lt-sources, .lt-presets { display: flex; flex-wrap: wrap; gap: var(--size-2-2); align-items: center; }
+/* Die Quelle ist der Segment-Schalter des Kits (SEGMENTED_CONTROL_CSS oben); er steht links und nimmt nicht die ganze Zeile. */
+.lt-sources { align-self: flex-start; max-width: 100%; }
+.lt-presets { display: flex; flex-wrap: wrap; gap: var(--size-2-2); align-items: center; }
 /* Zustands-Knopf (UI-STANDARD § 8): aria-pressed traegt die Aussage, die Farbe ist der zweite Kanal, der Schriftschnitt der dritte. */
-.lt-source-chip, .lt-preset-chip { font-size: var(--font-ui-small); padding: var(--size-2-1) var(--size-4-2); border-radius: var(--radius-s); background: var(--background-secondary); color: var(--text-muted); height: auto; }
-.lt-source-chip.is-active, .lt-preset-chip.is-active { background: var(--interactive-accent); color: var(--text-on-accent); font-weight: var(--font-semibold); }
-.lt-source-chip:disabled, .lt-preset-chip:disabled, .lt-preset-save:disabled, .lt-retune:disabled { opacity: 0.4; cursor: not-allowed; }
+.lt-preset-chip { font-size: var(--font-ui-small); padding: var(--size-2-1) var(--size-4-2); border-radius: var(--radius-s); background: var(--background-secondary); color: var(--text-muted); height: auto; }
+.lt-preset-chip.is-active { background: var(--interactive-accent); color: var(--text-on-accent); font-weight: var(--font-semibold); }
+.lt-preset-chip:disabled, .lt-preset-save:disabled, .lt-retune:disabled { opacity: 0.4; cursor: not-allowed; }
 .lt-preset-custom { color: var(--text-faint); font-size: var(--font-ui-smaller); }
 .lt-preset-custom:empty { display: none; }
 .lt-source-line { font-size: var(--font-ui-small); color: var(--text-muted); }
@@ -531,6 +577,11 @@
 .lt-dial-pole { color: var(--text-faint); font-size: var(--font-ui-smaller); flex: 0 1 5em; min-width: 0; overflow-wrap: anywhere; }
 .lt-dial-pole:last-child { text-align: end; }
 .lt-dial-input { flex: 1 1 auto; min-width: 4em; }
+/* Tippflaechen am Telefon mindestens 44 px (UI-STANDARD, gleiches Mass wie die Kit-Mobilregeln): Voreinstellungs-Chips, Speichern-Knopf und die Regler (deren Spur bleibt duenn, der Griffbereich waechst).
+   Drei Selektorteile mit Element, damit Obsidians Knopf- und Reglerregeln am Telefon nicht gewinnen. */
+.is-mobile .lt-presets button.lt-preset-chip { min-height: calc(var(--size-4-10) + var(--size-4-1)); padding-inline: var(--size-4-3); }
+.is-mobile .lt-presets button.lt-preset-save { min-height: calc(var(--size-4-10) + var(--size-4-1)); min-width: calc(var(--size-4-10) + var(--size-4-1)); }
+.is-mobile .lt-dial-line input.lt-dial-input { min-height: calc(var(--size-4-10) + var(--size-4-1)); }
 
 /* Vorschau des Ergebnisses (Slot renderPreview): Kopierknopf rechts oben, Warnung bei abgeschnittener Antwort, das Ergebnis als gerendertes Markdown. */
 .lt-result-bar { display: flex; justify-content: flex-end; }

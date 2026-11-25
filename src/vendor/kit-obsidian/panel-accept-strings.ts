@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.111.0, src/obsidian/panel-accept-strings.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.112.0, src/obsidian/panel-accept-strings.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import type { AcceptStrings, InsertWhere } from "./panel-accept";
 
 // Standardtexte des Übernehmens (`AcceptStrings` von `panel-accept`), seit 0.111.0 (Welle 37 Nachlauf, n-kit, K-A). Vorher baute jedes Plugin dieselben Sätze selbst: svg-studio
@@ -63,6 +63,7 @@ export const ACCEPT_STRINGS_EN: AcceptStringsFull = {
   blockInList: "This block sits in a list item; the panel only writes into blocks that start at the beginning of a line. Nothing was written.",
   selectionChanged: "The selected text has changed since the run started; nothing was written. Select it again and repeat.",
   selectionMoved: "The selected text is no longer at its place and occurs more than once, so the place is unclear; nothing was written. Select it again and repeat.",
+  noFence: "This write would put a code block into the note, but the plugin gave no fence for it; nothing was written.",
   savedNote: (path) => `Note created: ${path}`,
   couldNotApply: (reason) => `Could not apply: ${reason}`,
 };
@@ -97,6 +98,7 @@ export const ACCEPT_STRINGS_DE: AcceptStringsFull = {
   blockInList: "Dieser Block steht in einer Liste; das Panel schreibt nur in Blöcke, die am Zeilenanfang stehen. Es wurde nichts geschrieben.",
   selectionChanged: "Der markierte Text hat sich seit dem Start geändert; nichts geschrieben. Markiere ihn neu und wiederhole.",
   selectionMoved: "Der markierte Text steht nicht mehr an seiner Stelle und kommt mehrfach vor, die Stelle ist also unklar; nichts geschrieben. Markiere ihn neu und wiederhole.",
+  noFence: "Dieser Weg würde einen Codeblock in die Notiz setzen, aber das Plugin hat keinen Zaun dafür angegeben; nichts geschrieben.",
   savedNote: (path) => `Notiz angelegt: ${path}`,
   couldNotApply: (reason) => `Übernehmen nicht möglich: ${reason}`,
 };

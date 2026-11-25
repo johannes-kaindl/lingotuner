@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.111.0, src/pure/plugin-id.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.112.0, src/pure/plugin-id.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /** Höchstlänge einer Plugin-ID. Keine Obsidian-Regel, sondern eine Schranke für Ordnernamen,
  *  Meldungen und Oberflächenzeilen: gemessen 2026-10-14 an der Store-Liste (8912 IDs) ist die längste ID
  *  55 Zeichen lang, 128 lässt reichlich Luft und weist trotzdem einen Megabyte-String aus einer

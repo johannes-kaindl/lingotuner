@@ -54,7 +54,12 @@ const byText = (root: unknown, cls: string, text: string): El | undefined => fin
 describe("Panel ueber dem Kit-Rahmen", () => {
   it("Station 3 traegt Quelle, Voreinstellungen und vier Regler; die Anmerkung ist das freiwillige Auftragsfeld", () => {
     const { root } = build();
-    expect(findAllByClass(root, "lt-source-chip")).toHaveLength(3);
+    // Die Quelle ist der Segment-Schalter des Kits: eine Radiogruppe mit drei Stellungen, die gewaehlte traegt aria-checked.
+    const sources = findByClass<El>(root, "lt-sources");
+    expect(sources?.getAttribute?.("role")).toBe("radiogroup");
+    expect(findAllByClass(sources, "okit-segmented-btn")).toHaveLength(3);
+    expect(byText(root, "okit-segmented-btn", t("source.text"))?.getAttribute?.("aria-checked")).toBe("true");
+    expect(byText(root, "okit-segmented-btn", t("source.selection"))?.getAttribute?.("aria-checked")).toBe("false");
     expect(findAllByClass(root, "lt-dial")).toHaveLength(4);
     expect(findAllByClass(root, "lt-preset-chip").length).toBe(BUILTIN_PRESETS.length);
     const input = findByClass<El>(root, "okit-prompt-panel-input");
@@ -123,7 +128,7 @@ describe("Panel ueber dem Kit-Rahmen", () => {
 
   it("Quell-Chip meldet die Wahl an das Plugin", () => {
     const { root, handlers } = build();
-    click(byText(root, "lt-source-chip", t("source.note")));
+    click(byText(root, "okit-segmented-btn", t("source.note")));
     expect(handlers.onSource).toHaveBeenCalledWith("note");
   });
 

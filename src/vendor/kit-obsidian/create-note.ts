@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.111.0, src/obsidian/create-note.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.112.0, src/obsidian/create-note.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { normalizePath, type App, type TFile } from "obsidian";
 import { ensureDir } from "../kit/ensure-dir";
 import { errorMessage } from "../kit/error-message";

@@ -1,12 +1,12 @@
 {
   "source": "code-kit",
-  "version": "0.91.0",
-  "sha": "4c2316a",
+  "version": "0.91.1",
+  "sha": "512aa5c",
   "code_kit_version": "0.7.0",
   "vendored": "clipboard.ts, link-guard.ts, remote-resources.ts, leave-tree.ts, sse.ts, endpoint.ts, endpoint_config.ts, endpoint_diagnostics.ts, model-choice.ts, model-list-cache.ts, reasoning.ts, capabilities.ts, think-splitter.ts, think-toggle.ts, timeout.ts, error_body.ts, i18n.ts, settings.ts, sampling-profiles.ts, backend-probe.ts, redact.ts, safe-markdown.ts, secrets.ts, rounds.ts, panel-session.ts, run-slot.ts, model-context.ts, embeddings-client.ts, slug.ts, local-stamp.ts, anthropic-wire.ts, error-message.ts, panel-host.ts, fences.ts, text-window.ts, rotation.ts, ensure-dir.ts, bytes-equal.ts, rel-path.ts, prompt-override.ts, editor-span.ts, filename-policy.ts",
   "note": "Verbatim snapshot aus ZWEI Quellen (obsidian-kit + code-kit); welche Datei woher stammt, sagt ihr eigener Kopf. Never hand-edit. Re-vendor via tools/sync-kit.sh. version/sha gelten AUSSCHLIESSLICH fuer die unter \"vendored\" gelisteten Dateien. kit-obsidian/ siehe dortige VENDOR.json.",
-  "obsidian_kit_version": "0.111.0",
-  "obsidian_kit_sha": "3ba6442",
+  "obsidian_kit_version": "0.112.0",
+  "obsidian_kit_sha": "d46f692",
   "obsidian_kit_vendored": "endpoint-source.ts, endpoint-secret-hook.ts, shortcut-failure.ts, override-guard.ts, block-writer.ts, note-edit.ts, plugin-id.ts, frontmatter.ts, filename-sanitizer-source.ts",
   "license": "AGPL-3.0-or-later"
 }

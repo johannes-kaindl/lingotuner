@@ -40,8 +40,6 @@ function roundFor(s: TuneSession, current: string | null): { ok: true; output: s
 /** Spec fuer „Notiz ersetzen“. Liest die Sitzung zur Schreibzeit (`session()`), nicht beim Zeichnen: der Knopf bleibt stehen, die Runde kann wechseln. */
 export function noteSpec(session: () => TuneSession): Omit<AcceptSpec, "beforeWrite"> {
   return {
-    fenceLang: "",
-    wrap: (text) => text,
     compute: (current) => {
       const s = session();
       const round = activeRound(s.rounds);
@@ -54,8 +52,6 @@ export function noteSpec(session: () => TuneSession): Omit<AcceptSpec, "beforeWr
 /** Spec fuer „Markierung ersetzen“: `current` ist der markierte Text (der Baustein hat ihn gegen die Notiz geprueft), geschrieben wird die Spanne samt ihrem Rand-Leerraum. */
 export function selectionSpec(session: () => TuneSession): Omit<AcceptSpec, "beforeWrite"> {
   return {
-    fenceLang: "",
-    wrap: (text) => text,
     compute: (current) => {
       const r = roundFor(session(), current);
       if (!r.ok) return r;
@@ -77,8 +73,6 @@ export interface NewNoteDeps {
 /** Spec fuer „Neue Notiz“: Inhalt ist genau das Ergebnis der aktiven Runde, ohne Frontmatter. */
 export function newNoteSpec(session: () => TuneSession, deps: NewNoteDeps): Omit<AcceptSpec, "beforeWrite"> {
   return {
-    fenceLang: "",
-    wrap: (text) => text,
     caller: "lingotuner",
     compute: () => {
       const round = activeRound(session().rounds);

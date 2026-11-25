@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.111.0, src/obsidian/panel-accept.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.112.0, src/obsidian/panel-accept.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Herkunft: 3d-codeblocks `src/obsidian/panel-accept.ts:20-287` (Übernehmen im Prompt-Panel, Spec Modell per Prompt § 6.3/§ 5), dazu
 // `json-editor/src/obsidian/repair-flow.ts:70-76` (Anhangpfad nie überschreiben, Text und binär) — Kit-Kandidat aus der Extraktionsprüfung SVG Studio
 // (2026-11-02, Gegenleser K6). Das Format steckt in `AcceptSpec` (Zaun-Sprache, Berechnung, Prüfung, Haken vor dem Schreiben), die Texte in
@@ -143,6 +143,8 @@ export interface AcceptStrings {
   selectionChanged?: string;
   /** Seit 0.111.0, optional: der markierte Text steht nicht mehr an seiner Stelle und kommt mehrfach vor, die Stelle ist nicht eindeutig. Nichts geschrieben. Standard: `ACCEPT_STRINGS_EN.selectionMoved`. */
   selectionMoved?: string;
+  /** Seit Welle 38 (K2), optional: ein Block-Ziel (Block ersetzen, als Block einfügen), aber der Spec beschreibt keinen Zaun (`fenceLang` oder `wrap` fehlt). Nichts geschrieben. Standard: `ACCEPT_STRINGS_EN.noFence`. */
+  noFence?: string;
   /** Seit 0.111.0, optional: `where: "note"`, die neue Notiz ist angelegt. Standard: `ACCEPT_STRINGS_EN.savedNote`. */
   savedNote?(path: string): string;
   couldNotApply(reason: string): string;
@@ -151,10 +153,11 @@ export interface AcceptStrings {
 
 
 export interface AcceptSpec {
-  /** Sprache des Zauns, in dem der Block steht (`"svg"`); der Fingerabdruck prüft sie mit. */
-  fenceLang: string;
-  /** Der Block, wie er in die Notiz kommt (Zaun samt Sprache). */
-  wrap(text: string): string;
+  /** Sprache des Zauns, in dem der Block steht (`"svg"`); der Fingerabdruck prüft sie mit. Seit Welle 38 (K2) optional: ein Spec, der nur Datei, Markierung oder neue Notiz beschreibt (lingotuner), braucht
+   *  keinen Zaun. Für ein Block-Ziel (Block ersetzen, `where: "block"`) bleibt er Pflicht: fehlt er dort (oder `wrap`), schreibt `acceptPanel` nichts und meldet `strings.noFence` (kein Schreiben ohne Zaun). */
+  fenceLang?: string;
+  /** Der Block, wie er in die Notiz kommt (Zaun samt Sprache). Seit Welle 38 optional, wie `fenceLang` (für Block-Ziele Pflicht). */
+  wrap?(text: string): string;
   /** Seit 0.111.0, für `where: "note"`: die neue Notiz. `folder` vault-relativ (`""` = Wurzel, `.` und `..` werden abgelehnt), `name` ohne `.md`; ein belegter Name bekommt ` 2`, ` 3` … (`createNote`). Kein Verweis, kein Schnappschuss. */
   newNote?: (text: string) => { folder: string; name: string; content: string };
   /** Seit 0.111.0: Kennung des Plugins für `filename-sanitizer` beim Benennen der neuen Notiz (`where: "note"`). Standard `"obsidian-kit"`. */
@@ -337,6 +340,7 @@ export function blockAfterInsert(spec: Pick<AcceptSpec, "fenceLang" | "blockLabe
   const now = lines(after);
   let changed = 0;
   while (changed < was.length && changed < now.length && was[changed] === now[changed]) changed++;
+  if (spec.fenceLang === undefined) return null;
   const lang = spec.fenceLang.toLowerCase();
   const hit = listFences(after).find((f) => f.openLine >= changed && f.lang === lang && normBody(f.body) === normBody(body));
   if (hit === undefined) return null;
@@ -380,9 +384,17 @@ function refuse(env: AcceptEnv, spec: AcceptSpec, text: string): AcceptOutcome |
   return problem === null ? null : { ok: false, message: env.strings.notApplied(problem) };
 }
 
+/** Ein Block-Ziel braucht beide Teile des Zauns (K2): fehlt einer, wird nichts geschrieben, mit eigener Meldung, nie still ohne Zaun. */
+function fenceOf(spec: AcceptSpec): { lang: string; wrap: (text: string) => string } | null {
+  return spec.fenceLang === undefined || spec.wrap === undefined ? null : { lang: spec.fenceLang, wrap: spec.wrap.bind(spec) };
+}
+const noFence = (env: AcceptEnv): AcceptOutcome => ({ ok: false, message: env.strings.noFence ?? ACCEPT_STRINGS_EN.noFence });
+
 async function acceptIntoBlock(env: AcceptEnv, spec: AcceptSpec, t: BlockTarget): Promise<AcceptOutcome> {
   const { strings } = env;
-  const found = await locateBlock(env.ports, t, spec.fenceLang);
+  const fenceSpec = fenceOf(spec);
+  if (fenceSpec === null) return noFence(env);
+  const found = await locateBlock(env.ports, t, fenceSpec.lang);
   if ("problem" in found) return { ok: false, message: found.problem === "moved" ? strings.blockMoved : strings.blockChanged };
   const { fence, text } = found;
   // Ein Block hinter einem Listenmarker (`- ```svg`) wird gelesen (Vorschau, `retarget`), aber nicht beschrieben: `Fence` trägt den Einzug des Punkts nicht, der Schreiber prüft die Öffnungszeile und
@@ -401,7 +413,7 @@ async function acceptIntoBlock(env: AcceptEnv, spec: AcceptSpec, t: BlockTarget)
   await spec.beforeWrite?.(t.path, text);
   try {
     // `fence.body` ist der Text, gegen den der Schreiber vor dem Schreiben noch einmal prüft (Rumpf unverändert).
-    await writeBlockBody(env.ports, { path: t.path, lineStart: fence.openLine, lineEnd: fence.closeLine, fence: spec.fenceLang }, fence.body, result.text);
+    await writeBlockBody(env.ports, { path: t.path, lineStart: fence.openLine, lineEnd: fence.closeLine, fence: fenceSpec.lang }, fence.body, result.text);
   } catch (error) {
     if (error instanceof BlockChangedError) return { ok: false, message: strings.noteChanged };
     throw error;
@@ -518,6 +530,8 @@ async function appendToNote(env: AcceptEnv, path: string, text: string): Promise
 
 async function insertAsBlock(env: AcceptEnv, spec: AcceptSpec, text: string): Promise<AcceptOutcome> {
   const { strings } = env;
+  const fenceSpec = fenceOf(spec);
+  if (fenceSpec === null) return noFence(env);
   const src = sourceViewOf(env.lastEditor());
   if ("none" in src) return { ok: false, message: strings.noNoteOpen };
   if ("reading" in src) {
@@ -527,7 +541,7 @@ async function insertAsBlock(env: AcceptEnv, spec: AcceptSpec, text: string): Pr
     const appendPath = src.reading.file?.path ?? "";
     const before = appendPath === "" ? null : await readNoteText(env.ports, appendPath).catch(() => null);
     try {
-      await appendToNote(env, appendPath, spec.wrap(text));
+      await appendToNote(env, appendPath, fenceSpec.wrap(text));
     } catch (error) {
       const refusal = fenceRefusal(error, strings);
       if (refusal !== null) return { ok: false, message: refusal };
@@ -541,7 +555,7 @@ async function insertAsBlock(env: AcceptEnv, spec: AcceptSpec, text: string): Pr
   // Text VOR dem Einfügen merken: nur der Vergleich vorher/nachher findet den neuen Block. Gelesen mit `readNoteText` (Editor zuerst), aus derselben Quelle wie das Einfügen.
   const before = notePath === null ? null : await readNoteText(env.ports, notePath).catch(() => null);
   try {
-    const where = insertAtCursor(src.view, `\n${spec.wrap(text)}\n`);
+    const where = insertAtCursor(src.view, `\n${fenceSpec.wrap(text)}\n`);
     const after = notePath === null || before === null ? null : await readNoteText(env.ports, notePath).catch(() => null);
     const block = notePath !== null && before !== null && after !== null ? blockAfterInsert(spec, notePath, before, after, text) : null;
     return block !== null ? { ok: true, message: strings.appliedAsBlock(where), retarget: block } : { ok: true, message: strings.appliedAsBlock(where) };
