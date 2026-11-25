@@ -1362,9 +1362,11 @@ async function pruefeGlobalesModell(cdp: Cdp, port: number): Promise<void> {
   const pfad = `.obsidian/plugins/${PLUGIN_ID}/data.json`;
   const vor = await cdp.evaluate<{ roh: string | null }>(`return { roh: (await app.vault.adapter.exists(${q(pfad)})) ? await app.vault.adapter.read(${q(pfad)}) : null };`);
   let stelle: SettingsStelle | null = null;
+  // Eigener Stub statt 127.0.0.1:1234: ohne erreichbaren Endpunkt schreibt setModel nichts, G2 war ohne laufendes LM Studio rot statt gemessen (Welle 38).
+  const stubG = await startLlmStub({ models: [ALTWERT, "panel-wahl-smoke"], standard: { text: "ok", model: ALTWERT } });
   try {
     const roh = vor.roh === null ? {} : (JSON.parse(vor.roh) as Record<string, unknown>);
-    const alt = { ...roh, endpoints: [{ url: "http://127.0.0.1:1234" }], model: ALTWERT };
+    const alt = { ...roh, endpoints: [{ url: stubG.url }], model: ALTWERT };
     const r = await cdp.evaluate<{ zeilenModell: unknown; altschluessel: boolean }>(`
       await app.vault.adapter.write(${q(pfad)}, ${q(JSON.stringify(alt))});
       await app.plugins.disablePlugin(${q(PLUGIN_ID)});
@@ -1400,6 +1402,7 @@ async function pruefeGlobalesModell(cdp: Cdp, port: number): Promise<void> {
       await app.plugins.enablePlugin(${q(PLUGIN_ID)});
       return { ok: true };
     `).catch(() => null);
+    await stubG.stop();
   }
 }
 
@@ -2392,6 +2395,11 @@ async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
   console.log('\nN · Abschnitt "Anfrage" (Sampling-Profile)');
   let stelle: SettingsStelle | null = null;
   let zeile: { feld: boolean; zeilen: number; stufenwahl: boolean } | null = null;
+  // N3/N4 brauchen ein Modell mit Denkstufen: ein Stub mit LM-Studio-Kennung (`kontext`) und einem Modellnamen mit Familie, wie ML7. Vorher hingen sie am Endpunkt der
+  // vorigen Abschnitte bzw. an 127.0.0.1:1234 und waren ohne laufendes LM Studio rot statt gemessen (Welle 38).
+  const MODELL_N = "qwen3-8b";
+  const stubN = await startLlmStub({ models: [MODELL_N], kontext: { geladen: 4096 }, standard: { text: "ok", model: MODELL_N } });
+  let vorherN: string | null = null;
   const NAMEN = [
     "N1 Abschnitt Anfrage laesst sich aufklappen",
     "N2 Eigener Wert wird gesetzt und wieder zurueckgesetzt",
@@ -2399,6 +2407,15 @@ async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
     "N4 Die Einstellung „Stufenwahl im Chat“ entfaellt, die Modellzeile zeigt die Stufen immer als Auswahl",
   ];
   try {
+    vorherN = await cdp.evaluate<string>(`
+      const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+      const alt = JSON.stringify(p.settings.endpoints);
+      p.settings.endpoints = [{ url: ${q(stubN.url)}, model: ${q(MODELL_N)} }];
+      await p.saveSettings();
+      p.llm.invalidate();
+      await p.llm.resolve();
+      return alt;
+    `);
     stelle = await openSettings(cdp, port);
     // N1 — Header per Titeltext finden (De/En, je nach Sprache des Vaults), klicken, Body
     // verliert is-collapsed.
@@ -2450,7 +2467,7 @@ async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
       // Die vorigen Abschnitte (V, F) haben den Endpunkt am Plugin vorbei umgestellt: die Zeile zeichnet aus dem Zustand erst nach refresh() neu (Kit-Muster fuer Aenderungen von
       // aussen, wie N4). Ohne das steht die Steuerung noch leer da (Backend war beim Zeichnen ein anderes), das wuerde den Punkt als „Dropdown fehlt“ messen.
       const leaf0 = app.workspace.getLeavesOfType(${q(VIEW_TYPE)})[0];
-      if (leaf0 && leaf0.view && leaf0.view.refresh) leaf0.view.refresh();
+      if (leaf0 && leaf0.view && leaf0.view.refreshModelBar) leaf0.view.refreshModelBar();
       let sel = null;
       for (let i = 0; i < 30 && !sel; i++) { sel = document.querySelector(".okit-model-bar .okit-thinking-control select"); if (!sel) await new Promise((r) => setTimeout(r, 150)); }
       if (!sel) { const pp = app.plugins.plugins[${q(PLUGIN_ID)}]; const so = pp.llm.source(); return { gefunden: false, vorher: JSON.stringify({ fam: so.family, be: so.backend, model: pp.llm.modelInUse && pp.llm.modelInUse(), html: (document.querySelector(".okit-model-bar")||{outerHTML:"keine Zeile"}).outerHTML.slice(0, 700) }), ziel: "", gespeichert: "", nachher: "" }; }
@@ -2471,7 +2488,7 @@ async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
     // N4 (zweite Haelfte) — das Dropdown steht in der Modellzeile, ein Denk-Knopf nie (die Einstellung „Stufenwahl im Chat“ gibt es nicht mehr, Welle 29).
     const dropdown = await cdp.evaluate<{ select: boolean; knopf: boolean }>(`
       const leaf = app.workspace.getLeavesOfType(${q(VIEW_TYPE)})[0];
-      if (leaf && leaf.view && leaf.view.refresh) leaf.view.refresh();
+      if (leaf && leaf.view && leaf.view.refreshModelBar) leaf.view.refreshModelBar();
       await new Promise((r) => setTimeout(r, 300));
       return { select: !!document.querySelector(".okit-model-bar .okit-thinking-control select"), knopf: !!document.querySelector(".okit-thinking-toggle") };
     `);
@@ -2484,6 +2501,16 @@ async function pruefeAnfrage(cdp: Cdp, port: number): Promise<void> {
     }
   } finally {
     if (stelle) await closeSettings(cdp, stelle);
+    if (vorherN !== null) {
+      await cdp.evaluate(`
+        const p = app.plugins.plugins[${q(PLUGIN_ID)}];
+        p.settings.endpoints = JSON.parse(${q(vorherN)});
+        await p.saveSettings();
+        p.llm.invalidate();
+        return { ok: true };
+      `).catch(() => null);
+    }
+    await stubN.stop();
   }
 }
 
