@@ -21,11 +21,10 @@ All notable changes to this project are documented here. The format follows
 - **"Tune again from source" is a button above the rounds** once there is a round; "Tune" on a result refines the active round, as before. Selecting an earlier round and tuning refines that one.
 - **Cancelling keeps no partial round.** The partial text stays visible in the answer area; the round list only holds finished results.
 - **The frontmatter boundary follows Obsidian's own reading** (obsidian-kit `locateFrontmatter`): an empty frontmatter block counts, and a later `---` divider in the text no longer counts as its closing line. Before, "Replace note" on a note with an empty block could have treated text up to the first divider as frontmatter.
+- **"Replace selection" writes through the frame** (obsidian-kit 0.111.0, target `selection`): it takes a snapshot of the whole note first, keeps leading line breaks and trailing whitespace of the selection as before, refuses in reading view, and still finds the selected text when whole lines were added or removed above it during the run. If the text at that place changed, nothing is written and the panel says why. Cmd+Z in the note undoes it when the note is open.
+- **"New note" is created by the shared library** (`createNote`): same folder setting and name as before (`<source note> (tuned).md`, pasted text `LingoTuner <date time> (tuned).md`, a taken name gets ` 2`, ` 3` …), opened in a new tab. The name now passes through the filename policy (the Filename Sanitizer plugin, if installed), and the panel stays on its source afterwards.
+- **Text typed into the note field during a run is kept** when the run ends (shared library fix B11).
 - **Nothing to do is reported, not blocked:** with all dials in the middle and an empty note, Tune stays clickable and the status line says why nothing was sent.
-
-### Known gaps (not released)
-
-- **"Replace selection" and "New note" are shown but disabled** until the shared library supplies a selection target and a new-note write path (orders B1 and B2, Welle 37). Copy and "Replace note" work.
 
 ## [0.15.3] — 2026-11-24
 

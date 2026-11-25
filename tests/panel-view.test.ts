@@ -5,8 +5,7 @@ import { makeFakeEl } from "./__mocks__/obsidian";
 import { findAllByClass, findByClass } from "./helpers/dom";
 import "../src/i18n/strings";
 import { LingoTunerView, type LingoPanelHost, type ViewDeps } from "../src/obsidian/view";
-import { tuneWays } from "../src/obsidian/accept";
-import { acceptStrings } from "../src/obsidian/accept";
+import { acceptStrings, tuneWays } from "../src/obsidian/accept";
 import { createTuneRun } from "../src/core/panel-run";
 import { freshSession, type TuneSession } from "../src/core/session";
 import { BUILTIN_PRESETS, NEUTRAL, levelKey, type Dials } from "../src/core/dials";
@@ -33,8 +32,8 @@ function build(o: { target?: Target; answer?: string; dials?: Dials } = {}) {
     readTargetText: () => Promise.resolve(null),
     openSettings: () => undefined,
     pluginId: "lingotuner",
-    accept: { app: {} as never, ports: {} as never, lastEditor: () => null, strings: acceptStrings(), readingMode: "refuse" },
-    ways: (s) => tuneWays(s, () => host.session()),
+    accept: { app: {} as never, ports: {} as never, lastEditor: () => null, strings: acceptStrings("en"), readingMode: "refuse" },
+    ways: (s) => tuneWays(s, () => host.session(), { folder: () => "", stamp: () => "LingoTuner", open: () => undefined }),
     controls: () => ({ source: "text", readiness: { kind: "ready", text: "Quelle", chars: 6, name: null }, freeText: "Quelle", dials, presets: [...BUILTIN_PRESETS] }),
     ...handlers,
     runFromSource: createTuneRun(runDeps, { fromSource: true }),
@@ -105,21 +104,20 @@ describe("Panel ueber dem Kit-Rahmen", () => {
     expect(handlers.onSource).toHaveBeenCalledWith("note");
   });
 
-  it("Ziel Notiz: „Notiz ersetzen“ ist nach einer Runde frei; „Neue Notiz“ gesperrt mit Grund (Bestellung B2)", async () => {
+  it("Ziel Notiz: „Notiz ersetzen“ und „Neue Notiz“ sind nach einer Runde frei", async () => {
     const { root, view } = build({ target: { kind: "file", path: "Mail.md", label: "Notiz Mail" } });
     click(findByClass<El>(root, "okit-prompt-panel-send"));
     await view.settled();
     expect(byText(root, "okit-prompt-panel-accept", t("out.replaceNote"))?.disabled).toBe(false);
-    expect(byText(root, "okit-prompt-panel-accept", t("out.newNote"))?.disabled).toBe(true);
-    expect(findAllByClass<El>(root, "okit-prompt-panel-accept-hint").some((h) => (h.textContent ?? "").includes(t("out.newNotePending")))).toBe(true);
+    expect(byText(root, "okit-prompt-panel-accept", t("out.newNote"))?.disabled).toBe(false);
   });
 
-  it("Ziel Markierung: „Markierung ersetzen“ gesperrt mit Grund (Bestellung B1), auch nach einer Runde", async () => {
-    const { root, view } = build({ target: { kind: "block", path: "Mail.md", lineStart: 1, lineEnd: 1, label: "Markierung in Mail", body: "Quelle" } });
+  it("Ziel Markierung: „Markierung ersetzen“ ist nach einer Runde frei", async () => {
+    const { root, view } = build({ target: { kind: "selection", path: "Mail.md", from: { line: 1, ch: 0 }, to: { line: 1, ch: 6 }, label: "Markierung in Mail", text: "Quelle" } });
     click(findByClass<El>(root, "okit-prompt-panel-send"));
     await view.settled();
     const b = byText(root, "okit-prompt-panel-accept", t("out.replaceSelection"));
-    expect(b?.disabled).toBe(true);
+    expect(b?.disabled).toBe(false);
   });
 
   it("nach einer Runde: Knopf „Neu aus der Quelle“, er laeuft aus der Quelle (neue Kette)", async () => {

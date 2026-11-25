@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.110.0, src/testing/dom-guard-probe.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.111.0, src/testing/dom-guard-probe.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Testbaustein für den Linkschutz-Wächter (`attachDomGuard`): die Härtungs-Fälle als Struktur im DOM, ein Aufruf statt eines lokalen Helfers je Plugin.
 // Herkunft: vault-rag `tests/dom_guard_haertung.test.ts` (Gegenprobe außerhalb des Beobachters), die Fälle aus code-kit@0.73.0 `scripts/lib/link-guard-cases.mjs` (Opus-Review
 // des Linkschutzes, 2026-11-12, Chromium 148 und 153; dort fährt dieselbe Liste im echten Chromium). Wer den Baustein vendort, findet ihn unter `tests/vendor/kit/`.

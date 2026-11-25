@@ -1,4 +1,4 @@
-// vendored from code-kit@0.90.0, src/ts/pure/panel-session.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from code-kit@0.91.0, src/ts/pure/panel-session.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Origin: obsidian-plugins `3d-codeblocks/src/core/shapes/panel-state.ts` (`PanelTarget`, `sameTarget`, `followTarget`, `resolveChain`/`chainOf`,
 // `acceptText`, `baseTextForRefine`) and `src/obsidian/prompt-panel.ts` (`kind()`, `settleTarget()`), generalised: the round type `R` is the caller's,
 // the format-bound steps (`applyChanges`, the round kinds `create`/`refine`, the `shapes-block`/`shapes-file` names) are parameters or renamed.
@@ -7,11 +7,15 @@
 import { activeRound, type Rounds } from "./rounds";
 
 /** What the panel works on. `block`: a fenced block in a note, `lineStart`/`lineEnd` its lines, `body` the text at the click (the fingerprint the
- *  writer checks against, it does not count for equality); `file`: a whole file; `other`: something the panel shows but cannot change. */
+ *  writer checks against, it does not count for equality); `file`: a whole file; `selection` (since 0.91.0): a selected span of a note, `from`/`to`
+ *  editor positions (0-based line, character in the line, as `Editor.getCursor("from" | "to")` gives them), `text` the selected text when the target
+ *  was offered (the fingerprint; `editor-span` finds and replaces it), `noteLines` the line count of the note then (`Editor.lineCount()`; only with it is the
+ *  span found again after lines were typed above it, and it does not count for equality); `other`: something the panel shows but cannot change. */
 export type Target =
   | { kind: "new" }
   | { kind: "block"; path: string; lineStart: number; lineEnd: number; label: string; body: string }
   | { kind: "file"; path: string; label: string }
+  | { kind: "selection"; path: string; from: { line: number; ch: number }; to: { line: number; ch: number }; label: string; text: string; noteLines?: number }
   | { kind: "other"; label: string };
 
 /** The state of one panel: where the result goes and the rounds so far (`R` is whatever the caller stores per round). */
@@ -50,9 +54,13 @@ export type ChainFailure = { ok: false; problem: string; issue: ChainIssue };
 /** Comparison form of a block body: CRLF → LF, one trailing line break does not count. */
 const normBody = (t: string): string => t.replace(/\r\n/g, "\n").replace(/\n$/, "");
 
+const lf = (t: string): string => t.replace(/\r\n/g, "\n");
+const samePos = (a: { line: number; ch: number }, b: { line: number; ch: number }): boolean => a.line === b.line && a.ch === b.ch;
+
 /** Structurally the same target? Block: path + lines + body text (the label does not count; a different body is a fresh fingerprint, so another
  *  target). A block whose lines moved is another target while rounds are open: the panel gets a fresh target on every click, and the writer finds
- *  the fence again by the line number and refuses if the block wandered. */
+ *  the fence again by the line number and refuses if the block wandered. Selection: path + positions + text (CRLF as LF, a trailing line break
+ *  counts); the label does not count. */
 export function sameTarget(a: Target, b: Target): boolean {
   switch (a.kind) {
     case "new":
@@ -61,6 +69,9 @@ export function sameTarget(a: Target, b: Target): boolean {
       return b.kind === "block" && a.path === b.path && a.lineStart === b.lineStart && a.lineEnd === b.lineEnd && normBody(a.body) === normBody(b.body);
     case "file":
       return b.kind === "file" && a.path === b.path;
+    case "selection":
+      // The text counts with a trailing line break (a selection that ends with one is another span); only CRLF is read as LF.
+      return b.kind === "selection" && a.path === b.path && samePos(a.from, b.from) && samePos(a.to, b.to) && lf(a.text) === lf(b.text);
     case "other":
       return b.kind === "other" && a.label === b.label;
   }

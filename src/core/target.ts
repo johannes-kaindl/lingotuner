@@ -3,9 +3,8 @@
  *  Die drei Quellen werden drei Ziel-Arten des Kits (code-kit `panel-session`):
  *  - Notiz → `file` (Pfad, Name). Uebernehmen ersetzt den Body und laesst die Frontmatter stehen (`noteReplacement`).
  *  - Eingefuegter Text → `new`. Er hat keinen Ort in einer Notiz; geschrieben wird nur als neue Notiz.
- *  - Markierung → vorlaeufig `block` mit Pfad, Zeilen und dem markierten Text als Fingerabdruck. Die Ziel-Art `selection` (Spec Auftrags-Fenster § 7.6) gibt es im Kit
- *    noch nicht (Bestellung B1, Welle 37); `block` traegt bis dahin dieselbe Gleichheit (`sameTarget`: Pfad, Zeilen, Text). In ein `block`-Ziel schreibt dieses Plugin nie
- *    ueber `acceptPanel` (das suchte einen Codeblock-Zaun); der Schreibweg „Markierung ersetzen“ ist bis B1 gesperrt.
+ *  - Markierung → `selection` (code-kit seit 0.91.0) mit Pfad, Spanne, dem markierten Text als Fingerabdruck und der Zeilenzahl der Notiz beim Anbieten
+ *    (`noteLines`: nur damit findet der Baustein die Markierung wieder, wenn Zeilen darueber dazukamen oder wegfielen).
  *  - Quelle nicht bereit (keine Markierung, Lesemodus, keine Notiz) → `other` mit dem Grund als Beschriftung: der Rahmen sperrt Senden und zeigt den Grund. */
 import type { Target } from "../vendor/kit/panel-session";
 import { splitFrontmatter, type CaptureState, type Readiness, type SourceKind } from "./source";
@@ -25,7 +24,7 @@ export function targetFor(kind: SourceKind, state: CaptureState, labels: TargetL
   const cap = kind === "selection" ? state.selection : state.note;
   if (cap === null) return { kind: "other", label: labels.blocked(r) };
   if (kind === "note") return { kind: "file", path: cap.path, label: labels.note(cap.name) };
-  return { kind: "block", path: cap.path, lineStart: cap.from.line, lineEnd: cap.to.line, label: labels.selection(cap.name), body: cap.text };
+  return { kind: "selection", path: cap.path, from: cap.from, to: cap.to, label: labels.selection(cap.name), text: cap.text, ...(cap.noteLines !== undefined ? { noteLines: cap.noteLines } : {}) };
 }
 
 /** Der Notiztext nach „Notiz ersetzen“: Frontmatter bleibt, der Body wird das Ergebnis. Abgelehnt, wenn der Body nicht mehr der Text ist, aus dem die Runden-Kette

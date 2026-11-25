@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.110.0, src/obsidian/prompt-panel.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.111.0, src/obsidian/prompt-panel.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Rahmen der Auftrags-Fenster (K9, Welle 36): zeichnet die acht Stationen eines Fensters, das einen Auftrag an ein Modell gibt, das Ergebnis zeigt und es auf Knopfdruck schreibt.
 // Herkunft: svg-studio@0.1.4 `src/obsidian/panel/shell.ts` (`buildPanelShell`, 628 Zeilen), verschoben und auf den Halter umgebaut; die Tests stammen aus `tests/obsidian/panel-shell.test.ts`
 // (17 Tests, von happy-dom auf das Fake-DOM des Kits umgeschrieben). Spec: Cockpit `_SDD/2026-11-15-auftrags-fenster-rahmen-design`, Plan `…-plan-etappe-1-3`.
@@ -112,8 +112,11 @@ export interface PromptPanelWay<S> {
   /** Was geschrieben wird. Den Haken `beforeWrite` setzt der Rahmen selbst; ein mitgebrachter wird überschrieben. */
   spec: Omit<AcceptSpec, "beforeWrite">;
   kind(s: S): "create" | "refine";
-  /** Nur für das Ziel `new`: Block am Cursor oder Datei. */
-  where?: "block" | "file";
+  /** Nur für das Ziel `new`: Block am Cursor, Datei als Anhang mit Verweis, oder (seit 0.111.0) neue Notiz ohne Verweis (`spec.newNote`). */
+  where?: "block" | "file" | "note";
+  /** Seit 0.111.0: das Ziel dieses Wegs, wenn es nicht das der Sitzung ist. Standard: `s.target`. Ein Weg mit einem anderen Ziel (und jeder Weg mit `where: "note"`, der ohnehin immer neu
+   *  anlegt) hängt die Sitzung nach dem Schreiben nicht um: sie bleibt auf ihrem Ziel (der Halter bekommt kein `retarget`), die Runden werden wie nach jedem Erfolg geleert. */
+  target?(s: S): Target;
   /** Eigene Puffer vor dem Schreiben sichern (3d-codeblocks: offene `.shapes`-Ansichten speichern). Wirft es, wird nichts geschrieben; die Meldung kommt über `deps.accept.strings.notApplied`. */
   prepare?(s: S): Promise<void>;
 }
@@ -391,7 +394,12 @@ export function buildPromptPanel<R, S extends PanelSession<R>>(root: HTMLElement
       }
       // `beforeWrite` steht NACH dem Spread: ein mitgebrachter Haken wird überschrieben, der Schnappschuss entsteht immer.
       const spec: AcceptSpec = { ...way.spec, beforeWrite: snapshotBeforeWrite(deps.app, deps.pluginId, st.snapshotFailed) };
-      return acceptPanel(deps.accept, spec, s.target, way.kind(s), way.where);
+      const target = way.target?.(s) ?? s.target;
+      const out = await acceptPanel(deps.accept, spec, target, way.kind(s), way.where);
+      // Ein Weg mit eigenem, ANDEREM Ziel (neue Notiz aus einer Markierung) lässt die Sitzung auf ihrem Ziel: ohne `retarget` beginnt der Halter frisch auf dem alten. Schreibt der Weg aufs
+      // Ziel der Sitzung (auch über `target`), bleibt das `retarget`: sonst behielte die Sitzung einen veralteten Fingerabdruck (Gegenlesung B2, Befund 8). Ein `where: "note"` legt immer neu an.
+      const elsewhere = way.where === "note" || !sameTarget(target, s.target);
+      return elsewhere && out.ok ? { ok: true, message: out.message } : out;
     });
   }
 

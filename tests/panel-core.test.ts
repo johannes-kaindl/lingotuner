@@ -22,8 +22,10 @@ describe("targetFor — Quelle wird Ziel", () => {
   it("Notiz → file mit Pfad und Name", () => {
     expect(targetFor("note", state, labels)).toEqual({ kind: "file", path: "a/Mail.md", label: "note:Mail" });
   });
-  it("Markierung → block mit Zeilen und markiertem Text als Fingerabdruck (bis zur Ziel-Art selection im Kit)", () => {
-    expect(targetFor("selection", state, labels)).toEqual({ kind: "block", path: "a/Mail.md", lineStart: 2, lineEnd: 3, label: "sel:Mail", body: "Hallo Welt" });
+  it("Markierung → selection mit Spanne und markiertem Text als Fingerabdruck; noteLines nur, wenn mitgeschrieben", () => {
+    expect(targetFor("selection", state, labels)).toEqual({ kind: "selection", path: "a/Mail.md", from: { line: 2, ch: 0 }, to: { line: 3, ch: 4 }, label: "sel:Mail", text: "Hallo Welt" });
+    const withLines = { ...state, selection: { ...state.selection!, noteLines: 7 } };
+    expect(targetFor("selection", withLines, labels)).toMatchObject({ kind: "selection", noteLines: 7 });
   });
   it("eingefuegter Text → new, auch leer", () => {
     expect(targetFor("text", EMPTY_CAPTURE, labels)).toEqual({ kind: "new" });

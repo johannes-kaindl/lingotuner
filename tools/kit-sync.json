@@ -1,10 +1,10 @@
 {
   "sources": {
     "obsidian-kit": {
-      "ref": "0.110.0"
+      "ref": "0.111.0"
     },
     "code-kit": {
-      "ref": "0.90.0"
+      "ref": "0.91.0"
     }
   },
   "targets": [
@@ -65,7 +65,9 @@
         "ensure-dir",
         "bytes-equal",
         "rel-path",
-        "prompt-override"
+        "prompt-override",
+        "editor-span",
+        "filename-policy"
       ]
     },
     {
@@ -80,7 +82,8 @@
         "block-writer",
         "note-edit",
         "plugin-id",
-        "frontmatter"
+        "frontmatter",
+        "filename-sanitizer-source"
       ],
       "rewrite": [
         [
@@ -145,7 +148,10 @@
         "status-bar-item",
         "version-list",
         "chat-host",
-        "system-prompt-setting"
+        "system-prompt-setting",
+        "panel-accept-strings",
+        "create-note",
+        "safe-file-name"
       ],
       "rewrite": [
         [

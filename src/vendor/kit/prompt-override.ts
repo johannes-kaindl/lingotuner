@@ -1,4 +1,4 @@
-// vendored from code-kit@0.90.0, src/ts/pure/prompt-override.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from code-kit@0.91.0, src/ts/pure/prompt-override.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Origin: new in code-kit (Welle 37 Nachlauf, n-kit, 2026-11-25), lifted from two plugins that solved the same job:
 //   * yijing-oracle `src/core/llm/settings-defaults.ts` (the origin: the stored prompt defaults to "", "" means the shipped text, reset writes "");
 //   * koda-agent `src/core/prompt/rules.ts` (`effectiveRules`, `renderRules`, the `missing-placeholder` check) — adds named placeholders

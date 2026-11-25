@@ -14,6 +14,8 @@ export interface Capture {
   text: string;
   from: Pos;
   to: Pos;
+  /** Zeilenzahl der Notiz beim Mitschreiben (`editor.lineCount()`); traegt das Ziel `selection` als `noteLines`. */
+  noteLines?: number;
 }
 
 export interface CaptureState {
@@ -51,20 +53,6 @@ export function readinessKey(r: Readiness): string {
     case "no-note": return "source.noNote";
     case "empty-text": return "source.emptyText";
   }
-}
-
-/** Steht an der gemerkten Stelle noch der gemerkte Text? */
-export function isRangeStale(current: string, captured: string): boolean {
-  return current !== captured;
-}
-
-// uebernommen aus vault-rag/src/reformat_mechanical.ts (splitSelectionAffix), 2026-09-07
-export function splitSelectionAffix(text: string): { lead: string; core: string; trail: string } {
-  const rawLead = /^\s*/.exec(text)?.[0] ?? "";
-  const trail = /\s*$/.exec(text)?.[0] ?? "";
-  const lead = rawLead.slice(0, rawLead.lastIndexOf("\n") + 1);
-  const core = text.slice(lead.length, text.length - trail.length);
-  return { lead, core, trail };
 }
 
 /** YAML-Kopf abtrennen; `head` endet mit der Trennzeile samt Zeilenumbruch. Was Kopf ist, liest der Kit-Leser `locateFrontmatter` (Regel von Obsidians

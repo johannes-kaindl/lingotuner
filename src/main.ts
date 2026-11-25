@@ -1,4 +1,4 @@
-import { Notice, Plugin, getLanguage, type WorkspaceLeaf } from "obsidian";
+import { Notice, Plugin, TFile, getLanguage, type WorkspaceLeaf } from "obsidian";
 import "./i18n/strings";
 import { getLang, pickLang, setLang, t } from "./vendor/kit/i18n";
 import { localFileStamp } from "./vendor/kit/local-stamp";
@@ -36,7 +36,7 @@ import { LingoTunerView, PANEL_ICON, VIEW_TYPE_LINGOTUNER, type LingoPanelHost }
 const SELECTION_DEBOUNCE_MS = 150;
 
 /** Name fuer eine neue Notiz ohne Quellnotiz (Textfeld-Lauf) — Spec 4.7 „Datum bei Textfeld".
- *  Doppelpunkte gehen in Dateinamen nicht, deshalb `HH-mm`. Gebraucht ab dem Weg „Neue Notiz“ (Bestellung B2). */
+ *  Doppelpunkte gehen in Dateinamen nicht, deshalb `HH-mm`. Gebraucht vom Weg „Neue Notiz“. */
 export function noteStamp(d: Date): string {
   return `LingoTuner ${localFileStamp(d)}`;
 }
@@ -160,10 +160,17 @@ export default class LingoTunerPlugin extends Plugin {
         app: this.app,
         ports: obsidianWritePorts(this.app),
         lastEditor: () => activeMarkdownView(this.app.workspace),
-        strings: acceptStrings(),
+        strings: acceptStrings(getLang() === "de" ? "de" : "en"),
         readingMode: "refuse",
       },
-      ways: (s) => tuneWays(s, () => this.host.session()),
+      ways: (s) => tuneWays(s, () => this.host.session(), {
+        folder: () => this.settings.newNoteFolder,
+        stamp: () => noteStamp(new Date()),
+        open: async (path) => {
+          const file = this.app.vault.getAbstractFileByPath(path);
+          if (file instanceof TFile) await this.app.workspace.getLeaf("tab").openFile(file);
+        },
+      }),
       controls: () => ({
         source: this.panelState.source,
         readiness: readinessOf(this.panelState.source, this.tracker.get(), this.panelState.freeText),
@@ -262,6 +269,8 @@ export default class LingoTunerPlugin extends Plugin {
         const text = this.panelState.freeText;
         return text.trim() === "" ? { problem: t("source.emptyText") } : { text, name: null };
       }
+      case "selection":
+        return { text: target.text, name: noteName(target.path) };
       case "block":
         return { text: target.body, name: noteName(target.path) };
       case "file": {
@@ -276,6 +285,7 @@ export default class LingoTunerPlugin extends Plugin {
   }
 
   private async readTargetText(target: Target): Promise<string | null> {
+    if (target.kind === "selection") return target.text;
     if (target.kind === "block") return target.body;
     if (target.kind !== "file") return null;
     try {

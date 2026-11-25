@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  EMPTY_CAPTURE, readiness, readinessKey, isRangeStale, splitSelectionAffix, splitFrontmatter, noteName, type Capture,
+  EMPTY_CAPTURE, readiness, readinessKey, splitFrontmatter, noteName, type Capture,
 } from "../src/core/source";
 
 const cap = (kind: "selection" | "note", text: string): Capture =>
@@ -31,16 +31,6 @@ describe("readiness", () => {
 });
 
 describe("Helfer", () => {
-  it("isRangeStale vergleicht exakt", () => {
-    expect(isRangeStale("a", "a")).toBe(false);
-    expect(isRangeStale("a ", "a")).toBe(true);
-  });
-  it("splitSelectionAffix: lead nur Zeilenumbruch-Anteil, Einzug bleibt im Kern, Invariante lead+core+trail", () => {
-    const t = "\n\n    Text hier\n";
-    const s = splitSelectionAffix(t);
-    expect(s).toEqual({ lead: "\n\n", core: "    Text hier", trail: "\n" });
-    expect(s.lead + s.core + s.trail).toBe(t);
-  });
   it("splitFrontmatter trennt den YAML-Kopf inklusive Trennzeile", () => {
     const c = "---\ntitle: x\n---\n\nBody";
     expect(splitFrontmatter(c)).toEqual({ head: "---\ntitle: x\n---\n", body: "\nBody" });

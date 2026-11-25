@@ -1,4 +1,4 @@
-// vendored from code-kit@0.90.0, src/ts/pure/panel-host.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from code-kit@0.91.0, src/ts/pure/panel-host.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Origin: obsidian-plugins `svg-studio/src/obsidian/panel/shell.ts` (svg-studio@0.1.4) — the state and the run of the panel shell: `session`, `offered`,
 // `kept`, `noEndpoint`, `applying` (Z. 168-182), `run`/`runInner`/`stop`/`settle` (Z. 280-359), `apply` (Z. 361-390), `discard`/`startNew` (Z. 398-416)
 // and the target rule of `setTarget` (Z. 580-595). The drawing (Z. 184-264 and 418-573) stays with the frame; this module is the part that has no DOM.
@@ -19,7 +19,8 @@
 //   session nor `live()` and calls no listener.
 // - The host does not throw to the outside (apart from a programming error of the caller): a throw of `run` becomes status `error`, a throw of `write`
 //   becomes `{ ok: false, message }` with the lock released, a throw of a listener is caught and swallowed (a broken frame must not stop the host).
-// - The draft (the text of the instruction field) stays on error, abort and `no-endpoint` and is cleared only by a result that is a round. A run that
+// - The draft (the text of the instruction field) stays on error, abort and `no-endpoint` and is cleared only by a result that is a round, and then only
+//   if it is still the sent instruction (since 0.91.0: text typed during the run stays, B11). A run that
 //   `start` was given an `exec` for (a hint the panel offers, such as a repair) did not come from the field, so it neither takes over nor clears the draft.
 // - After `accept` ok a fresh session begins on `offered ?? retarget ?? old target`, in that order: the offered target was chosen by the person, the
 //   `retarget` only keeps the fingerprint of a block current.
@@ -197,7 +198,9 @@ export function createPanelHost<S extends PanelSession<unknown>>(o: PanelHostOpt
             session = res.session;
             answer = "";
             setStatusInner("ok", res.message);
-            if (ownsDraft) draft = "";
+            // Only the draft that was SENT is cleared: what the person typed into the field during the run stays (B11, lingotuner GUI smoke 2026-11-25:
+            // the clear took text typed while the model ran). A draft typed back to exactly the sent text is what was sent, and goes.
+            if (ownsDraft && draft === instruction) draft = "";
             emit("session", "live");
           } else if (res.kind === "aborted") {
             setStatusInner("idle", o.strings.aborted);

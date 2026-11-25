@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.110.0, src/obsidian/panel-accept.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.111.0, src/obsidian/panel-accept.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Herkunft: 3d-codeblocks `src/obsidian/panel-accept.ts:20-287` (Übernehmen im Prompt-Panel, Spec Modell per Prompt § 6.3/§ 5), dazu
 // `json-editor/src/obsidian/repair-flow.ts:70-76` (Anhangpfad nie überschreiben, Text und binär) — Kit-Kandidat aus der Extraktionsprüfung SVG Studio
 // (2026-11-02, Gegenleser K6). Das Format steckt in `AcceptSpec` (Zaun-Sprache, Berechnung, Prüfung, Haken vor dem Schreiben), die Texte in
@@ -60,6 +60,9 @@
 import { MarkdownView, TFile, getFrontMatterInfo, type App } from "obsidian";
 import { BlockChangedError, writeBlockBody, type WritePorts } from "../kit/block-writer";
 import { editAtomic, readNoteText, swapNote } from "../kit/note-edit";
+import { createNote } from "./create-note";
+import { ACCEPT_STRINGS_DE, ACCEPT_STRINGS_EN } from "./panel-accept-strings";
+import { locateSpan, replaceSpan } from "../kit/editor-span";
 import { obsidianWritePorts } from "./write-ports";
 import { closesFence, findFenceAt, findNestedFenceAt, listFences, type Fence } from "../kit/fences";
 import { errorMessage } from "../kit/error-message";
@@ -68,6 +71,7 @@ import { detectEol } from "../kit/text-window";
 import type { Target } from "../kit/panel-session";
 
 export type BlockTarget = Extract<Target, { kind: "block" }>;
+export type SelectionTarget = Extract<Target, { kind: "selection" }>;
 
 /** Wo `insertAtCursor` den Text hingesetzt hat. */
 export type InsertWhere = "after-block-at-selection" | "after-block-at-cursor" | "after-frontmatter" | "after-selection" | "at-cursor";
@@ -94,14 +98,10 @@ export class NestedFenceError extends Error {
 }
 
 /** Text, wenn die `strings` des Konsumenten `nestedFence` (seit 0.86.0, optional) noch nicht kennen. */
-const NESTED_FENCE_FALLBACK = (selected: boolean): string =>
-  `${selected ? "The selection ends" : "The cursor is"} in a code block inside a quote, callout or list. Nothing was written; move the cursor outside it and try again.`;
+const NESTED_FENCE_FALLBACK = ACCEPT_STRINGS_EN.nestedFence;
 
 /** Die Meldung, wenn der Block hinter einem Listenmarker steht (`AcceptStrings.blockInList`): Folge, nicht Mechanismus. Zum Übernehmen in die eigenen Texte. */
-export const BLOCK_IN_LIST_TEXT = {
-  en: "This block sits in a list item; the panel only writes into blocks that start at the beginning of a line. Nothing was written.",
-  de: "Dieser Block steht in einer Liste; das Panel schreibt nur in Blöcke, die am Zeilenanfang stehen. Es wurde nichts geschrieben.",
-} as const;
+export const BLOCK_IN_LIST_TEXT = { en: ACCEPT_STRINGS_EN.blockInList, de: ACCEPT_STRINGS_DE.blockInList } as const;
 
 /** Öffnungszeile eines Blocks, in den geschrieben werden darf: nach dem Leerraum steht der Zaun (dieselbe Regel wie `FENCE_LINE` in `pure/block-writer`, deren Schreiber sonst mit `BlockChangedError` ablehnt). */
 const OPENS_WITH_FENCE = /^\s*(?:`{3,}|~{3,})/;
@@ -139,14 +139,28 @@ export interface AcceptStrings {
   /** Seit 0.98.0, optional: der Block, in den geschrieben werden soll, öffnet nicht mit dem Zaun, sondern hinter einem Listenmarker (`- ```svg`). Das Panel liest ihn (Vorschau), schreibt aber nicht hinein; nichts wurde
    *  geschrieben, kein Schnappschuss gemacht. Fehlt der Text, gilt der englische Standard (`BLOCK_IN_LIST_TEXT.en`); `BLOCK_IN_LIST_TEXT.de` ist die deutsche Fassung zum Übernehmen. */
   blockInList?: string;
+  /** Seit 0.111.0, optional: der markierte Text steht weder an seiner Stelle noch sonst in der Notiz (Ziel `selection`). Nichts geschrieben. Standard: `ACCEPT_STRINGS_EN.selectionChanged`. */
+  selectionChanged?: string;
+  /** Seit 0.111.0, optional: der markierte Text steht nicht mehr an seiner Stelle und kommt mehrfach vor, die Stelle ist nicht eindeutig. Nichts geschrieben. Standard: `ACCEPT_STRINGS_EN.selectionMoved`. */
+  selectionMoved?: string;
+  /** Seit 0.111.0, optional: `where: "note"`, die neue Notiz ist angelegt. Standard: `ACCEPT_STRINGS_EN.savedNote`. */
+  savedNote?(path: string): string;
   couldNotApply(reason: string): string;
 }
+
+
 
 export interface AcceptSpec {
   /** Sprache des Zauns, in dem der Block steht (`"svg"`); der Fingerabdruck prüft sie mit. */
   fenceLang: string;
   /** Der Block, wie er in die Notiz kommt (Zaun samt Sprache). */
   wrap(text: string): string;
+  /** Seit 0.111.0, für `where: "note"`: die neue Notiz. `folder` vault-relativ (`""` = Wurzel, `.` und `..` werden abgelehnt), `name` ohne `.md`; ein belegter Name bekommt ` 2`, ` 3` … (`createNote`). Kein Verweis, kein Schnappschuss. */
+  newNote?: (text: string) => { folder: string; name: string; content: string };
+  /** Seit 0.111.0: Kennung des Plugins für `filename-sanitizer` beim Benennen der neuen Notiz (`where: "note"`). Standard `"obsidian-kit"`. */
+  caller?: string;
+  /** Seit 0.111.0: nach dem Anlegen der neuen Notiz (`where: "note"`) mit ihrem endgültigen Pfad (samt ` 2`), etwa zum Öffnen in einem neuen Tab. Ein Wurf hier ändert nichts am Ergebnis (die Notiz besteht). */
+  onCreated?(path: string): void | Promise<void>;
   /** Neue Anhangdatei für das Ziel `new`; fehlt sie, kennt der Spec nur den Block. `reference` baut den Verweis aus dem Linktext. */
   newFile?: (text: string) => { name: string; content: string | ArrayBuffer; reference: (linktext: string) => string };
   /** Der Text, den die Übernahme schreibt, aus dem Text des Ziels JETZT (`null` für das Ziel `new`). Alles oder nichts. */
@@ -344,13 +358,16 @@ export function snapshotBeforeWrite(app: App, pluginId: string, failed: (path: s
 
 /** Schreibt das Ergebnis des Panels in `target`. Wirft nie; `kind: "create"` verweigert ein bestehendes Ziel. `where` legt für das Ziel `new` den Schreibweg ausdrücklich fest
  *  (`"block"` am Cursor, `"file"` als Anhang); mit `where` werden `env.settings` und `env.choose` nie gerufen. Für Block und Datei als Ziel gibt es nichts zu wählen. */
-export async function acceptPanel(env: AcceptEnv, spec: AcceptSpec, target: Target, kind: "create" | "refine", where?: "block" | "file"): Promise<AcceptOutcome> {
+export async function acceptPanel(env: AcceptEnv, spec: AcceptSpec, target: Target, kind: "create" | "refine", where?: "block" | "file" | "note"): Promise<AcceptOutcome> {
   try {
+    // `where: "note"` legt immer eine neue Notiz an, gleich auf welchem Ziel die Sitzung steht: ein Weg „Neue Notiz“ ohne eigenes `target` überschriebe sonst still die Markierung (Gegenlesung B2, Befund 2).
+    if (where === "note") return await acceptAsNew(env, spec, "note");
     if (target.kind === "other") return { ok: false, message: env.strings.unsupported(target.label) };
-    // Ein `create` baut aus dem Nichts: auf einem bestehenden Block oder einer Datei würde es dessen Inhalt kommentarlos ersetzen.
-    if (kind === "create" && (target.kind === "block" || target.kind === "file")) return { ok: false, message: env.strings.cannotReplace };
+    // Ein `create` baut aus dem Nichts: auf einem bestehenden Block, einer Datei oder einer Markierung würde es deren Inhalt kommentarlos ersetzen.
+    if (kind === "create" && (target.kind === "block" || target.kind === "file" || target.kind === "selection")) return { ok: false, message: env.strings.cannotReplace };
     if (target.kind === "block") return await acceptIntoBlock(env, spec, target);
     if (target.kind === "file") return await acceptIntoFile(env, spec, target);
+    if (target.kind === "selection") return await acceptIntoSelection(env, spec, target);
     return await acceptAsNew(env, spec, where);
   } catch (error) {
     return { ok: false, message: env.strings.couldNotApply(errorMessage(error)) };
@@ -416,12 +433,62 @@ async function acceptIntoFile(env: AcceptEnv, spec: AcceptSpec, t: Extract<Targe
   return { ok: true, message: strings.appliedTo(t.label) };
 }
 
-async function acceptAsNew(env: AcceptEnv, spec: AcceptSpec, whereGiven?: "block" | "file"): Promise<AcceptOutcome> {
+/** Ziel `selection` (seit 0.111.0, B1): die markierte Spanne ersetzen. Reihenfolge wie beim Block: Lesemodus, Datei, Fingerabdruck (an der Stelle, sonst genau einmal woanders:
+ *  `relocated`, nur wenn ganze Zeilen darüber dazukamen oder wegfielen und `t.noteLines` gesetzt ist: code-kit `locateSpan`), `compute(markierter Text)`, `checkWrite`, Schnappschuss mit dem ganzen Notiztext, dann `editAtomic` (offener Quell-Editor mit Strg+Z, sonst `vault.process`) mit einer
+ *  zweiten Prüfung der Spanne im selben Zug: hat sie sich dazwischen geändert, `noteChanged`, nichts geschrieben. `compute` bekommt die Markierung, nicht die Notiz, und liefert den Text für
+ *  die Spanne; Leerraum an den Rändern bewahrt der Aufrufer (`splitSelectionAffix`, code-kit `editor-span`). Lesemodus lehnt auch bei `readingMode: "append"` ab: eine Markierung im
+ *  Lesemodus gibt es nicht (geprüft über alle Blätter und noch einmal im Schreibzug). `retarget`: die Spanne des geschriebenen Textes, er selbst als Fingerabdruck, die neue Zeilenzahl
+ *  (die nächste Runde arbeitet auf ihm weiter); ein leeres Ergebnis löscht die Markierung und hat kein `retarget`. Grenzen: eine geschlossene Notiz mit gemischten Zeilenenden kommt durchgehend
+ *  als CRLF zurück (wie bei `editAtomic`), ein einzelnes `\r` zählt hier nicht als Zeilenende (CodeMirror zählt es), und steht nach einer Zeile darüber ein anderes Vorkommen genau an der
+ *  alten Stelle, gilt es als „an der Stelle“ (wie beim Block). */
+async function acceptIntoSelection(env: AcceptEnv, spec: AcceptSpec, t: SelectionTarget): Promise<AcceptOutcome> {
+  const { strings, app } = env;
+  if (onlyInReadingView(env, t.path)) return { ok: false, message: strings.noteInReadingView };
+  if (!(app.vault.getAbstractFileByPath(t.path) instanceof TFile)) return { ok: false, message: strings.fileGone(t.path) };
+  const seen = await readNoteText(env.ports, t.path);
+  const found = locateSpan(seen, t.from, t.to, t.text, t.noteLines);
+  if ("problem" in found) return { ok: false, message: found.problem === "moved" ? (strings.selectionMoved ?? ACCEPT_STRINGS_EN.selectionMoved) : (strings.selectionChanged ?? ACCEPT_STRINGS_EN.selectionChanged) };
+  const result = spec.compute(t.text);
+  if (!result.ok) return { ok: false, message: strings.notApplied(result.problem) };
+  const moved: Target | undefined = found.relocated ? { ...t, from: found.from, to: found.to } : undefined;
+  const lf = (x: string): string => x.replace(/\r\n/g, "\n");
+  if (lf(result.text) === lf(t.text)) return moved ? { ok: true, message: strings.unchanged, retarget: moved } : { ok: true, message: strings.unchanged };
+  const refused = refuse(env, spec, result.text);
+  if (refused) return refused;
+  // Der Rückweg zuerst, nach allen Ablehnungen: wirft der Haken, wird nichts geschrieben (`acceptPanel` meldet es über `couldNotApply`).
+  await spec.beforeWrite?.(t.path, seen);
+  // Der Lesemodus wird im Schreibzug noch einmal geprüft (synchron, ohne `await` bis zum Schreiben): wer während des Schnappschusses umschaltet, bekommt keinen Schreibweg ohne Strg+Z.
+  const r = await editAtomic<{ to: { line: number; ch: number }; lines: number } | "reading" | null>(env.ports, t.path, (cur) => {
+    if (onlyInReadingView(env, t.path)) return { outcome: "reading", next: null };
+    const done = replaceSpan(cur, found.from, found.to, t.text, result.text);
+    return done === null ? { outcome: null, next: null } : { outcome: { to: done.to, lines: done.lines }, next: done.next };
+  }, { persistWaitMs: 0 });
+  if (r.kind === "error") return { ok: false, message: r.reason === "not-found" ? strings.fileGone(t.path) : strings.couldNotApply(errorMessage(r.error)) };
+  if (r.outcome === "reading") return { ok: false, message: strings.noteInReadingView };
+  if (r.outcome === null) return { ok: false, message: strings.noteChanged };
+  const written = lf(result.text);
+  // Ein leeres Ergebnis löscht die Markierung; eine leere Spanne ist kein Ziel mehr (jede nächste Übernahme meldete „geändert“), also kein `retarget` (Gegenlesung B1, Befund 4).
+  if (written === "") return { ok: true, message: strings.appliedTo(t.label) };
+  return { ok: true, message: strings.appliedTo(t.label), retarget: { ...t, from: found.from, to: r.outcome.to, text: written, noteLines: r.outcome.lines } };
+}
+
+/** Steht die Notiz in einem Blatt im Lesemodus und in keinem im Quellmodus? Geprüft über alle Markdown-Blätter (nicht nur die zuletzt bediente Ansicht: in einer geteilten Ansicht ist
+ *  die bediente oft die andere Notiz) und über die zuletzt bediente Ansicht (Tests und Aufrufer ohne `workspace`). Eine nirgends offene Notiz steht nicht im Lesemodus. */
+function onlyInReadingView(env: AcceptEnv, path: string): boolean {
+  if (env.ports.editorFor(path) !== null) return false;
+  const src = sourceViewOf(env.lastEditor());
+  if ("reading" in src && src.reading.file?.path === path) return true;
+  const leaves = (env.app as { workspace?: { getLeavesOfType?(t: string): Array<{ view: unknown }> } }).workspace?.getLeavesOfType?.("markdown") ?? [];
+  return leaves.some((l) => l.view instanceof MarkdownView && l.view.file?.path === path && l.view.getMode() !== "source");
+}
+
+async function acceptAsNew(env: AcceptEnv, spec: AcceptSpec, whereGiven?: "block" | "file" | "note"): Promise<AcceptOutcome> {
   const { strings } = env;
   const result = spec.compute(null);
   if (!result.ok) return { ok: false, message: strings.notApplied(result.problem) };
   const refused = refuse(env, spec, result.text);
   if (refused) return refused;
+  if (whereGiven === "note") return createAsNote(env, spec, result.text);
   let where: "block" | "file" | null = "block";
   if (whereGiven !== undefined) {
     where = whereGiven;
@@ -527,4 +594,18 @@ async function createAsFile(env: AcceptEnv, spec: AcceptSpec, text: string): Pro
     const reason = fenceRefusal(error, strings) ?? errorMessage(error);
     return done(strings.savedFileReferenceFailed(path, reason));
   }
+}
+
+/** `where: "note"` (seit 0.111.0, B2): das Ergebnis als neue Notiz im Ordner des Specs (`createNote`), ohne Verweis in eine andere Notiz und ohne Schnappschuss (nichts wird überschrieben);
+ *  der Lesemodus spielt keine Rolle, das Ziel der Sitzung auch nicht. Danach `spec.onCreated(path)`. `retarget` auf die neue Datei. Fehlt `spec.newNote`, wird nichts geschrieben. */
+async function createAsNote(env: AcceptEnv, spec: AcceptSpec, text: string): Promise<AcceptOutcome> {
+  const { strings, app } = env;
+  const make = spec.newNote;
+  if (!make) return { ok: false, message: strings.couldNotApply("no note spec") };
+  const n = make(text);
+  const created = await createNote(app, { folder: n.folder, name: n.name, content: n.content, caller: spec.caller ?? "obsidian-kit" });
+  if (!created.ok) return { ok: false, message: strings.couldNotCreate(created.path, created.message) };
+  const { path } = created;
+  try { await spec.onCreated?.(path); } catch { /* die Notiz besteht; ein Fehler beim Öffnen macht das Anlegen nicht ungeschehen */ }
+  return { ok: true, message: (strings.savedNote ?? ACCEPT_STRINGS_EN.savedNote)(path), retarget: { kind: "file", path, label: path.split("/").pop() ?? path } };
 }

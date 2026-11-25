@@ -54,7 +54,7 @@ src/core/                pure, obsidian-frei, Vitest
   target.ts / panel-run.ts  Ziel aus der Quelle, Notiz ersetzen; der Lauf des Panels (Halter-Option run)
 src/obsidian/            view (Kit-Rahmen buildPromptPanel) · controls (Station 3) · accept (Schreibwege) ·
                          editor-io · settings-tab · logbook-io · overrides-io
-src/vendor/kit/          obsidian-kit 0.110.0 + code-kit 0.90.0 (ein Pin, seit Welle 37), pure — nie von Hand aendern
+src/vendor/kit/          obsidian-kit 0.111.0 + code-kit 0.91.0 (ein Pin, seit Welle 37), pure — nie von Hand aendern
 src/vendor/kit-obsidian/ Kit-Module, die `obsidian` importieren — nie von Hand aendern
 src/i18n/strings.ts      EN kanonisch + DE, beide vollstaendig
 src/main.ts
@@ -83,7 +83,7 @@ Tabelle der Übernahmen, Herkunftsstempel-Regel und die vier Spec-Abweichungen: 
 ```bash
 npm run dev / build / deploy      # esbuild watch · prod-Bundle (tsc + esbuild) · Copy nach $OBSIDIAN_PLUGIN_DIR
 npm run lint                      # check-no-inline-disables + eslint src --max-warnings 0
-npm test                          # NUL-Byte-Check + vitest run (179 Tests)
+npm test                          # NUL-Byte-Check + vitest run (177 Tests)
 npm run typecheck                 # tsc --noEmit (dazu: typecheck:test, typecheck:scripts)
 npm run check:pure                # src/core darf `obsidian` nicht importieren
 npm run gate                      # lint + alle Typechecks + test + check:pure + build
